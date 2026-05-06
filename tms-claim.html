@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>理赔管理 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 统计卡片样式 */
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* 理赔列表 */
+        .claim-list {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+        }
+
+        .claim-item {
+            padding: 1rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .claim-item:last-child {
+            border-bottom: none;
+        }
+
+        .claim-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .claim-id {
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .claim-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .status.pending {
+            background: #ffeb3b;
+            color: #333;
+        }
+
+        .status.processing {
+            background: #2196f3;
+            color: white;
+        }
+
+        .status.approved {
+            background: #4caf50;
+            color: white;
+        }
+
+        .status.rejected {
+            background: #f44336;
+            color: white;
+        }
+
+        /* 子菜单样式 */
+        .has-submenu {
+            position: relative;
+        }
+
+        .has-submenu > a {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .has-submenu > a::after {
+            content: '▼';
+            font-size: 0.7rem;
+            transition: transform 0.3s ease;
+        }
+
+        .has-submenu.active > a::after {
+            transform: rotate(180deg);
+        }
+
+        .submenu {
+            display: none;
+            list-style: none;
+            margin: 0.5rem 0 0 1.5rem;
+            padding: 0;
+        }
+
+        .submenu li {
+            margin-bottom: 0.3rem;
+        }
+
+        .submenu a {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .has-submenu.active .submenu {
+            display: block;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .submenu {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                background: white;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                border-radius: 0 0 5px 5px;
+                min-width: 200px;
+                margin: 0;
+                z-index: 1000;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运营管理</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="admin-nav" class="nav">
+                    <h3>运营功能</h3>
+                    <ul>
+                        <li><a href="tms-index.html">首页</a></li>
+                        <li><a href="tms-monitor.html">系统监控</a></li>
+                        <li><a href="tms-user.html">用户管理</a></li>
+                        <li><a href="tms-exception.html">异常管理</a></li>
+                        <li><a href="tms-transport.html">运输管理</a></li>
+                        <li class="has-submenu">
+                            <a href="tms-operation.html">运营管理</a>
+                            <ul class="submenu">
+                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
+                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
+                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
+                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
+                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
+                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
+                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="tms-timing.html">时效管理</a></li>
+                        <li><a href="tms-scan.html">扫描管理</a></li>
+                        <li><a href="tms-loading.html">装卸管理</a></li>
+                        <li><a href="tms-sorting.html">分拣管理</a></li>
+                        <li><a href="tms-warehouse.html">仓储管理</a></li>
+                        <li><a href="tms-vehicle.html">车辆管理</a></li>
+                        <li><a href="tms-capacity.html">运力管理</a></li>
+                        <li><a href="tms-geofence.html">电子围栏</a></li>
+                        <li><a href="tms-service.html">客服管理</a></li>
+                        <li><a href="tms-claim.html" class="active">理赔管理</a></li>
+                        <li><a href="tms-finance.html">财务管理</a></li>
+                        <li><a href="tms-administration.html">行政管理</a></li>
+                        <li><a href="tms-material.html">物料管理</a></li>
+                        <li><a href="tms-evaluation.html">考核评级</a></li>
+                        <li><a href="tms-performance.html">绩效管理</a></li>
+                        <li><a href="tms-hr.html">人事管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>理赔管理</h2>
+                
+                <div class="stats">
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #ff6b6b;">3</div>
+                        <div>待处理理赔</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #4ecdc4;">2</div>
+                        <div>处理中理赔</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #4caf50;">8</div>
+                        <div>已通过理赔</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #f44336;">1</div>
+                        <div>已拒绝理赔</div>
+                    </div>
+                </div>
+
+                <div class="claim-list">
+                    <h3>理赔申请列表</h3>
+                    <div id="claim-list">
+                        <!-- 理赔申请将通过JS生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 子菜单切换功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const submenuItems = document.querySelectorAll('.has-submenu');
+            submenuItems.forEach(item => {
+                item.addEventListener('click', function(e) {
+                    if (e.target === this || e.target === this.querySelector('a')) {
+                        this.classList.toggle('active');
+                    }
+                });
+            });
+        });
+
+        // 切换标签页函数
+        function switchTab(tabId, sectionId = null) {
+            // 如果是切换到统计标签，隐藏所有统计部分
+            if (tabId === 'statistics') {
+                const sections = document.querySelectorAll('[id$="-section"]');
+                sections.forEach(section => {
+                    section.classList.add('hidden');
+                });
+                
+                // 如果指定了sectionId，显示该部分
+                if (sectionId) {
+                    const targetSection = document.getElementById(sectionId);
+                    if (targetSection) {
+                        targetSection.classList.remove('hidden');
+                    }
+                }
+            }
+        }
+
+        // 滚动到指定区域
+        function scrollToSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        // 理赔管理系统逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('admin');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 初始化模拟数据
+            initMockClaims();
+
+            // 渲染理赔申请列表
+            renderClaims();
+
+            // 初始化模拟理赔数据
+            function initMockClaims() {
+                const existingClaims = localStorage.getItem('tmsClaims');
+                let claims = existingClaims ? JSON.parse(existingClaims) : [];
+                
+                // 如果没有理赔数据或数据为空，初始化模拟数据
+                if (!claims || claims.length === 0) {
+                    const mockClaims = [
+                        {
+                            id: 'CL202601200001',
+                            customerName: '张三',
+                            customerPhone: '13800138000',
+                            orderId: 'HLBJ167373120012345678',
+                            waybillNumber: 'WB12345678901234',
+                            claimType: '货物损坏',
+                            claimAmount: 500.00,
+                            reason: '货物在运输过程中受到损坏，影响使用',
+                            status: 'pending',
+                            createTime: '2026-01-20 09:30:00',
+                            attachments: ['损坏照片1.jpg', '损坏照片2.jpg']
+                        },
+                        {
+                            id: 'CL202601200002',
+                            customerName: '李四',
+                            customerPhone: '13900139000',
+                            orderId: 'HLSH167381760023456789',
+                            waybillNumber: 'WB23456789012345',
+                            claimType: '延迟送达',
+                            claimAmount: 200.00,
+                            reason: '货物延迟3天送达，导致客户损失',
+                            status: 'processing',
+                            createTime: '2026-01-20 10:15:00',
+                            attachments: ['合同照片.jpg']
+                        },
+                        {
+                            id: 'CL202601200003',
+                            customerName: '王五',
+                            customerPhone: '13700137000',
+                            orderId: 'HLGZ167390400034567890',
+                            waybillNumber: 'WB34567890123456',
+                            claimType: '货物丢失',
+                            claimAmount: 1200.00,
+                            reason: '货物在运输过程中丢失，无法找回',
+                            status: 'approved',
+                            createTime: '2026-01-20 11:00:00',
+                            processTime: '2026-01-20 14:30:00',
+                            processor: '理赔专员',
+                            decision: '同意理赔',
+                            remark: '证据充分，同意全额赔偿'
+                        },
+                        {
+                            id: 'CL202601200004',
+                            customerName: '赵六',
+                            customerPhone: '13600136000',
+                            orderId: 'HLSZ167399040045678901',
+                            waybillNumber: 'WB45678901234567',
+                            claimType: '货物错发',
+                            claimAmount: 300.00,
+                            reason: '收到的货物与订单不符',
+                            status: 'rejected',
+                            createTime: '2026-01-20 14:20:00',
+                            processTime: '2026-01-20 15:45:00',
+                            processor: '理赔专员',
+                            decision: '拒绝理赔',
+                            remark: '客户已签收，无法证明货物错发',
+                            attachments: []
+                        },
+                        {
+                            id: 'CL202601200005',
+                            customerName: '孙七',
+                            customerPhone: '13500135000',
+                            orderId: 'HLHZ167407680056789012',
+                            waybillNumber: 'WB56789012345678',
+                            claimType: '服务投诉',
+                            claimAmount: 100.00,
+                            reason: '配送人员服务态度差',
+                            status: 'pending',
+                            createTime: '2026-01-20 15:10:00',
+                            attachments: []
+                        }
+                    ];
+
+                    localStorage.setItem('tmsClaims', JSON.stringify(mockClaims));
+                }
+            }
+
+            // 渲染理赔申请列表
+            function renderClaims() {
+                const container = document.getElementById('claim-list');
+                let claims = [];
+                
+                try {
+                    // 尝试从localStorage获取数据
+                    const claimsData = localStorage.getItem('tmsClaims');
+                    if (claimsData) {
+                        claims = JSON.parse(claimsData);
+                    }
+                } catch (error) {
+                    console.error('解析理赔数据失败:', error);
+                    // 如果解析失败，清除损坏的数据
+                    localStorage.removeItem('tmsClaims');
+                    // 重新初始化数据
+                    initMockClaims();
+                    // 重新获取数据
+                    claims = JSON.parse(localStorage.getItem('tmsClaims') || '[]');
+                }
+
+                // 如果没有理赔数据，显示提示信息
+                if (!claims || !Array.isArray(claims) || claims.length === 0) {
+                    container.innerHTML = '<div style="text-align: center; padding: 2rem; color: #666;">暂无理赔申请数据</div>';
+                    return;
+                }
+
+                container.innerHTML = claims.map(claim => `
+                    <div class="claim-item">
+                        <div class="claim-header">
+                            <span class="claim-id">${claim.id}</span>
+                            <span class="claim-status status ${claim.status}">${getStatusText(claim.status)}</span>
+                        </div>
+                        <p><strong>客户:</strong> ${claim.customerName} (${claim.customerPhone})</p>
+                        <p><strong>订单号:</strong> ${claim.orderId}</p>
+                        <p><strong>运单号:</strong> ${claim.waybillNumber}</p>
+                        <p><strong>理赔类型:</strong> ${claim.claimType}</p>
+                        <p><strong>理赔金额:</strong> ¥${claim.claimAmount.toFixed(2)}</p>
+                        <p><strong>申请原因:</strong> ${claim.reason}</p>
+                        ${(claim.attachments && claim.attachments.length > 0) ? `<p><strong>附件:</strong> ${claim.attachments.join(', ')}</p>` : ''}
+                        <p><strong>申请时间:</strong> ${claim.createTime}</p>
+                        ${claim.processTime ? `<p><strong>处理时间:</strong> ${claim.processTime}</p>` : ''}
+                        ${claim.processor ? `<p><strong>处理人:</strong> ${claim.processor}</p>` : ''}
+                        ${claim.decision ? `<p><strong>处理结果:</strong> ${claim.decision}</p>` : ''}
+                        ${claim.remark ? `<p><strong>备注:</strong> ${claim.remark}</p>` : ''}
+                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                            ${claim.status === 'pending' ? `<button class="btn btn-primary" onclick="processClaim('${claim.id}')">开始处理</button>` : ''}
+                            ${claim.status === 'processing' ? `<button class="btn btn-success" onclick="approveClaim('${claim.id}')">同意理赔</button>` : ''}
+                            ${claim.status === 'processing' ? `<button class="btn btn-danger" onclick="rejectClaim('${claim.id}')">拒绝理赔</button>` : ''}
+                            <button class="btn btn-secondary" onclick="viewClaimDetail('${claim.id}')">查看详情</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // 获取状态文本
+            function getStatusText(status) {
+                const statusMap = {
+                    'pending': '待处理',
+                    'processing': '处理中',
+                    'approved': '已通过',
+                    'rejected': '已拒绝'
+                };
+                return statusMap[status] || status;
+            }
+
+            // 处理理赔
+            window.processClaim = function(id) {
+                const claims = JSON.parse(localStorage.getItem('tmsClaims') || '[]');
+                const claim = claims.find(c => c.id === id);
+                if (claim) {
+                    claim.status = 'processing';
+                    claim.processTime = new Date().toLocaleString();
+                    claim.processor = getCurrentUser().username;
+                    localStorage.setItem('tmsClaims', JSON.stringify(claims));
+                    renderClaims();
+                    alert('已开始处理该理赔申请');
+                }
+            }
+
+            // 同意理赔
+            window.approveClaim = function(id) {
+                const remark = prompt('请输入处理备注:');
+                if (remark) {
+                    const claims = JSON.parse(localStorage.getItem('tmsClaims') || '[]');
+                    const claim = claims.find(c => c.id === id);
+                    if (claim) {
+                        claim.status = 'approved';
+                        claim.decision = '同意理赔';
+                        claim.remark = remark;
+                        claim.processTime = new Date().toLocaleString();
+                        localStorage.setItem('tmsClaims', JSON.stringify(claims));
+                        renderClaims();
+                        alert('理赔申请已通过');
+                    }
+                }
+            }
+
+            // 拒绝理赔
+            window.rejectClaim = function(id) {
+                const remark = prompt('请输入拒绝原因:');
+                if (remark) {
+                    const claims = JSON.parse(localStorage.getItem('tmsClaims') || '[]');
+                    const claim = claims.find(c => c.id === id);
+                    if (claim) {
+                        claim.status = 'rejected';
+                        claim.decision = '拒绝理赔';
+                        claim.remark = remark;
+                        claim.processTime = new Date().toLocaleString();
+                        localStorage.setItem('tmsClaims', JSON.stringify(claims));
+                        renderClaims();
+                        alert('理赔申请已拒绝');
+                    }
+                }
+            }
+
+            // 查看详情
+            window.viewClaimDetail = function(id) {
+                const claims = JSON.parse(localStorage.getItem('tmsClaims') || '[]');
+                const claim = claims.find(c => c.id === id);
+                if (claim) {
+                    // 这里可以实现详情模态框
+                    alert(`查看理赔 ${id} 的详细信息`);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

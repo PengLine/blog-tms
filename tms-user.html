@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #96ceb4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #96ceb4;
+            color: white;
+        }
+
+        /* 子菜单样式 */
+        .has-submenu {
+            position: relative;
+        }
+
+        .has-submenu > a {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .has-submenu > a::after {
+            content: '▼';
+            font-size: 0.7rem;
+            transition: transform 0.3s ease;
+        }
+
+        .has-submenu.active > a::after {
+            transform: rotate(180deg);
+        }
+
+        .submenu {
+            display: none;
+            list-style: none;
+            margin: 0.5rem 0 0 1.5rem;
+            padding: 0;
+        }
+
+        .submenu li {
+            margin-bottom: 0.3rem;
+        }
+
+        .submenu a {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .has-submenu.active .submenu {
+            display: block;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        .view h2 {
+            margin-bottom: 2rem;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 1rem;
+        }
+
+        /* 标签页样式 */
+        .tabs {
+            display: flex;
+            margin-bottom: 2rem;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .tab {
+            flex: 1;
+            padding: 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab:hover {
+            background: #f5f7fa;
+        }
+
+        .tab.active {
+            background: #96ceb4;
+            color: white;
+            border-bottom-color: #96ceb4;
+        }
+
+        /* 表格样式 */
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .data-table th {
+            background: #f5f7fa;
+            font-weight: bold;
+            color: #666;
+        }
+
+        /* 状态标签样式 */
+        .status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .status.active {
+            background: #4caf50;
+            color: white;
+        }
+
+        .status.inactive {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        /* 操作按钮样式 */
+        .action-btn {
+            padding: 0.5rem 1rem;
+            background: #96ceb4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            margin-right: 0.5rem;
+        }
+
+        .action-btn:hover {
+            background: #84bd93;
+        }
+
+        .action-btn.delete {
+            background: #ff6b6b;
+        }
+
+        .action-btn.delete:hover {
+            background: #ee5a5a;
+        }
+
+        /* 添加按钮样式 */
+        .add-btn {
+            padding: 1rem 2rem;
+            background: #96ceb4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            margin-bottom: 1rem;
+        }
+
+        .add-btn:hover {
+            background: #84bd93;
+        }
+
+        /* 表单样式 */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+
+        .form-actions {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        /* 模态框样式 */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .close-btn:hover {
+            color: #333;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+
+            /* 表格响应式处理 */
+            .table-container {
+                overflow-x: auto;
+            }
+
+            /* 标签页响应式 */
+            .tabs {
+                flex-direction: column;
+            }
+
+            .tab {
+                text-align: left;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运营</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="admin-nav" class="nav">
+                    <h3>运营功能</h3>
+                    <ul>
+                        <li><a href="tms-index.html">首页</a></li>
+                        <li><a href="tms-monitor.html">系统监控</a></li>
+                        <li><a href="tms-user.html" class="active">用户管理</a></li>
+                        <li><a href="tms-exception.html">异常管理</a></li>
+                        <li><a href="tms-transport.html">运输管理</a></li>
+                        <li class="has-submenu">
+                            <a href="tms-operation.html">运营管理</a>
+                            <ul class="submenu">
+                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
+                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
+                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
+                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
+                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
+                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
+                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="tms-timing.html">时效管理</a></li>
+                        <li><a href="tms-scan.html">扫描管理</a></li>
+                        <li><a href="tms-loading.html">装卸管理</a></li>
+                        <li><a href="tms-sorting.html">分拣管理</a></li>
+                        <li><a href="tms-warehouse.html">仓储管理</a></li>
+                        <li><a href="tms-vehicle.html">车辆管理</a></li>
+                        <li><a href="tms-capacity.html">运力管理</a></li>
+                        <li><a href="tms-geofence.html">电子围栏</a></li>
+                        <li><a href="tms-service.html">客服管理</a></li>
+                        <li><a href="tms-claim.html">理赔管理</a></li>
+                        <li><a href="tms-finance.html">财务管理</a></li>
+                        <li><a href="tms-administration.html">行政管理</a></li>
+                        <li><a href="tms-material.html">物料管理</a></li>
+                        <li><a href="tms-evaluation.html">考核评级</a></li>
+                        <li><a href="tms-performance.html">绩效管理</a></li>
+                        <li><a href="tms-hr.html">人事管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <div class="view">
+                    <h2>用户与权限管理</h2>
+                    
+                    <!-- 标签页导航 -->
+                    <div class="tabs">
+                        <div class="tab active" data-tab="users">用户管理</div>
+                        <div class="tab" data-tab="roles">角色管理</div>
+                        <div class="tab" data-tab="permissions">权限管理</div>
+                        <div class="tab" data-tab="departments">部门管理</div>
+                    </div>
+
+                    <!-- 用户管理标签页 -->
+                    <div id="users-tab" class="tab-content">
+                        <button class="add-btn btn btn-primary" onclick="openAddUserModal()">添加用户</button>
+                        <div class="table-container">
+                            <table class="data-table" id="user-table">
+                                <!-- 用户表格将通过JS生成 -->
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 角色管理标签页 -->
+                    <div id="roles-tab" class="tab-content hidden">
+                        <button class="add-btn btn btn-primary" onclick="openAddRoleModal()">添加角色</button>
+                        <div class="table-container">
+                            <table class="data-table" id="role-table">
+                                <!-- 角色表格将通过JS生成 -->
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 权限管理标签页 -->
+                    <div id="permissions-tab" class="tab-content hidden">
+                        <button class="add-btn btn btn-primary" onclick="openAddPermissionModal()">添加权限</button>
+                        <div class="table-container">
+                            <table class="data-table" id="permission-table">
+                                <!-- 权限表格将通过JS生成 -->
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 部门管理标签页 -->
+                    <div id="departments-tab" class="tab-content hidden">
+                        <button class="add-btn btn btn-primary" onclick="openAddDepartmentModal()">添加部门</button>
+                        <div class="table-container">
+                            <table class="data-table" id="department-table">
+                                <!-- 部门表格将通过JS生成 -->
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 添加/编辑用户模态框 -->
+    <div id="user-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="user-modal-title">添加用户</h3>
+                <button class="close-btn" onclick="closeUserModal()">&times;</button>
+            </div>
+            <form id="user-form">
+                <input type="hidden" id="user-id">
+                <div class="form-group">
+                    <label for="user-name">用户名：</label>
+                    <input type="text" id="user-name" name="userName" required>
+                </div>
+                <div class="form-group">
+                    <label for="user-email">邮箱：</label>
+                    <input type="email" id="user-email" name="userEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="user-department">部门：</label>
+                    <select id="user-department" name="userDepartment" required>
+                        <option value="">请选择部门</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="user-role">角色：</label>
+                    <select id="user-role" name="userRole" required>
+                        <option value="">请选择角色</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="user-status">状态：</label>
+                    <select id="user-status" name="userStatus" required>
+                        <option value="active">活跃</option>
+                        <option value="inactive">禁用</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="user-area">管理区域：</label>
+                    <select id="user-area" name="userArea">
+                        <option value="">请选择区域</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="action-btn" onclick="closeUserModal()">取消</button>
+                    <button type="submit" class="action-btn">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 添加/编辑角色模态框 -->
+    <div id="role-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="role-modal-title">添加角色</h3>
+                <button class="close-btn" onclick="closeRoleModal()">&times;</button>
+            </div>
+            <form id="role-form">
+                <input type="hidden" id="role-id">
+                <div class="form-group">
+                    <label for="role-name">角色名称：</label>
+                    <input type="text" id="role-name" name="roleName" required>
+                </div>
+                <div class="form-group">
+                    <label for="role-description">角色描述：</label>
+                    <textarea id="role-description" name="roleDescription" placeholder="描述角色的权限范围和职责..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>权限列表：</label>
+                    <div id="permission-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 5px; padding: 1rem;">
+                        <!-- 权限复选框将通过JS生成 -->
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="action-btn" onclick="closeRoleModal()">取消</button>
+                    <button type="submit" class="action-btn">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 添加/编辑权限模态框 -->
+    <div id="permission-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="permission-modal-title">添加权限</h3>
+                <button class="close-btn" onclick="closePermissionModal()">&times;</button>
+            </div>
+            <form id="permission-form">
+                <input type="hidden" id="permission-id">
+                <div class="form-group">
+                    <label for="permission-name">权限名称：</label>
+                    <input type="text" id="permission-name" name="permissionName" required>
+                </div>
+                <div class="form-group">
+                    <label for="permission-code">权限代码：</label>
+                    <input type="text" id="permission-code" name="permissionCode" required>
+                </div>
+                <div class="form-group">
+                    <label for="permission-description">权限描述：</label>
+                    <textarea id="permission-description" name="permissionDescription" placeholder="描述权限的具体功能..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="action-btn" onclick="closePermissionModal()">取消</button>
+                    <button type="submit" class="action-btn">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 添加/编辑部门模态框 -->
+    <div id="department-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="department-modal-title">添加部门</h3>
+                <button class="close-btn" onclick="closeDepartmentModal()">&times;</button>
+            </div>
+            <form id="department-form">
+                <input type="hidden" id="department-id">
+                <div class="form-group">
+                    <label for="department-name">部门名称：</label>
+                    <input type="text" id="department-name" name="departmentName" required>
+                </div>
+                <div class="form-group">
+                    <label for="department-parent">上级部门：</label>
+                    <select id="department-parent" name="departmentParent">
+                        <option value="">无</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="department-description">部门描述：</label>
+                    <textarea id="department-description" name="departmentDescription" placeholder="描述部门的职责和功能..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="action-btn" onclick="closeDepartmentModal()">取消</button>
+                    <button type="submit" class="action-btn">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 用户管理系统逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('admin');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 绑定标签页切换事件
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    const tabId = this.dataset.tab;
+                    switchTab(tabId);
+                });
+            });
+
+            // 初始化数据
+            initializeData();
+
+            // 加载用户数据
+            loadUsers();
+
+            // 加载角色数据
+            loadRoles();
+
+            // 加载权限数据
+            loadPermissions();
+
+            // 加载部门数据
+            loadDepartments();
+
+            // 绑定表单提交事件
+            document.getElementById('user-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveUser();
+            });
+
+            document.getElementById('role-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveRole();
+            });
+
+            document.getElementById('permission-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                savePermission();
+            });
+
+            document.getElementById('department-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveDepartment();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+        });
+
+        // 初始化数据
+        function initializeData() {
+            // 初始化部门数据
+            if (!localStorage.getItem('tmsDepartments')) {
+                const defaultDepartments = [
+                    { id: 'dept-1', name: '总部', parentId: '', description: '公司总部' },
+                    { id: 'dept-2', name: '运营部', parentId: 'dept-1', description: '负责公司运营管理' },
+                    { id: 'dept-3', name: '客服部', parentId: 'dept-1', description: '负责客户服务' },
+                    { id: 'dept-4', name: '仓储部', parentId: 'dept-1', description: '负责仓储管理' },
+                    { id: 'dept-5', name: '运输部', parentId: 'dept-1', description: '负责运输管理' },
+                    { id: 'dept-6', name: '财务部', parentId: 'dept-1', description: '负责财务管理' }
+                ];
+                localStorage.setItem('tmsDepartments', JSON.stringify(defaultDepartments));
+            }
+
+            // 初始化权限数据
+            if (!localStorage.getItem('tmsPermissions')) {
+                const defaultPermissions = [
+                    { id: 'perm-1', code: 'user:manage', name: '用户管理', description: '管理系统用户' },
+                    { id: 'perm-2', code: 'role:manage', name: '角色管理', description: '管理系统角色' },
+                    { id: 'perm-3', code: 'permission:manage', name: '权限管理', description: '管理系统权限' },
+                    { id: 'perm-4', code: 'department:manage', name: '部门管理', description: '管理公司部门' },
+                    { id: 'perm-5', code: 'order:manage', name: '订单管理', description: '管理系统订单' },
+                    { id: 'perm-6', code: 'fence:manage', name: '围栏管理', description: '管理电子围栏' },
+                    { id: 'perm-7', code: 'vehicle:manage', name: '车辆管理', description: '管理公司车辆' },
+                    { id: 'perm-8', code: 'warehouse:manage', name: '仓储管理', description: '管理仓储信息' }
+                ];
+                localStorage.setItem('tmsPermissions', JSON.stringify(defaultPermissions));
+            }
+
+            // 初始化角色数据
+            if (!localStorage.getItem('tmsRoles')) {
+                const defaultRoles = [
+                    { id: 'role-1', name: '系统管理员', description: '拥有系统所有权限', permissions: ['perm-1', 'perm-2', 'perm-3', 'perm-4', 'perm-5', 'perm-6', 'perm-7', 'perm-8'] },
+                    { id: 'role-2', name: '运营管理员', description: '负责运营管理', permissions: ['perm-1', 'perm-5', 'perm-6'] },
+                    { id: 'role-3', name: '客服专员', description: '负责客户服务', permissions: ['perm-5'] },
+                    { id: 'role-4', name: '仓储管理员', description: '负责仓储管理', permissions: ['perm-4', 'perm-8'] },
+                    { id: 'role-5', name: '派送员', description: '负责货物派送', permissions: [] }
+                ];
+                localStorage.setItem('tmsRoles', JSON.stringify(defaultRoles));
+            }
+
+            // 初始化用户数据
+            if (!localStorage.getItem('tmsUsers')) {
+                const defaultUsers = [
+                    { id: 'user-1', name: '系统管理员', email: 'admin@example.com', departmentId: 'dept-1', roleId: 'role-1', status: 'active' },
+                    { id: 'user-2', name: '运营经理', email: 'operation@example.com', departmentId: 'dept-2', roleId: 'role-2', status: 'active' },
+                    { id: 'user-3', name: '客服专员', email: 'service@example.com', departmentId: 'dept-3', roleId: 'role-3', status: 'active' },
+                    { id: 'user-4', name: '仓储管理员', email: 'warehouse@example.com', departmentId: 'dept-4', roleId: 'role-4', status: 'active' },
+                    { id: 'user-5', name: '张师傅', email: 'courier1@example.com', departmentId: 'dept-5', roleId: 'role-5', status: 'active' },
+                    { id: 'user-6', name: '李师傅', email: 'courier2@example.com', departmentId: 'dept-5', roleId: 'role-5', status: 'active' }
+                ];
+                localStorage.setItem('tmsUsers', JSON.stringify(defaultUsers));
+            }
+        }
+
+        // 切换标签页
+        function switchTab(tabId) {
+            // 隐藏所有标签页内容
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+
+            // 移除所有标签页的活动状态
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // 显示选中的标签页内容
+            document.getElementById(`${tabId}-tab`).classList.remove('hidden');
+
+            // 添加选中标签页的活动状态
+            document.querySelector(`.tab[data-tab="${tabId}"]`).classList.add('active');
+        }
+
+        // 加载用户数据
+        function loadUsers() {
+            const users = JSON.parse(localStorage.getItem('tmsUsers')) || [];
+            const roles = JSON.parse(localStorage.getItem('tmsRoles')) || [];
+            const departments = JSON.parse(localStorage.getItem('tmsDepartments')) || [];
+            const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
+
+            const userTable = document.getElementById('user-table');
+
+            if (users.length === 0) {
+                userTable.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #666;">暂无用户数据</td></tr>';
+                return;
+            }
+
+            userTable.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>用户ID</th>
+                        <th>用户名</th>
+                        <th>邮箱</th>
+                        <th>部门</th>
+                        <th>角色</th>
+                        <th>管理区域</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${users.map(user => {
+                        const role = roles.find(r => r.id === user.roleId);
+                        const department = departments.find(d => d.id === user.departmentId);
+                        const area = areas.find(a => a.id === user.areaId);
+                        return `
+                            <tr>
+                                <td>${user.id}</td>
+                                <td>${user.name}</td>
+                                <td>${user.email}</td>
+                                <td>${department ? department.name : '-'}</td>
+                                <td>${role ? role.name : '-'}</td>
+                                <td>${area ? area.name : '-'}</td>
+                                <td><span class="status ${user.status}">${user.status === 'active' ? '活跃' : '禁用'}</span></td>
+                                <td>
+                                    <button class="action-btn" onclick="openEditUserModal('${user.id}')">编辑</button>
+                                    <button class="action-btn delete" onclick="deleteUser('${user.id}')">删除</button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            `;
+        }
+
+        // 加载角色数据
+        function loadRoles() {
+            const roles = JSON.parse(localStorage.getItem('tmsRoles')) || [];
+            const permissions = JSON.parse(localStorage.getItem('tmsPermissions')) || [];
+
+            const roleTable = document.getElementById('role-table');
+
+            if (roles.length === 0) {
+                roleTable.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #666;">暂无角色数据</td></tr>';
+                return;
+            }
+
+            roleTable.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>角色ID</th>
+                        <th>角色名称</th>
+                        <th>权限数量</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${roles.map(role => {
+                        const permissionCount = role.permissions ? role.permissions.length : 0;
+                        return `
+                            <tr>
+                                <td>${role.id}</td>
+                                <td>${role.name}</td>
+                                <td>${permissionCount}</td>
+                                <td>
+                                    <button class="action-btn" onclick="openEditRoleModal('${role.id}')">编辑</button>
+                                    <button class="action-btn delete" onclick="deleteRole('${role.id}')">删除</button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            `;
+        }
+
+        // 加载权限数据
+        function loadPermissions() {
+            const permissions = JSON.parse(localStorage.getItem('tmsPermissions')) || [];
+
+            const permissionTable = document.getElementById('permission-table');
+
+            if (permissions.length === 0) {
+                permissionTable.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #666;">暂无权限数据</td></tr>';
+                return;
+            }
+
+            permissionTable.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>权限ID</th>
+                        <th>权限代码</th>
+                        <th>权限名称</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${permissions.map(permission => `
+                        <tr>
+                            <td>${permission.id}</td>
+                            <td>${permission.code}</td>
+                            <td>${permission.name}</td>
+                            <td>
+                                <button class="action-btn" onclick="openEditPermissionModal('${permission.id}')">编辑</button>
+                                <button class="action-btn delete" onclick="deletePermission('${permission.id}')">删除</button>
+                            </td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            `;
+        }
+
+        // 加载部门数据
+        function loadDepartments() {
+            const departments = JSON.parse(localStorage.getItem('tmsDepartments')) || [];
+
+            const departmentTable = document.getElementById('department-table');
+
+            if (departments.length === 0) {
+                departmentTable.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 2rem; color: #666;">暂无部门数据</td></tr>';
+                return;
+            }
+
+            departmentTable.innerHTML = `
+                <thead>
+                    <tr>
+                        <th>部门ID</th>
+                        <th>部门名称</th>
+                        <th>上级部门</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${departments.map(dept => {
+                        const parentDept = departments.find(d => d.id === dept.parentId);
+                        return `
+                            <tr>
+                                <td>${dept.id}</td>
+                                <td>${dept.name}</td>
+                                <td>${parentDept ? parentDept.name : '无'}</td>
+                                <td>
+                                    <button class="action-btn" onclick="openEditDepartmentModal('${dept.id}')">编辑</button>
+                                    <button class="action-btn delete" onclick="deleteDepartment('${dept.id}')">删除</button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            `;
+        }
+
+        // 打开添加用户模态框
+        function openAddUserModal() {
+            const modal = document.getElementById('user-modal');
+            document.getElementById('user-modal-title').textContent = '添加用户';
+            document.getElementById('user-form').reset();
+            document.getElementById('user-id').value = '';
+            
+            // 加载部门选项
+            loadDepartmentOptions();
+            
+            // 加载角色选项
+            loadRoleOptions();
+            
+            // 加载区域选项
+            loadAreaOptions();
+            
+            modal.classList.remove('hidden');
+        }
+
+        // 打开编辑用户模态框
+        function openEditUserModal(userId) {
+            const modal = document.getElementById('user-modal');
+            const users = JSON.parse(localStorage.getItem('tmsUsers')) || [];
+            const user = users.find(u => u.id === userId);
+            
+            if (user) {
+                document.getElementById('user-modal-title').textContent = '编辑用户';
+                document.getElementById('user-id').value = user.id;
+                document.getElementById('user-name').value = user.name;
+                document.getElementById('user-email').value = user.email;
+                document.getElementById('user-department').value = user.departmentId;
+                document.getElementById('user-role').value = user.roleId;
+                document.getElementById('user-status').value = user.status;
+                document.getElementById('user-area').value = user.areaId || '';
+                
+                // 加载部门选项
+                loadDepartmentOptions();
+                
+                // 加载角色选项
+                loadRoleOptions();
+                
+                // 加载区域选项
+                loadAreaOptions();
+                
+                modal.classList.remove('hidden');
+            }
+        }
+
+        // 关闭用户模态框
+        function closeUserModal() {
+            document.getElementById('user-modal').classList.add('hidden');
+        }
+
+        // 保存用户
+        function saveUser() {
+            const userId = document.getElementById('user-id').value;
+            const userName = document.getElementById('user-name').value;
+            const userEmail = document.getElementById('user-email').value;
+            const userDepartment = document.getElementById('user-department').value;
+            const userRole = document.getElementById('user-role').value;
+            const userStatus = document.getElementById('user-status').value;
+            const userArea = document.getElementById('user-area').value;
+
+            // 验证表单
+            if (!userName || !userEmail || !userDepartment || !userRole) {
+                alert('请填写完整的用户信息');
+                return;
+            }
+
+            const users = JSON.parse(localStorage.getItem('tmsUsers')) || [];
+            let userData;
+
+            if (userId) {
+                // 编辑现有用户
+                userData = users.find(u => u.id === userId);
+            } else {
+                // 新增用户
+                userData = {
+                    id: `user-${Date.now()}`,
+                };
+            }
+
+            // 更新用户数据
+            userData.name = userName;
+            userData.email = userEmail;
+            userData.departmentId = userDepartment;
+            userData.roleId = userRole;
+            userData.status = userStatus;
+            userData.areaId = userArea;
+
+            // 保存到本地存储
+            if (userId) {
+                // 更新现有用户
+                const index = users.findIndex(u => u.id === userId);
+                users[index] = userData;
+            } else {
+                // 添加新用户
+                users.push(userData);
+            }
+
+            localStorage.setItem('tmsUsers', JSON.stringify(users));
+
+            // 关闭模态框
+            closeUserModal();
+
+            // 重新加载用户数据
+            loadUsers();
+
+            // 提示保存成功
+            alert('用户保存成功');
+        }
+
+        // 删除用户
+        function deleteUser(userId) {
+            if (confirm('确定要删除这个用户吗？')) {
+                const users = JSON.parse(localStorage.getItem('tmsUsers')) || [];
+                const updatedUsers = users.filter(u => u.id !== userId);
+                localStorage.setItem('tmsUsers', JSON.stringify(updatedUsers));
+                loadUsers();
+                alert('用户删除成功');
+            }
+        }
+
+        // 打开添加角色模态框
+        function openAddRoleModal() {
+            const modal = document.getElementById('role-modal');
+            document.getElementById('role-modal-title').textContent = '添加角色';
+            document.getElementById('role-form').reset();
+            document.getElementById('role-id').value = '';
+            
+            // 加载权限选项
+            loadPermissionCheckboxes();
+            
+            modal.classList.remove('hidden');
+        }
+
+        // 打开编辑角色模态框
+        function openEditRoleModal(roleId) {
+            const modal = document.getElementById('role-modal');
+            const roles = JSON.parse(localStorage.getItem('tmsRoles')) || [];
+            const role = roles.find(r => r.id === roleId);
+            
+            if (role) {
+                document.getElementById('role-modal-title').textContent = '编辑角色';
+                document.getElementById('role-id').value = role.id;
+                document.getElementById('role-name').value = role.name;
+                document.getElementById('role-description').value = role.description;
+                
+                // 加载权限选项
+                loadPermissionCheckboxes(role.permissions);
+                
+                modal.classList.remove('hidden');
+            }
+        }
+
+        // 关闭角色模态框
+        function closeRoleModal() {
+            document.getElementById('role-modal').classList.add('hidden');
+        }
+
+        // 保存角色
+        function saveRole() {
+            const roleId = document.getElementById('role-id').value;
+            const roleName = document.getElementById('role-name').value;
+            const roleDescription = document.getElementById('role-description').value;
+            
+            // 获取选中的权限
+            const selectedPermissions = [];
+            document.querySelectorAll('#permission-list input[type="checkbox"]:checked').forEach(checkbox => {
+                selectedPermissions.push(checkbox.value);
+            });
+
+            // 验证表单
+            if (!roleName) {
+                alert('请填写角色名称');
+                return;
+            }
+
+            const roles = JSON.parse(localStorage.getItem('tmsRoles')) || [];
+            let roleData;
+
+            if (roleId) {
+                // 编辑现有角色
+                roleData = roles.find(r => r.id === roleId);
+            } else {
+                // 新增角色
+                roleData = {
+                    id: `role-${Date.now()}`,
+                };
+            }
+
+            // 更新角色数据
+            roleData.name = roleName;
+            roleData.description = roleDescription;
+            roleData.permissions = selectedPermissions;
+
+            // 保存到本地存储
+            if (roleId) {
+                // 更新现有角色
+                const index = roles.findIndex(r => r.id === roleId);
+                roles[index] = roleData;
+            } else {
+                // 添加新角色
+                roles.push(roleData);
+            }
+
+            localStorage.setItem('tmsRoles', JSON.stringify(roles));
+
+            // 关闭模态框
+            closeRoleModal();
+
+            // 重新加载角色数据
+            loadRoles();
+
+            // 提示保存成功
+            alert('角色保存成功');
+        }
+
+        // 删除角色
+        function deleteRole(roleId) {
+            if (confirm('确定要删除这个角色吗？')) {
+                const roles = JSON.parse(localStorage.getItem('tmsRoles')) || [];
+                const updatedRoles = roles.filter(r => r.id !== roleId);
+                localStorage.setItem('tmsRoles', JSON.stringify(updatedRoles));
+                loadRoles();
+                alert('角色删除成功');
+            }
+        }
+
+        // 打开添加权限模态框
+        function openAddPermissionModal() {
+            const modal = document.getElementById('permission-modal');
+            document.getElementById('permission-modal-title').textContent = '添加权限';
+            document.getElementById('permission-form').reset();
+            document.getElementById('permission-id').value = '';
+            modal.classList.remove('hidden');
+        }
+
+        // 打开编辑权限模态框
+        function openEditPermissionModal(permissionId) {
+            const modal = document.getElementById('permission-modal');
+            const permissions = JSON.parse(localStorage.getItem('tmsPermissions')) || [];
+            const permission = permissions.find(p => p.id === permissionId);
+            
+            if (permission) {
+                document.getElementById('permission-modal-title').textContent = '编辑权限';
+                document.getElementById('permission-id').value = permission.id;
+                document.getElementById('permission-name').value = permission.name;
+                document.getElementById('permission-code').value = permission.code;
+                document.getElementById('permission-description').value = permission.description;
+                modal.classList.remove('hidden');
+            }
+        }
+
+        // 关闭权限模态框
+        function closePermissionModal() {
+            document.getElementById('permission-modal').classList.add('hidden');
+        }
+
+        // 保存权限
+        function savePermission() {
+            const permissionId = document.getElementById('permission-id').value;
+            const permissionName = document.getElementById('permission-name').value;
+            const permissionCode = document.getElementById('permission-code').value;
+            const permissionDescription = document.getElementById('permission-description').value;
+
+            // 验证表单
+            if (!permissionName || !permissionCode) {
+                alert('请填写权限名称和代码');
+                return;
+            }
+
+            const permissions = JSON.parse(localStorage.getItem('tmsPermissions')) || [];
+            let permissionData;
+
+            if (permissionId) {
+                // 编辑现有权限
+                permissionData = permissions.find(p => p.id === permissionId);
+            } else {
+                // 新增权限
+                permissionData = {
+                    id: `perm-${Date.now()}`,
+                };
+            }
+
+            // 更新权限数据
+            permissionData.name = permissionName;
+            permissionData.code = permissionCode;
+            permissionData.description = permissionDescription;
+
+            // 保存到本地存储
+            if (permissionId) {
+                // 更新现有权限
+                const index = permissions.findIndex(p => p.id === permissionId);
+                permissions[index] = permissionData;
+            } else {
+                // 添加新权限
+                permissions.push(permissionData);
+            }
+
+            localStorage.setItem('tmsPermissions', JSON.stringify(permissions));
+
+            // 关闭模态框
+            closePermissionModal();
+
+            // 重新加载权限数据
+            loadPermissions();
+
+            // 提示保存成功
+            alert('权限保存成功');
+        }
+
+        // 删除权限
+        function deletePermission(permissionId) {
+            if (confirm('确定要删除这个权限吗？')) {
+                const permissions = JSON.parse(localStorage.getItem('tmsPermissions')) || [];
+                const updatedPermissions = permissions.filter(p => p.id !== permissionId);
+                localStorage.setItem('tmsPermissions', JSON.stringify(updatedPermissions));
+                loadPermissions();
+                alert('权限删除成功');
+            }
+        }
+
+        // 打开添加部门模态框
+        function openAddDepartmentModal() {
+            const modal = document.getElementById('department-modal');
+            document.getElementById('department-modal-title').textContent = '添加部门';
+            document.getElementById('department-form').reset();
+            document.getElementById('department-id').value = '';
+            
+            // 加载上级部门选项
+            loadParentDepartmentOptions();
+            
+            modal.classList.remove('hidden');
+        }
+
+        // 打开编辑部门模态框
+        function openEditDepartmentModal(deptId) {
+            const modal = document.getElementById('department-modal');
+            const departments = JSON.parse(localStorage.getItem('tmsDepartments')) || [];
+            const dept = departments.find(d => d.id === deptId);
+            
+            if (dept) {
+                document.getElementById('department-modal-title').textContent = '编辑部门';
+                document.getElementById('department-id').value = dept.id;
+                document.getElementById('department-name').value = dept.name;
+                document.getElementById('department-parent').value = dept.parentId;
+                document.getElementById('department-description').value = dept.description;
+                
+                // 加载上级部门选项
+                loadParentDepartmentOptions();
+                
+                modal.classList.remove('hidden');
+            }
+        }
+
+        // 关闭部门模态框
+        function closeDepartmentModal() {
+            document.getElementById('department-modal').classList.add('hidden');
+        }
+
+        // 保存部门
+        function saveDepartment() {
+            const deptId = document.getElementById('department-id').value;
+            const deptName = document.getElementById('department-name').value;
+            const deptParent = document.getElementById('department-parent').value;
+            const deptDescription = document.getElementById('department-description').value;
+
+            // 验证表单
+            if (!deptName) {
+                alert('请填写部门名称');
+                return;
+            }
+
+            const departments = JSON.parse(localStorage.getItem('tmsDepartments')) || [];
+            let deptData;
+
+            if (deptId) {
+                // 编辑现有部门
+                deptData = departments.find(d => d.id === deptId);
+            } else {
+                // 新增部门
+                deptData = {
+                    id: `dept-${Date.now()}`,
+                };
+            }
+
+            // 更新部门数据
+            deptData.name = deptName;
+            deptData.parentId = deptParent;
+            deptData.description = deptDescription;
+
+            // 保存到本地存储
+            if (deptId) {
+                // 更新现有部门
+                const index = departments.findIndex(d => d.id === deptId);
+                departments[index] = deptData;
+            } else {
+                // 添加新部门
+                departments.push(deptData);
+            }
+
+            localStorage.setItem('tmsDepartments', JSON.stringify(departments));
+
+            // 关闭模态框
+            closeDepartmentModal();
+
+            // 重新加载部门数据
+            loadDepartments();
+
+            // 提示保存成功
+            alert('部门保存成功');
+        }
+
+        // 删除部门
+        function deleteDepartment(deptId) {
+            if (confirm('确定要删除这个部门吗？')) {
+                const departments = JSON.parse(localStorage.getItem('tmsDepartments')) || [];
+                const updatedDepartments = departments.filter(d => d.id !== deptId);
+                localStorage.setItem('tmsDepartments', JSON.stringify(updatedDepartments));
+                loadDepartments();
+                alert('部门删除成功');
+            }
+        }
+
+        // 加载部门选项
+        function loadDepartmentOptions() {
+            const select = document.getElementById('user-department');
+            const departments = JSON.parse(localStorage.getItem('tmsDepartments')) || [];
+            
+            select.innerHTML = '<option value="">请选择部门</option>';
+            departments.forEach(dept => {
+                const option = document.createElement('option');
+                option.value = dept.id;
+                option.textContent = dept.name;
+                select.appendChild(option);
+            });
+        }
+
+        // 加载角色选项
+        function loadRoleOptions() {
+            const select = document.getElementById('user-role');
+            const roles = JSON.parse(localStorage.getItem('tmsRoles')) || [];
+            
+            select.innerHTML = '<option value="">请选择角色</option>';
+            roles.forEach(role => {
+                const option = document.createElement('option');
+                option.value = role.id;
+                option.textContent = role.name;
+                select.appendChild(option);
+            });
+        }
+
+        // 加载权限复选框
+        function loadPermissionCheckboxes(selectedPermissions = []) {
+            const container = document.getElementById('permission-list');
+            const permissions = JSON.parse(localStorage.getItem('tmsPermissions')) || [];
+            
+            container.innerHTML = '';
+            permissions.forEach(permission => {
+                const checkbox = document.createElement('div');
+                checkbox.innerHTML = `
+                    <input type="checkbox" id="perm-${permission.id}" value="${permission.id}" ${selectedPermissions.includes(permission.id) ? 'checked' : ''}>
+                    <label for="perm-${permission.id}">${permission.name} (${permission.code})</label>
+                `;
+                container.appendChild(checkbox);
+            });
+        }
+
+        // 加载上级部门选项
+        function loadParentDepartmentOptions() {
+            const select = document.getElementById('department-parent');
+            const departments = JSON.parse(localStorage.getItem('tmsDepartments')) || [];
+            
+            select.innerHTML = '<option value="">无</option>';
+            departments.forEach(dept => {
+                const option = document.createElement('option');
+                option.value = dept.id;
+                option.textContent = dept.name;
+                select.appendChild(option);
+            });
+        }
+
+        // 加载区域选项
+        function loadAreaOptions() {
+            const select = document.getElementById('user-area');
+            const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
+            
+            select.innerHTML = '<option value="">请选择区域</option>';
+            areas.forEach(area => {
+                const option = document.createElement('option');
+                option.value = area.id;
+                option.textContent = area.name;
+                select.appendChild(option);
+            });
+        }
+
+        // 显示当前用户名
+        function displayCurrentUser() {
+            const userInfo = localStorage.getItem('tmsUser');
+            if (userInfo) {
+                const user = JSON.parse(userInfo);
+                document.getElementById('current-role').textContent = `当前用户：${user.username}`;
+            }
+        }
+    </script>
+</body>
+</html>

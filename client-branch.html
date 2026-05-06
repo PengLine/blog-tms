@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网点搜索 - TMS运输管理系统</title>
+    <!-- Leaflet地图库 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- 中国地图边界修正 -->
+    <script src="https://unpkg.com/leaflet-china-boundary@1.0.2/dist/china.js"></script>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        .view h2 {
+            margin-bottom: 2rem;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 1rem;
+        }
+
+        /* 搜索框样式 */
+        .search-box {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .search-box h3 {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+
+        .form-group select {
+            width: 100%;
+            padding: 1rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .service-types {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .service-type {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .search-btn {
+            padding: 1rem 2rem;
+            background: #4ecdc4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            margin-top: 1rem;
+        }
+
+        .search-btn:hover {
+            background: #45b7aa;
+        }
+
+        /* 网点列表样式 */
+        .branch-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .branch-item {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .branch-item h4 {
+            margin-bottom: 1rem;
+            color: #4ecdc4;
+        }
+
+        .service-badges {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .service-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            background: #4ecdc4;
+            color: white;
+        }
+
+        .branch-info {
+            margin-bottom: 0.5rem;
+        }
+
+        /* 地图容器样式 */
+        .map-container {
+            height: 500px;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 地址搜索框样式 */
+        .address-search-box {
+            margin-bottom: 1rem;
+        }
+
+        .address-search-box input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        /* 最近网点标记样式 */
+        .nearest-marker {
+            filter: hue-rotate(270deg) saturate(1.5);
+            z-index: 100;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+
+            .branch-list {
+                grid-template-columns: 1fr;
+            }
+
+            .service-types {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 客户端</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="client-nav" class="nav">
+                    <h3>客户端功能</h3>
+                    <ul>
+                        <li><a href="client-index.html">首页</a></li>
+                        <li><a href="client-send.html">我要寄件</a></li>
+                        <li><a href="client-order.html">订单查询</a></li>
+                        <li><a href="client-tracking.html">货物跟踪</a></li>
+                        <li><a href="client-branch.html" class="active">附近网点</a></li>
+                        <li><a href="client-profile.html">个人中心</a></li>
+                        <li><a href="client-points.html">我的积分</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <div class="view">
+                    <h2>网点搜索</h2>
+                    <div class="search-box">
+                        <h3>搜索网点</h3>
+                        <form id="branch-search-form">
+                            <div class="form-group">
+                                <label for="search-city">城市</label>
+                                <select id="search-city" name="city" required>
+                                    <option value="">请选择城市</option>
+                                    <option value="北京">北京</option>
+                                    <option value="上海">上海</option>
+                                    <option value="广州">广州</option>
+                                    <option value="深圳">深圳</option>
+                                    <option value="杭州">杭州</option>
+                                    <option value="南京">南京</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>服务类型</label>
+                                <div class="service-types">
+                                    <div class="service-type">
+                                        <input type="checkbox" id="service-arrival" name="service[]" value="arrival" checked>
+                                        <label for="service-arrival">可到货</label>
+                                    </div>
+                                    <div class="service-type">
+                                        <input type="checkbox" id="service-delivery" name="service[]" value="delivery" checked>
+                                        <label for="service-delivery">可派送</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="submit" class="search-btn">搜索网点</button>
+                        </form>
+                    </div>
+
+                    <!-- 地址搜索框 -->
+                    <div class="address-search-box">
+                        <input type="text" id="address-search" placeholder="输入地址进行搜索，例如：北京市朝阳区建国路">
+                    </div>
+
+                    <!-- 地图容器 -->
+                    <div id="map" class="map-container"></div>
+
+                    <div class="branch-list" id="branch-list">
+                        <!-- 网点列表将通过JS生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 全局变量定义
+        let mockBranches = [];
+        let map = null;
+        let markers = [];
+        let userLocation = null;
+        let nearestBranch = null;
+
+        // 网点搜索页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 初始化模拟网点数据
+            mockBranches = [
+                {
+                    id: 'BR-001',
+                    name: '北京朝阳网点',
+                    city: '北京',
+                    address: '北京市朝阳区建国路88号',
+                    phone: '010-12345678',
+                    services: ['arrival', 'delivery'],
+                    hours: '周一至周日 8:00-18:00',
+                    latlng: [39.915, 116.485]
+                },
+                {
+                    id: 'BR-002',
+                    name: '北京海淀网点',
+                    city: '北京',
+                    address: '北京市海淀区中关村大街1号',
+                    phone: '010-87654321',
+                    services: ['arrival', 'delivery'],
+                    hours: '周一至周日 8:30-18:30',
+                    latlng: [39.984, 116.307]
+                },
+                {
+                    id: 'BR-003',
+                    name: '上海浦东网点',
+                    city: '上海',
+                    address: '上海市浦东新区陆家嘴环路1000号',
+                    phone: '021-12345678',
+                    services: ['arrival'],
+                    hours: '周一至周六 9:00-17:00',
+                    latlng: [31.230, 121.473]
+                },
+                {
+                    id: 'BR-004',
+                    name: '上海静安网点',
+                    city: '上海',
+                    address: '上海市静安区南京西路1266号',
+                    phone: '021-87654321',
+                    services: ['arrival', 'delivery'],
+                    hours: '周一至周日 8:30-19:00',
+                    latlng: [31.232, 121.455]
+                },
+                {
+                    id: 'BR-005',
+                    name: '广州天河网点',
+                    city: '广州',
+                    address: '广州市天河区天河路385号',
+                    phone: '020-12345678',
+                    services: ['arrival', 'delivery'],
+                    hours: '周一至周日 9:00-18:00',
+                    latlng: [23.134, 113.322]
+                },
+                {
+                    id: 'BR-006',
+                    name: '深圳南山网点',
+                    city: '深圳',
+                    address: '深圳市南山区科技园南区高新南一道',
+                    phone: '0755-12345678',
+                    services: ['arrival', 'delivery'],
+                    hours: '周一至周日 8:30-18:30',
+                    latlng: [22.543, 113.957]
+                },
+                {
+                    id: 'BR-007',
+                    name: '杭州西湖网点',
+                    city: '杭州',
+                    address: '杭州市西湖区文三路478号',
+                    phone: '0571-12345678',
+                    services: ['arrival'],
+                    hours: '周一至周六 9:00-17:30',
+                    latlng: [30.287, 120.155]
+                },
+                {
+                    id: 'BR-008',
+                    name: '南京秦淮网点',
+                    city: '南京',
+                    address: '南京市秦淮区中山南路49号',
+                    phone: '025-12345678',
+                    services: ['arrival', 'delivery'],
+                    hours: '周一至周日 9:00-18:00',
+                    latlng: [32.032, 118.799]
+                }
+            ];
+
+            // 检查用户登录状态
+            checkLoginStatus('client');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 绑定搜索表单事件
+            const searchForm = document.getElementById('branch-search-form');
+            if (searchForm) {
+                searchForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    searchBranches();
+                });
+            }
+
+            // 页面加载时默认显示所有网点
+            searchBranches();
+
+            // 初始化地图
+            initMap();
+        });
+    
+
+        function searchBranches() {
+            // 获取表单数据
+            const city = document.getElementById('search-city').value;
+            const services = Array.from(document.querySelectorAll('input[name="service[]"]:checked')).map(cb => cb.value);
+
+            // 过滤网点
+            let filteredBranches = [...mockBranches];
+
+            if (city) {
+                filteredBranches = filteredBranches.filter(branch => branch.city === city);
+            }
+
+            if (services.length > 0) {
+                filteredBranches = filteredBranches.filter(branch => 
+                    services.some(service => branch.services.includes(service))
+                );
+            }
+
+            renderBranches(filteredBranches);
+        }
+
+        function renderBranches(branches) {
+            const container = document.getElementById('branch-list');
+            
+            if (branches.length === 0) {
+                container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 3rem; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);">未找到匹配的网点</div>';
+                return;
+            }
+
+            container.innerHTML = branches.map(branch => `
+                <div class="branch-item">
+                    <h4>${branch.name}</h4>
+                    <div class="service-badges">
+                        ${branch.services.includes('arrival') ? '<span class="service-badge">可到货</span>' : ''}
+                        ${branch.services.includes('delivery') ? '<span class="service-badge">可派送</span>' : ''}
+                    </div>
+                    <div class="branch-info"><strong>地址：</strong>${branch.address}</div>
+                    <div class="branch-info"><strong>电话：</strong>${branch.phone}</div>
+                    <div class="branch-info"><strong>营业时间：</strong>${branch.hours}</div>
+                    <button class="locate-btn" onclick="locateBranch('${branch.id}')" style="margin-top: 1rem; padding: 0.5rem 1rem; background: #4ecdc4; color: white; border: none; border-radius: 5px; cursor: pointer;">在地图上定位</button>
+                </div>
+            `).join('');
+        }
+
+        // 初始化地图
+        function initMap() {
+            // 创建地图实例，初始中心点设为北京
+            map = L.map('map').setView([39.9042, 116.4074], 11);
+
+            // 添加地图图层
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            // 添加中国边界（可选）
+            if (typeof L.China === 'function') {
+                L.China().addTo(map);
+            }
+
+            // 初始加载所有网点标记
+            addBranchesToMap(mockBranches);
+
+            // 绑定地址搜索事件
+            const addressSearchInput = document.getElementById('address-search');
+            addressSearchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    searchAddress();
+                }
+            });
+
+            // 地图点击事件
+            map.on('click', (e) => {
+                // 移除之前的用户位置标记
+                if (userLocation) {
+                    map.removeLayer(userLocation);
+                }
+
+                // 添加新的用户位置标记
+                userLocation = L.marker(e.latlng, {
+                    icon: L.icon({
+                        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+                        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(map);
+
+                userLocation.bindPopup('您的位置').openPopup();
+
+                // 计算并标记最近的网点
+                calculateNearestBranch(e.latlng);
+            });
+        }
+
+        // 将网点添加到地图
+        function addBranchesToMap(branches) {
+            // 清除现有标记
+            if (map) {
+                markers.forEach(marker => map.removeLayer(marker));
+                markers = [];
+
+                // 添加新标记
+                branches.forEach(branch => {
+                    // 检查是否有经纬度信息
+                    if (!branch.latlng) return;
+
+                    let marker = L.marker(branch.latlng)
+                        .addTo(map)
+                        .bindPopup(`<b>${branch.name}</b><br>${branch.address}<br>电话：${branch.phone}`);
+
+                    // 添加到标记数组
+                    markers.push(marker);
+                });
+
+                // 调整地图视野以显示所有标记
+                if (markers.length > 0) {
+                    const group = new L.featureGroup(markers);
+                    map.fitBounds(group.getBounds().pad(0.5));
+                }
+            }
+        }
+
+        // 地址搜索功能
+        function searchAddress() {
+            const address = document.getElementById('address-search').value.trim();
+            if (!address) return;
+
+            // 这里使用模拟的地理编码服务，实际项目中应使用真实的地理编码API
+            const mockGeocode = (address) => {
+                // 简单的模拟，根据城市名称返回中心坐标
+                const cityCoords = {
+                    '北京': [39.9042, 116.4074],
+                    '上海': [31.2304, 121.4737],
+                    '广州': [23.1291, 113.2644],
+                    '深圳': [22.5431, 114.0579],
+                    '杭州': [30.2741, 120.1551],
+                    '南京': [32.0603, 118.7969]
+                };
+
+                // 查找包含的城市名称
+                for (const city in cityCoords) {
+                    if (address.includes(city)) {
+                        return cityCoords[city];
+                    }
+                }
+
+                // 默认返回北京坐标
+                return [39.9042, 116.4074];
+            };
+
+            const coords = mockGeocode(address);
+
+            // 移除之前的用户位置标记
+            if (userLocation && map) {
+                map.removeLayer(userLocation);
+            }
+
+            // 添加新的用户位置标记
+            if (map) {
+                userLocation = L.marker(coords, {
+                    icon: L.icon({
+                        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+                        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                        iconSize: [25, 41],
+                        iconAnchor: [12, 41],
+                        popupAnchor: [1, -34],
+                        shadowSize: [41, 41]
+                    })
+                }).addTo(map);
+
+                userLocation.bindPopup(`搜索地址：${address}`).openPopup();
+
+                // 移动地图到搜索位置
+                map.setView(coords, 13);
+
+                // 计算并标记最近的网点
+                calculateNearestBranch(coords);
+            }
+        }
+
+        // 计算两点之间的距离（Haversine公式）
+        function calculateDistance(latlng1, latlng2) {
+            const R = 6371; // 地球半径，单位公里
+            const dLat = (latlng2[0] - latlng1[0]) * Math.PI / 180;
+            const dLon = (latlng2[1] - latlng1[1]) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(latlng1[0] * Math.PI / 180) * Math.cos(latlng2[0] * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const distance = R * c;
+            return distance;
+        }
+
+        // 计算最近的网点
+        function calculateNearestBranch(userLatlng) {
+            if (!userLatlng || !map) return;
+
+            // 获取当前显示的网点
+            const currentBranches = document.getElementById('search-city').value ? 
+                mockBranches.filter(branch => branch.city === document.getElementById('search-city').value) : 
+                mockBranches;
+
+            if (currentBranches.length === 0) return;
+
+            // 计算最近的网点
+            nearestBranch = currentBranches.reduce((nearest, branch) => {
+                if (!branch.latlng) return nearest;
+                
+                const distance = calculateDistance(userLatlng, branch.latlng);
+                if (!nearest || distance < nearest.distance) {
+                    return { branch, distance };
+                }
+                return nearest;
+            }, null).branch;
+
+            // 重新添加所有标记，高亮显示最近的网点
+            markers.forEach(marker => map.removeLayer(marker));
+            markers = [];
+
+            currentBranches.forEach(branch => {
+                if (!branch.latlng) return;
+
+                let markerOptions = {};
+                if (branch.id === nearestBranch.id) {
+                    // 高亮显示最近的网点
+                    markerOptions.icon = L.icon({
+                        iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+                        shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+                        iconSize: [30, 50],
+                        iconAnchor: [15, 50],
+                        popupAnchor: [1, -40],
+                        shadowSize: [50, 50]
+                    });
+                }
+
+                let marker = L.marker(branch.latlng, markerOptions)
+                    .addTo(map)
+                    .bindPopup(`<b>${branch.name}</b><br>${branch.address}<br>电话：${branch.phone}${branch.id === nearestBranch.id ? '<br><span style="color: red;">最近网点</span>' : ''}`);
+
+                if (branch.id === nearestBranch.id) {
+                    marker.openPopup();
+                }
+
+                markers.push(marker);
+            });
+
+            // 显示最近网点信息
+            alert(`最近的网点是：${nearestBranch.name}\n距离：${calculateDistance(userLatlng, nearestBranch.latlng).toFixed(2)} 公里`);
+        }
+
+        // 在地图上定位特定网点
+        window.locateBranch = function(branchId) {
+            const branch = mockBranches.find(b => b.id === branchId);
+            if (branch && branch.latlng && map) {
+                map.setView(branch.latlng, 15);
+                
+                // 找到对应的标记并打开弹窗
+                markers.forEach(marker => {
+                    if (marker.getLatLng().equals(branch.latlng)) {
+                        marker.openPopup();
+                    }
+                });
+            }
+        };
+
+        
+    </script>
+</body>
+</html>

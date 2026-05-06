@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>客户端 - TMS运输管理系统</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 统计卡片样式 */
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* 下单表单样式 */
+        .order-form {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-top: 2rem;
+        }
+
+        .order-form h3 {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 1rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .submit-btn {
+            padding: 1rem 2rem;
+            background: #4ecdc4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            font-size: 1rem;
+        }
+
+        .submit-btn:hover {
+            background: #45b7aa;
+        }
+
+        /* 订单统计样式 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-item {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #4ecdc4;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: #666;
+        }
+
+        /* 图表容器样式 */
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 2rem 0;
+        }
+
+        /* 快捷功能样式 */
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .action-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .action-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .action-icon {
+            width: 60px;
+            height: 60px;
+            background: #f0f0f0;
+            border-radius: 50%;
+            margin: 0 auto 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .action-title {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .action-desc {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        /* 通知样式 */
+        .notification-section {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin: 2rem 0;
+        }
+
+        .notification-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .notification-item:last-child {
+            border-bottom: none;
+        }
+
+        .notification-icon {
+            width: 40px;
+            height: 40px;
+            background: #4ecdc4;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            margin-right: 1rem;
+            flex-shrink: 0;
+        }
+
+        .notification-content {
+            flex: 1;
+        }
+
+        .notification-title {
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+
+        .notification-time {
+            color: #999;
+            font-size: 0.8rem;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 客户端</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="client-nav" class="nav">
+                    <h3>客户端功能</h3>
+                    <ul>
+                        <li><a href="client-index.html" class="active">首页</a></li>
+                        <li><a href="client-send.html">我要寄件</a></li>
+                        <li><a href="client-order.html">订单查询</a></li>
+                        <li><a href="client-tracking.html">货物跟踪</a></li>
+                        <li><a href="client-branch.html">附近网点</a></li>
+                        <li><a href="client-profile.html">个人中心</a></li>
+                        <li><a href="client-points.html">我的积分</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>欢迎使用TMS系统</h2>
+                <p>作为客户端用户，您可以在这里管理您的运输订单和跟踪货物状态。</p>
+                
+                <!-- 订单统计 -->
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-value" id="total-orders">0</div>
+                        <div class="stat-label">总订单数</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="pending-orders">0</div>
+                        <div class="stat-label">待处理订单</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="in-transit-orders">0</div>
+                        <div class="stat-label">运输中订单</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="completed-orders">0</div>
+                        <div class="stat-label">已完成订单</div>
+                    </div>
+                </div>
+
+                <!-- 订单统计图表 -->
+                <div class="chart-container">
+                    <canvas id="order-chart"></canvas>
+                </div>
+
+                <!-- 快捷功能 -->
+                <div class="quick-actions">
+                    <div class="action-card" onclick="window.location.href='client-send.html'">
+                        <div class="action-icon">📦</div>
+                        <div class="action-title">我要寄件</div>
+                        <div class="action-desc">快速下单，轻松寄件</div>
+                    </div>
+                    <div class="action-card" onclick="window.location.href='client-tracking.html'">
+                        <div class="action-icon">🔍</div>
+                        <div class="action-title">货物跟踪</div>
+                        <div class="action-desc">实时查询，全程追踪</div>
+                    </div>
+                    <div class="action-card" onclick="window.location.href='client-branch.html'">
+                        <div class="action-icon">📍</div>
+                        <div class="action-title">附近网点</div>
+                        <div class="action-desc">查找网点，便捷服务</div>
+                    </div>
+                    <div class="action-card" onclick="window.location.href='client-points.html'">
+                        <div class="action-icon">🎁</div>
+                        <div class="action-title">我的积分</div>
+                        <div class="action-desc">积分兑换，优惠多多</div>
+                    </div>
+                </div>
+
+                <!-- 最近订单 -->
+                <div style="background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);">
+                    <h3>最近订单</h3>
+                    <div style="margin-top: 1rem;" id="recent-orders">
+                    </div>
+                </div>
+
+                <!-- 系统通知 -->
+                <div class="notification-section">
+                    <h3>系统通知</h3>
+                    <div class="notification-item">
+                        <div class="notification-icon">📢</div>
+                        <div class="notification-content">
+                            <div class="notification-title">系统升级通知</div>
+                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">TMS系统将于2026年2月1日凌晨2:00-4:00进行系统升级，届时将暂停服务，请您提前安排好寄件计划。</div>
+                            <div class="notification-time">2026-01-28 10:00</div>
+                        </div>
+                    </div>
+                    <div class="notification-item">
+                        <div class="notification-icon">🎉</div>
+                        <div class="notification-content">
+                            <div class="notification-title">新用户注册奖励</div>
+                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">恭喜您注册成为新用户！系统已为您赠送100积分，可用于兑换优惠券和礼品。</div>
+                            <div class="notification-time">2026-01-27 15:30</div>
+                        </div>
+                    </div>
+                    <div class="notification-item">
+                        <div class="notification-icon">📢</div>
+                        <div class="notification-content">
+                            <div class="notification-title">春节运费优惠活动</div>
+                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">春节期间（1月28日-2月15日），寄件享8折优惠，最高减免50元。使用积分还可额外抵扣运费。</div>
+                            <div class="notification-time">2026-01-26 09:00</div>
+                        </div>
+                    </div>
+                    <div class="notification-item">
+                        <div class="notification-icon">🚚</div>
+                        <div class="notification-content">
+                            <div class="notification-title">新增快递网点</div>
+                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">系统新增50个快递网点，覆盖更多城市和地区，为您提供更便捷的服务。</div>
+                            <div class="notification-time">2026-01-25 14:20</div>
+                        </div>
+                    </div>
+                    <div class="notification-item">
+                        <div class="notification-icon">🎁</div>
+                        <div class="notification-content">
+                            <div class="notification-title">积分兑换商城上线</div>
+                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">积分兑换商城正式上线！现在可以使用积分兑换运费券、礼品卡等丰富奖品。</div>
+                            <div class="notification-time">2026-01-24 11:00</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 客户端系统逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 初始化模拟数据
+            initMockData();
+
+            // 检查用户登录状态
+            checkLoginStatus('client');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 加载订单统计
+            loadOrderStats();
+
+            // 加载最近订单
+            loadRecentOrders();
+        });
+
+        // 初始化模拟数据
+        function initMockData() {
+            // 强制重新初始化模拟数据
+            const mockOrders = [
+                {
+                    id: 'HLBJ16725312001234567890',
+                    userId: 'guest',
+                    origin: '北京',
+                    destination: '上海',
+                    status: 'pending',
+                    createTime: '2026-01-28T10:30:00',
+                    weight: 5.5,
+                    goodsType: '电子产品',
+                    senderName: '张三',
+                    senderPhone: '13800138001',
+                    receiverName: '李四',
+                    receiverPhone: '13900139001',
+                    price: 120
+                },
+                {
+                    id: 'HLSH16726176002345678901',
+                    userId: 'guest',
+                    origin: '上海',
+                    destination: '广州',
+                    status: 'in_transit',
+                    createTime: '2026-01-25T14:20:00',
+                    weight: 8.2,
+                    goodsType: '服装',
+                    senderName: '王五',
+                    senderPhone: '13700137001',
+                    receiverName: '赵六',
+                    receiverPhone: '13600136001',
+                    price: 180
+                },
+                {
+                    id: 'HLGZ16727040003456789012',
+                    userId: 'guest',
+                    origin: '广州',
+                    destination: '深圳',
+                    status: 'completed',
+                    createTime: '2026-01-20T09:15:00',
+                    weight: 3.8,
+                    goodsType: '食品',
+                    senderName: '孙七',
+                    senderPhone: '13500135001',
+                    receiverName: '周八',
+                    receiverPhone: '13400134001',
+                    price: 85
+                },
+                {
+                    id: 'HLSZ16727904004567890123',
+                    userId: 'guest',
+                    origin: '深圳',
+                    destination: '杭州',
+                    status: 'completed',
+                    createTime: '2026-01-15T16:45:00',
+                    weight: 12.5,
+                    goodsType: '家具',
+                    senderName: '吴九',
+                    senderPhone: '13300133001',
+                    receiverName: '郑十',
+                    receiverPhone: '13200132001',
+                    price: 320
+                },
+                {
+                    id: 'HLHZ16728768005678901234',
+                    userId: 'guest',
+                    origin: '杭州',
+                    destination: '南京',
+                    status: 'in_transit',
+                    createTime: '2026-01-22T11:30:00',
+                    weight: 6.7,
+                    goodsType: '书籍',
+                    senderName: '陈十一',
+                    senderPhone: '13100131001',
+                    receiverName: '林十二',
+                    receiverPhone: '13000130001',
+                    price: 150
+                },
+                {
+                    id: 'HLNJ16729632006789012345',
+                    userId: 'guest',
+                    origin: '南京',
+                    destination: '武汉',
+                    status: 'pending',
+                    createTime: '2026-01-27T08:00:00',
+                    weight: 4.3,
+                    goodsType: '日用品',
+                    senderName: '黄十三',
+                    senderPhone: '12900129001',
+                    receiverName: '杨十四',
+                    receiverPhone: '12800128001',
+                    price: 95
+                },
+                {
+                    id: 'HLWH16730496007890123456',
+                    userId: 'guest',
+                    origin: '武汉',
+                    destination: '成都',
+                    status: 'completed',
+                    createTime: '2026-01-10T13:20:00',
+                    weight: 9.1,
+                    goodsType: '机械配件',
+                    senderName: '朱十五',
+                    senderPhone: '12700127001',
+                    receiverName: '秦十六',
+                    receiverPhone: '12600126001',
+                    price: 210
+                },
+                {
+                    id: 'HLC16731360008901234567',
+                    userId: 'guest',
+                    origin: '成都',
+                    destination: '重庆',
+                    status: 'completed',
+                    createTime: '2026-01-05T15:50:00',
+                    weight: 7.4,
+                    goodsType: '建材',
+                    senderName: '许十七',
+                    senderPhone: '12500125001',
+                    receiverName: '何十八',
+                    receiverPhone: '12400124001',
+                    price: 175
+                }
+            ];
+            
+            localStorage.setItem('tmsOrders', JSON.stringify(mockOrders));
+        }
+
+        // 加载订单统计
+        function loadOrderStats() {
+            const orders = JSON.parse(localStorage.getItem('tmsOrders')) || [];
+            const user = getCurrentUser();
+            const userOrders = orders.filter(order => order.userId === user?.username || order.userId === 'guest');
+
+            // 更新统计数据
+            document.getElementById('total-orders').textContent = userOrders.length;
+            document.getElementById('pending-orders').textContent = userOrders.filter(order => order.status === 'pending' || order.status === 'draft').length;
+            document.getElementById('in-transit-orders').textContent = userOrders.filter(order => order.status === 'in_transit' || order.status === 'transporting').length;
+            document.getElementById('completed-orders').textContent = userOrders.filter(order => order.status === 'completed' || order.status === 'delivered').length;
+
+            // 生成订单统计图
+            generateOrderChart(userOrders);
+        }
+
+        // 生成订单统计图
+        function generateOrderChart(orders) {
+            const ctx = document.getElementById('order-chart').getContext('2d');
+            
+            // 按月分组订单
+            const monthlyOrders = {};
+            orders.forEach(order => {
+                const date = new Date(order.createTime || Date.now());
+                const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                if (!monthlyOrders[month]) {
+                    monthlyOrders[month] = 0;
+                }
+                monthlyOrders[month]++;
+            });
+
+            // 生成最近6个月的数据
+            const months = [];
+            const data = [];
+            for (let i = 5; i >= 0; i--) {
+                const date = new Date();
+                date.setMonth(date.getMonth() - i);
+                const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                months.push(month);
+                data.push(monthlyOrders[month] || 0);
+            }
+
+            // 创建图表
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: '订单数量',
+                        data: data,
+                        borderColor: '#4ecdc4',
+                        backgroundColor: 'rgba(78, 205, 196, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 加载最近订单
+        function loadRecentOrders() {
+            const orders = JSON.parse(localStorage.getItem('tmsOrders')) || [];
+            const user = getCurrentUser();
+            const userOrders = orders.filter(order => order.userId === user?.username || order.userId === 'guest');
+            
+            // 按创建时间排序，取最近3个
+            const recentOrders = userOrders.sort((a, b) => new Date(b.createTime) - new Date(a.createTime)).slice(0, 3);
+            
+            const recentOrdersContainer = document.getElementById('recent-orders');
+            recentOrdersContainer.innerHTML = '';
+
+            if (recentOrders.length === 0) {
+                recentOrdersContainer.innerHTML = '<div style="text-align: center; color: #999; padding: 2rem;">暂无订单</div>';
+                return;
+            }
+
+            recentOrders.forEach(order => {
+                const statusMap = {
+                    'draft': { text: '待处理', color: '#ffeb3b' },
+                    'pending': { text: '待处理', color: '#ffeb3b' },
+                    'in_transit': { text: '运输中', color: '#2196f3' },
+                    'transporting': { text: '运输中', color: '#2196f3' },
+                    'completed': { text: '已完成', color: '#4caf50' },
+                    'delivered': { text: '已完成', color: '#4caf50' }
+                };
+                const status = statusMap[order.status] || { text: '未知', color: '#999' };
+
+                const orderItem = document.createElement('div');
+                orderItem.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid #e0e0e0;';
+                orderItem.innerHTML = `
+                    <div>
+                        <strong>${order.id}</strong>
+                        <p>${order.origin} → ${order.destination}</p>
+                    </div>
+                    <div style="padding: 0.25rem 0.75rem; background: ${status.color}; color: white; border-radius: 20px; font-size: 0.8rem; font-weight: bold;">${status.text}</div>
+                `;
+                recentOrdersContainer.appendChild(orderItem);
+            });
+        }
+    </script>
+</body>
+</html>

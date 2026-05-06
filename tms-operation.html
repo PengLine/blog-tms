@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>运营管理 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #96ceb4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #96ceb4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        .view h2 {
+            margin-bottom: 2rem;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 1rem;
+        }
+
+        /* 子菜单样式 */
+        .has-submenu {
+            position: relative;
+        }
+
+        .has-submenu > a {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .has-submenu > a::after {
+            content: '▼';
+            font-size: 0.7rem;
+            transition: transform 0.3s ease;
+        }
+
+        .has-submenu.active > a::after {
+            transform: rotate(180deg);
+        }
+
+        .submenu {
+            display: none;
+            list-style: none;
+            margin: 0.5rem 0 0 1.5rem;
+            padding: 0;
+        }
+
+        .submenu li {
+            margin-bottom: 0.3rem;
+        }
+
+        .submenu a {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .has-submenu.active .submenu {
+            display: block;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .submenu {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                background: white;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                border-radius: 0 0 5px 5px;
+                min-width: 200px;
+                margin: 0;
+                z-index: 1000;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+        }
+
+        /* 运营管理页面样式 */
+        .operation-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-card .number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #96ceb4;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .operation-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+
+        .operation-table th,
+        .operation-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .operation-table th {
+            background: #f5f7fa;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .operation-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        .operation-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .operation-status.active {
+            background: #4caf50;
+            color: white;
+        }
+
+        .operation-status.pending {
+            background: #ffeb3b;
+            color: #333;
+        }
+
+        .operation-status.suspended {
+            background: #ff9800;
+            color: white;
+        }
+
+        .operation-status.closed {
+            background: #9e9e9e;
+            color: white;
+        }
+
+        .operation-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .action-btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .action-btn.view {
+            background: #96ceb4;
+            color: white;
+        }
+
+        .action-btn.view:hover {
+            background: #84bd93;
+        }
+
+        .action-btn.edit {
+            background: #2196f3;
+            color: white;
+        }
+
+        .action-btn.edit:hover {
+            background: #1976d2;
+        }
+
+        .action-btn.activate {
+            background: #4caf50;
+            color: white;
+        }
+
+        .action-btn.activate:hover {
+            background: #388e3c;
+        }
+
+        .action-btn.suspend {
+            background: #ff9800;
+            color: white;
+        }
+
+        .action-btn.suspend:hover {
+            background: #f57c00;
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运营</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="admin-nav" class="nav">
+                    <h3>运营功能</h3>
+                    <ul>
+                        <li><a href="tms-index.html">首页</a></li>
+                        <li><a href="tms-monitor.html">系统监控</a></li>
+                        <li><a href="tms-user.html">用户管理</a></li>
+                        <li><a href="tms-exception.html">异常管理</a></li>
+                        <li><a href="tms-transport.html">运输管理</a></li>
+                        <li class="has-submenu">
+                            <a href="tms-operation.html" class="active">运营管理</a>
+                            <ul class="submenu">
+                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
+                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
+                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
+                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
+                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
+                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
+                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="tms-timing.html">时效管理</a></li>
+                        <li><a href="tms-scan.html">扫描管理</a></li>
+                        <li><a href="tms-loading.html">装卸管理</a></li>
+                        <li><a href="tms-sorting.html">分拣管理</a></li>
+                        <li><a href="tms-warehouse.html">仓储管理</a></li>
+                        <li><a href="tms-vehicle.html">车辆管理</a></li>
+                        <li><a href="tms-capacity.html">运力管理</a></li>
+                        <li><a href="tms-geofence.html">电子围栏</a></li>
+                        <li><a href="tms-service.html">客服管理</a></li>
+                        <li><a href="tms-claim.html">理赔管理</a></li>
+                        <li><a href="tms-finance.html">财务管理</a></li>
+                        <li><a href="tms-administration.html">行政管理</a></li>
+                        <li><a href="tms-material.html">物料管理</a></li>
+                        <li><a href="tms-evaluation.html">考核评级</a></li>
+                        <li><a href="tms-performance.html">绩效管理</a></li>
+                        <li><a href="tms-hr.html">人事管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <div class="view">
+                    <h2>运营管理</h2>
+                    <p>管理系统的运营配置和业务规则。</p>
+                    
+                    <!-- 标签页导航 -->
+                    <div class="tabs" style="display: flex; margin-bottom: 2rem; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);">
+                        <div class="tab active" data-tab="overview">运营概览</div>
+                        <div class="tab" data-tab="delivery-address">派送地址管理</div>
+                        <div class="tab" data-tab="statistics">统计分析</div>
+                        <div class="tab" data-tab="evaluation">考核管理</div>
+                        <div class="tab" data-tab="records">记录查询</div>
+                    </div>
+
+                    <!-- 运营概览标签页 -->
+                    <div id="overview-tab" class="tab-content">
+                        <!-- 运营统计 -->
+                        <div class="operation-stats">
+                            <div class="stat-card">
+                                <div class="number">15</div>
+                                <div class="label">运营策略</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="number">8</div>
+                                <div class="label">路由规则</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="number">5</div>
+                                <div class="label">价格方案</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="number">3</div>
+                                <div class="label">促销活动</div>
+                            </div>
+                        </div>
+
+                        <!-- 运营策略列表 -->
+                        <div style="margin-bottom: 2rem;">
+                            <h3>运营策略</h3>
+                            <table class="operation-table">
+                                <thead>
+                                    <tr>
+                                        <th>策略ID</th>
+                                        <th>策略名称</th>
+                                        <th>适用范围</th>
+                                        <th>生效时间</th>
+                                        <th>失效时间</th>
+                                        <th>当前状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>OP-20260120001</td>
+                                        <td>春节运输保障</td>
+                                        <td>全国</td>
+                                        <td>2026-01-20</td>
+                                        <td>2026-02-20</td>
+                                        <td><span class="operation-status active">生效中</span></td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                            <button class="action-btn suspend btn btn-danger">暂停</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>OP-20260120002</td>
+                                        <td>特惠运输</td>
+                                        <td>华东地区</td>
+                                        <td>2026-01-15</td>
+                                        <td>2026-01-31</td>
+                                        <td><span class="operation-status active">生效中</span></td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                            <button class="action-btn suspend btn btn-danger">暂停</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>OP-20260120003</td>
+                                        <td>大件运输</td>
+                                        <td>全国</td>
+                                        <td>2026-01-01</td>
+                                        <td>2026-12-31</td>
+                                        <td><span class="operation-status pending">待生效</span></td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                            <button class="action-btn activate btn btn-success">激活</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 路由规则列表 -->
+                        <div>
+                            <h3>路由规则</h3>
+                            <table class="operation-table">
+                                <thead>
+                                    <tr>
+                                        <th>规则ID</th>
+                                        <th>起点</th>
+                                        <th>终点</th>
+                                        <th>优先级</th>
+                                        <th>运输方式</th>
+                                        <th>预计时效</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>RR-20260120001</td>
+                                        <td>北京</td>
+                                        <td>上海</td>
+                                        <td>高</td>
+                                        <td>航空运输</td>
+                                        <td>1天</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>RR-20260120002</td>
+                                        <td>上海</td>
+                                        <td>广州</td>
+                                        <td>中</td>
+                                        <td>公路运输</td>
+                                        <td>2天</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>RR-20260120003</td>
+                                        <td>广州</td>
+                                        <td>深圳</td>
+                                        <td>高</td>
+                                        <td>公路运输</td>
+                                        <td>半天</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 派送地址管理标签页 -->
+                    <div id="delivery-address-tab" class="tab-content hidden">
+                        <h3>派送地址管理</h3>
+                        <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                            <button class="action-btn view btn btn-primary" onclick="openAddressMaintenance()">地址维护</button>
+                            <button class="action-btn edit btn btn-warning" onclick="openAddressAudit()">地址审核</button>
+                        </div>
+                        
+                        <!-- 地址列表 -->
+                        <table class="operation-table">
+                            <thead>
+                                <tr>
+                                    <th>地址ID</th>
+                                    <th>详细地址</th>
+                                    <th>所属区域</th>
+                                    <th>负责人</th>
+                                    <th>状态</th>
+                                    <th>审核状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>ADDR-001</td>
+                                    <td>北京市朝阳区建国路88号</td>
+                                    <td>朝阳区</td>
+                                    <td>张师傅</td>
+                                    <td>启用</td>
+                                    <td>已审核</td>
+                                    <td class="operation-actions">
+                                        <button class="action-btn view btn btn-primary">查看</button>
+                                        <button class="action-btn edit btn btn-warning">编辑</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>ADDR-002</td>
+                                    <td>上海市浦东新区陆家嘴环路1000号</td>
+                                    <td>浦东新区</td>
+                                    <td>李师傅</td>
+                                    <td>启用</td>
+                                    <td>已审核</td>
+                                    <td class="operation-actions">
+                                        <button class="action-btn view btn btn-primary">查看</button>
+                                        <button class="action-btn edit btn btn-warning">编辑</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>ADDR-003</td>
+                                    <td>广州市天河区天河路385号</td>
+                                    <td>天河区</td>
+                                    <td>王师傅</td>
+                                    <td>待启用</td>
+                                    <td>待审核</td>
+                                    <td class="operation-actions">
+                                        <button class="action-btn view btn btn-primary">查看</button>
+                                        <button class="action-btn edit btn btn-warning">审核</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 统计分析标签页 -->
+                    <div id="statistics-tab" class="tab-content hidden">
+                        <h3>运营统计分析</h3>
+                        
+                        <!-- 统计卡片 -->
+                        <div class="operation-stats">
+                            <div class="stat-card">
+                                <div class="number">98.5%</div>
+                                <div class="label">签收率</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="number">99.2%</div>
+                                <div class="label">入库扫描率</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="number">98.8%</div>
+                                <div class="label">出库扫描率</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="number">97.5%</div>
+                                <div class="label">派送扫描率</div>
+                            </div>
+                        </div>
+
+                        <!-- 签收率统计 -->
+                        <div id="sign-rate-section" style="margin-bottom: 2rem;">
+                            <h4>签收率统计</h4>
+                            <table class="operation-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>应签收数</th>
+                                        <th>实际签收数</th>
+                                        <th>签收率</th>
+                                        <th>未签收原因</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>2026-01-28</td>
+                                        <td>520</td>
+                                        <td>512</td>
+                                        <td>98.46%</td>
+                                        <td>联系不上收件人(5), 拒收(3)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-27</td>
+                                        <td>485</td>
+                                        <td>479</td>
+                                        <td>98.76%</td>
+                                        <td>联系不上收件人(3), 拒收(2), 地址错误(1)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-26</td>
+                                        <td>510</td>
+                                        <td>505</td>
+                                        <td>99.02%</td>
+                                        <td>联系不上收件人(2), 拒收(2), 地址错误(1)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 入库扫描率统计 -->
+                        <div id="inbound-scan-section" style="margin-bottom: 2rem;">
+                            <h4>入库扫描率统计</h4>
+                            <table class="operation-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>应入库数</th>
+                                        <th>实际扫描数</th>
+                                        <th>入库扫描率</th>
+                                        <th>未扫描原因</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>2026-01-28</td>
+                                        <td>650</td>
+                                        <td>645</td>
+                                        <td>99.23%</td>
+                                        <td>系统故障(3), 人工遗漏(2)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-27</td>
+                                        <td>620</td>
+                                        <td>616</td>
+                                        <td>99.35%</td>
+                                        <td>系统故障(2), 人工遗漏(2)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-26</td>
+                                        <td>635</td>
+                                        <td>631</td>
+                                        <td>99.37%</td>
+                                        <td>系统故障(1), 人工遗漏(3)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 出库扫描率统计 -->
+                        <div id="outbound-scan-section" style="margin-bottom: 2rem;">
+                            <h4>出库扫描率统计</h4>
+                            <table class="operation-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>应出库数</th>
+                                        <th>实际扫描数</th>
+                                        <th>出库扫描率</th>
+                                        <th>未扫描原因</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>2026-01-28</td>
+                                        <td>580</td>
+                                        <td>573</td>
+                                        <td>98.79%</td>
+                                        <td>系统故障(4), 人工遗漏(3)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-27</td>
+                                        <td>565</td>
+                                        <td>559</td>
+                                        <td>98.94%</td>
+                                        <td>系统故障(3), 人工遗漏(3)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-26</td>
+                                        <td>575</td>
+                                        <td>569</td>
+                                        <td>98.96%</td>
+                                        <td>系统故障(2), 人工遗漏(4)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 派送扫描率统计 -->
+                        <div id="delivery-scan-section" style="margin-bottom: 2rem;">
+                            <h4>派送扫描率统计</h4>
+                            <table class="operation-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>应派送数</th>
+                                        <th>实际扫描数</th>
+                                        <th>派送扫描率</th>
+                                        <th>未扫描原因</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>2026-01-28</td>
+                                        <td>495</td>
+                                        <td>483</td>
+                                        <td>97.58%</td>
+                                        <td>设备故障(6), 网络问题(4), 人工遗漏(2)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-27</td>
+                                        <td>470</td>
+                                        <td>461</td>
+                                        <td>98.09%</td>
+                                        <td>设备故障(4), 网络问题(3), 人工遗漏(2)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-26</td>
+                                        <td>485</td>
+                                        <td>473</td>
+                                        <td>97.53%</td>
+                                        <td>设备故障(5), 网络问题(4), 人工遗漏(3)</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 漏拣统计 -->
+                        <div id="miss-sort-section" style="margin-bottom: 2rem;">
+                            <h4>漏拣统计</h4>
+                            <table class="operation-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>漏拣件数</th>
+                                        <th>总拣货数</th>
+                                        <th>漏拣率</th>
+                                        <th>责任人员</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>2026-01-28</td>
+                                        <td>5</td>
+                                        <td>1200</td>
+                                        <td>0.42%</td>
+                                        <td>拣货组A</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-27</td>
+                                        <td>3</td>
+                                        <td>1150</td>
+                                        <td>0.26%</td>
+                                        <td>拣货组B</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-26</td>
+                                        <td>4</td>
+                                        <td>1180</td>
+                                        <td>0.34%</td>
+                                        <td>拣货组C</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 叉车货统计 -->
+                        <div id="forklift-section">
+                            <h4>叉车货统计</h4>
+                            <table class="operation-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>叉车编号</th>
+                                        <th>操作次数</th>
+                                        <th>总重量(吨)</th>
+                                        <th>操作员</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>2026-01-28</td>
+                                        <td>FC-001</td>
+                                        <td>120</td>
+                                        <td>58.5</td>
+                                        <td>赵师傅</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-28</td>
+                                        <td>FC-002</td>
+                                        <td>95</td>
+                                        <td>42.3</td>
+                                        <td>钱师傅</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-27</td>
+                                        <td>FC-001</td>
+                                        <td>110</td>
+                                        <td>52.8</td>
+                                        <td>赵师傅</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-27</td>
+                                        <td>FC-002</td>
+                                        <td>90</td>
+                                        <td>39.6</td>
+                                        <td>钱师傅</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 考核管理标签页 -->
+                    <div id="evaluation-tab" class="tab-content hidden">
+                        <h3>考核管理</h3>
+                        
+                        <!-- 签收考核 -->
+                        <div style="margin-bottom: 2rem;">
+                            <h4>签收考核</h4>
+                            <table class="operation-table">
+                                <thead>
+                                    <tr>
+                                        <th>考核周期</th>
+                                        <th>派送员</th>
+                                        <th>应签收数</th>
+                                        <th>实际签收数</th>
+                                        <th>签收率</th>
+                                        <th>考核结果</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>2026-01-21至2026-01-27</td>
+                                        <td>张师傅</td>
+                                        <td>150</td>
+                                        <td>148</td>
+                                        <td>98.67%</td>
+                                        <td>优秀</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-21至2026-01-27</td>
+                                        <td>李师傅</td>
+                                        <td>135</td>
+                                        <td>132</td>
+                                        <td>97.78%</td>
+                                        <td>良好</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-21至2026-01-27</td>
+                                        <td>王师傅</td>
+                                        <td>142</td>
+                                        <td>138</td>
+                                        <td>97.18%</td>
+                                        <td>良好</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-21至2026-01-27</td>
+                                        <td>赵师傅</td>
+                                        <td>128</td>
+                                        <td>124</td>
+                                        <td>96.88%</td>
+                                        <td>合格</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>2026-01-21至2026-01-27</td>
+                                        <td>钱师傅</td>
+                                        <td>130</td>
+                                        <td>125</td>
+                                        <td>96.15%</td>
+                                        <td>合格</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 考核指标 -->
+                        <div>
+                            <h4>考核指标设置</h4>
+                            <table class="operation-table">
+                                <thead>
+                                    <tr>
+                                        <th>指标名称</th>
+                                        <th>目标值</th>
+                                        <th>权重</th>
+                                        <th>考核周期</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>签收率</td>
+                                        <td>≥98%</td>
+                                        <td>30%</td>
+                                        <td>周</td>
+                                        <td>启用</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>扫描率</td>
+                                        <td>≥99%</td>
+                                        <td>25%</td>
+                                        <td>周</td>
+                                        <td>启用</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>准时率</td>
+                                        <td>≥95%</td>
+                                        <td>20%</td>
+                                        <td>周</td>
+                                        <td>启用</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>投诉率</td>
+                                        <td>≤1%</td>
+                                        <td>25%</td>
+                                        <td>周</td>
+                                        <td>启用</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>漏拣率</td>
+                                        <td>≤0.5%</td>
+                                        <td>15%</td>
+                                        <td>周</td>
+                                        <td>启用</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>破损率</td>
+                                        <td>≤0.3%</td>
+                                        <td>15%</td>
+                                        <td>周</td>
+                                        <td>启用</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn edit btn btn-warning">编辑</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 记录查询标签页 -->
+                    <div id="records-tab" class="tab-content hidden">
+                        <h3>记录查询</h3>
+                        
+                        <!-- 改单记录 -->
+                        <div style="margin-bottom: 2rem;">
+                            <h4>改单记录</h4>
+                            <table class="operation-table">
+                                <thead>
+                                    <tr>
+                                        <th>改单ID</th>
+                                        <th>原订单号</th>
+                                        <th>改单原因</th>
+                                        <th>改单内容</th>
+                                        <th>操作人</th>
+                                        <th>操作时间</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>MOD-001</td>
+                                        <td>ORD-20260128001</td>
+                                        <td>地址变更</td>
+                                        <td>收货地址变更</td>
+                                        <td>客服小王</td>
+                                        <td>2026-01-28 10:30</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>MOD-002</td>
+                                        <td>ORD-20260128002</td>
+                                        <td>联系人变更</td>
+                                        <td>收货人电话变更</td>
+                                        <td>客服小李</td>
+                                        <td>2026-01-28 14:20</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>MOD-003</td>
+                                        <td>ORD-20260128003</td>
+                                        <td>货物变更</td>
+                                        <td>货物数量变更</td>
+                                        <td>客服小张</td>
+                                        <td>2026-01-28 16:45</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>MOD-004</td>
+                                        <td>ORD-20260127001</td>
+                                        <td>地址变更</td>
+                                        <td>收货地址变更</td>
+                                        <td>客服小王</td>
+                                        <td>2026-01-27 09:15</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>MOD-005</td>
+                                        <td>ORD-20260127002</td>
+                                        <td>货物变更</td>
+                                        <td>货物规格变更</td>
+                                        <td>客服小李</td>
+                                        <td>2026-01-27 11:30</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>MOD-006</td>
+                                        <td>ORD-20260127003</td>
+                                        <td>联系人变更</td>
+                                        <td>收货人姓名变更</td>
+                                        <td>客服小张</td>
+                                        <td>2026-01-27 15:20</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>MOD-007</td>
+                                        <td>ORD-20260126001</td>
+                                        <td>地址变更</td>
+                                        <td>收货地址变更</td>
+                                        <td>客服小王</td>
+                                        <td>2026-01-26 10:45</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>MOD-008</td>
+                                        <td>ORD-20260126002</td>
+                                        <td>货物变更</td>
+                                        <td>货物数量变更</td>
+                                        <td>客服小李</td>
+                                        <td>2026-01-26 14:10</td>
+                                        <td class="operation-actions">
+                                            <button class="action-btn view btn btn-primary">查看</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 运营管理页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('admin');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示用户信息
+            displayCurrentUser();
+
+            // 绑定标签页切换事件
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const tabId = tab.getAttribute('data-tab');
+                    switchTab(tabId);
+                });
+            });
+
+            // 子菜单展开/折叠功能
+            const operationMenu = document.querySelector('.has-submenu');
+            if (operationMenu) {
+                const menuLink = operationMenu.querySelector('a');
+                menuLink.addEventListener('click', (e) => {
+                    e.preventDefault(); // 阻止默认跳转
+                    operationMenu.classList.toggle('active');
+                });
+
+                // 默认展开运营管理子菜单
+                operationMenu.classList.add('active');
+            }
+
+            // 运营管理相关函数
+            // 查看策略详情
+            document.querySelectorAll('.action-btn.view').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const row = e.target.closest('tr');
+                    const id = row.cells[0].textContent;
+                    const name = row.cells[1].textContent;
+                    alert(`查看 ${name} (${id}) 的详细信息`);
+                });
+            });
+
+            // 编辑策略
+            document.querySelectorAll('.action-btn.edit').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const row = e.target.closest('tr');
+                    const id = row.cells[0].textContent;
+                    const name = row.cells[1].textContent;
+                    alert(`编辑 ${name} (${id})`);
+                    // 这里可以添加实际的编辑逻辑
+                });
+            });
+
+            // 激活策略
+            document.querySelectorAll('.action-btn.activate').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const row = e.target.closest('tr');
+                    const id = row.cells[0].textContent;
+                    const name = row.cells[1].textContent;
+                    alert(`激活策略 ${name} (${id})`);
+                    // 这里可以添加实际的激活逻辑
+                });
+            });
+
+            // 暂停策略
+            document.querySelectorAll('.action-btn.suspend').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const row = e.target.closest('tr');
+                    const id = row.cells[0].textContent;
+                    const name = row.cells[1].textContent;
+                    alert(`暂停策略 ${name} (${id})`);
+                    // 这里可以添加实际的暂停逻辑
+                });
+            });
+        });
+
+        // 切换标签页函数
+        function switchTab(tabId, sectionId = null) {
+            // 隐藏所有标签页内容
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+
+            // 移除所有标签页的活跃状态
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // 显示选中的标签页内容
+            const targetTab = document.getElementById(`${tabId}-tab`);
+            if (targetTab) {
+                targetTab.classList.remove('hidden');
+            }
+
+            // 标记选中的标签页为活跃状态
+            const targetTabBtn = document.querySelector(`.tab[data-tab="${tabId}"]`);
+            if (targetTabBtn) {
+                targetTabBtn.classList.add('active');
+            }
+
+            // 如果是统计分析标签页，处理section显示
+            if (tabId === 'statistics' && sectionId) {
+                // 隐藏所有统计section
+                document.querySelectorAll('[id$="-section"]').forEach(section => {
+                    section.style.display = 'none';
+                });
+                // 显示指定的section
+                const targetSection = document.getElementById(sectionId);
+                if (targetSection) {
+                    targetSection.style.display = 'block';
+                }
+            } else if (tabId === 'statistics') {
+                // 如果没有指定section，显示所有统计section
+                document.querySelectorAll('[id$="-section"]').forEach(section => {
+                    section.style.display = 'block';
+                });
+            }
+        }
+
+        // 打开地址维护
+        function openAddressMaintenance() {
+            alert('打开地址维护界面');
+        }
+
+        // 打开地址审核
+        function openAddressAudit() {
+            alert('打开地址审核界面');
+        }
+
+        // 滚动到指定区块
+        function scrollToSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+    </script>
+</body>
+</html>

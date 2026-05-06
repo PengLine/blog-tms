@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>绩效统计 - TMS系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #f9ca24;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #f9ca24;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 筛选区域 */
+        .filter-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .filter-group label {
+            font-weight: 500;
+            color: #555;
+        }
+
+        .filter-group select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        /* 统计卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background-color: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .stat-change {
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .change-positive {
+            color: #388e3c;
+        }
+
+        .change-negative {
+            color: #d32f2f;
+        }
+
+        /* 图表区域 */
+        .chart-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-container h4 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+        }
+
+        /* 简单图表实现 */
+        .bar-chart {
+            height: 300px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-around;
+            padding: 20px;
+            background-color: #fafafa;
+            border-radius: 4px;
+        }
+
+        .bar {
+            width: 30px;
+            background-color: #f9ca24;
+            border-radius: 4px 4px 0 0;
+            position: relative;
+            transition: height 0.5s;
+        }
+
+        .bar:hover {
+            background-color: #f0c01a;
+        }
+
+        .bar-label {
+            position: absolute;
+            bottom: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .bar-value {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        /* 环形图 */
+        .donut-chart {
+            width: 300px;
+            height: 300px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .donut-chart svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .donut-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .donut-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #f9ca24;
+        }
+
+        .donut-label {
+            font-size: 1rem;
+            color: #666;
+        }
+
+        /* 详细记录表格 */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th, .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-table th {
+            background-color: #f5f5f5;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .data-table tr:hover {
+            background-color: #f9f9f9;
+        }
+
+        /* 绩效排名 */
+        .rank-section {
+            margin-top: 30px;
+        }
+
+        .rank-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .rank-item {
+            padding: 15px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            position: relative;
+        }
+
+        .rank-number {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            width: 30px;
+            height: 30px;
+            background-color: #f9ca24;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #333;
+            font-size: 0.9rem;
+        }
+
+        .rank-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .rank-score {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 1024px) {
+            .chart-section {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .filter-section {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .donut-chart {
+                width: 250px;
+                height: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运输员</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>运输员功能</h3>
+                    <ul>
+                        <li><a href="transporter-index.html">首页</a></li>
+                        <li><a href="transporter-loading.html">扫描装车</a></li>
+                        <li><a href="transporter-departure.html">发车管理</a></li>
+                        <li><a href="transporter-schedule.html">我的排班</a></li>
+                        <li><a href="transporter-route.html">发车路线</a></li>
+                        <li><a href="transporter-performance.html" class="active">我的绩效</a></li>
+                        <li><a href="transporter-clock.html">打卡记录</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>绩效统计</h2>
+                <p>今天是：<span id="current-date"></span></p>
+
+                <!-- 筛选区域 -->
+                <div class="filter-section">
+                    <div class="filter-group">
+                        <label for="period">统计周期:</label>
+                        <select id="period">
+                            <option value="month">本月</option>
+                            <option value="quarter">本季度</option>
+                            <option value="year">本年</option>
+                            <option value="custom">自定义</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="year">年份:</label>
+                        <select id="year">
+                            <option value="2025">2025</option>
+                            <option value="2024">2024</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="month">月份:</label>
+                        <select id="month">
+                            <option value="07">7月</option>
+                            <option value="06">6月</option>
+                            <option value="05">5月</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="applyFilters()">应用筛选</button>
+                </div>
+
+                <!-- 绩效统计卡片 -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #f9ca24;">128</div>
+                        <div class="stat-label">总运输量</div>
+                        <div class="stat-change change-positive">+15% 环比上月</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #f9ca24;">15,680</div>
+                        <div class="stat-label">总行驶里程(km)</div>
+                        <div class="stat-change change-positive">+8% 环比上月</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #f9ca24;">98.5%</div>
+                        <div class="stat-label">准时率</div>
+                        <div class="stat-change change-negative">-0.5% 环比上月</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" style="color: #f9ca24;">4.8</div>
+                        <div class="stat-label">客户满意度</div>
+                        <div class="stat-change change-positive">+0.2 环比上月</div>
+                    </div>
+                </div>
+
+                <!-- 图表区域 -->
+                <div class="chart-section">
+                    <div class="chart-container">
+                        <h4>月度运输量趋势</h4>
+                        <div class="bar-chart" id="monthlyVolumeChart">
+                            <!-- 图表将通过JavaScript生成 -->
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <h4>准时率统计</h4>
+                        <div class="donut-chart">
+                            <svg viewBox="0 0 100 100">
+                                <circle cx="50" cy="50" r="40" fill="none" stroke="#e0e0e0" stroke-width="15"/>
+                                <circle cx="50" cy="50" r="40" fill="none" stroke="#f9ca24" stroke-width="15" stroke-dasharray="251.2" stroke-dashoffset="3.77" transform="rotate(-90 50 50)"/>
+                            </svg>
+                            <div class="donut-text">
+                                <div class="donut-number">98.5%</div>
+                                <div class="donut-label">准时率</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 详细绩效记录 -->
+                <div class="card">
+                    <h3>详细绩效记录</h3>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>日期</th>
+                                    <th>运输任务</th>
+                                    <th>运输量(箱)</th>
+                                    <th>里程(km)</th>
+                                    <th>计划时间</th>
+                                    <th>实际时间</th>
+                                    <th>状态</th>
+                                    <th>满意度</th>
+                                </tr>
+                            </thead>
+                            <tbody id="performanceTable">
+                                <!-- 绩效记录将通过JavaScript生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 绩效排名 -->
+                <div class="card rank-section">
+                    <h3>本月绩效排名</h3>
+                    <div class="rank-list" id="rankList">
+                        <!-- 排名将通过JavaScript生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 绩效统计页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('transporter');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 初始化数据
+            initializePerformanceData();
+            
+            // 加载绩效数据
+            loadPerformanceData();
+            
+            // 生成图表
+            generateCharts();
+            
+            // 加载排名
+            loadRanking();
+        });
+
+        // 初始化绩效数据
+        function initializePerformanceData() {
+            if (!localStorage.getItem('transporterPerformance')) {
+                const performanceData = {
+                    '2025-07': {
+                        totalVolume: 128,
+                        totalDistance: 15680,
+                        onTimeRate: 98.5,
+                        satisfaction: 4.8,
+                        dailyData: [
+                            {
+                                date: '2025-07-01',
+                                task: '北京-上海运输任务',
+                                volume: 12,
+                                distance: 1200,
+                                plannedTime: '10小时',
+                                actualTime: '9.5小时',
+                                status: 'on_time',
+                                satisfaction: 5.0
+                            },
+                            {
+                                date: '2025-07-02',
+                                task: '上海-杭州运输任务',
+                                volume: 8,
+                                distance: 180,
+                                plannedTime: '3小时',
+                                actualTime: '3.2小时',
+                                status: 'delay',
+                                satisfaction: 4.5
+                            },
+                            {
+                                date: '2025-07-03',
+                                task: '杭州-南京运输任务',
+                                volume: 15,
+                                distance: 280,
+                                plannedTime: '4小时',
+                                actualTime: '3.8小时',
+                                status: 'on_time',
+                                satisfaction: 4.8
+                            },
+                            {
+                                date: '2025-07-04',
+                                task: '南京-合肥运输任务',
+                                volume: 10,
+                                distance: 150,
+                                plannedTime: '2.5小时',
+                                actualTime: '2.5小时',
+                                status: 'on_time',
+                                satisfaction: 5.0
+                            },
+                            {
+                                date: '2025-07-05',
+                                task: '合肥-武汉运输任务',
+                                volume: 20,
+                                distance: 380,
+                                plannedTime: '5小时',
+                                actualTime: '5.1小时',
+                                status: 'delay',
+                                satisfaction: 4.7
+                            }
+                        ]
+                    }
+                };
+                localStorage.setItem('transporterPerformance', JSON.stringify(performanceData));
+            }
+            
+            // 初始化排名数据
+            if (!localStorage.getItem('transporterRanking')) {
+                const ranking = [
+                    { name: '张三', score: 98.5, rank: 1 },
+                    { name: '李四', score: 97.8, rank: 2 },
+                    { name: '王五', score: 96.5, rank: 3 },
+                    { name: '赵六', score: 95.2, rank: 4 },
+                    { name: '钱七', score: 94.8, rank: 5 }
+                ];
+                localStorage.setItem('transporterRanking', JSON.stringify(ranking));
+            }
+        }
+
+        // 加载绩效数据
+        function loadPerformanceData() {
+            const performanceData = JSON.parse(localStorage.getItem('transporterPerformance')) || {};
+            const currentPeriod = '2025-07';
+            const data = performanceData[currentPeriod] || {};
+            
+            const tableBody = document.getElementById('performanceTable');
+            
+            if (data.dailyData && data.dailyData.length > 0) {
+                tableBody.innerHTML = data.dailyData.map(item => `
+                    <tr>
+                        <td>${item.date}</td>
+                        <td>${item.task}</td>
+                        <td>${item.volume}</td>
+                        <td>${item.distance}</td>
+                        <td>${item.plannedTime}</td>
+                        <td>${item.actualTime}</td>
+                        <td>
+                            <span style="padding: 5px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 500;
+                                background-color: ${item.status === 'on_time' ? '#e8f5e9' : '#ffebee'};
+                                color: ${item.status === 'on_time' ? '#388e3c' : '#d32f2f'};">
+                                ${item.status === 'on_time' ? '准时' : '延迟'}
+                            </span>
+                        </td>
+                        <td>${item.satisfaction}</td>
+                    </tr>
+                `).join('');
+            } else {
+                tableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #666; padding: 20px;">暂无绩效记录</td></tr>';
+            }
+        }
+
+        // 生成图表
+        function generateCharts() {
+            // 生成月度运输量柱状图
+            const monthlyData = [12, 8, 15, 10, 20, 18, 16];
+            const months = ['7/1', '7/2', '7/3', '7/4', '7/5', '7/6', '7/7'];
+            
+            const barChart = document.getElementById('monthlyVolumeChart');
+            const maxValue = Math.max(...monthlyData) + 5;
+            
+            barChart.innerHTML = monthlyData.map((value, index) => {
+                const height = (value / maxValue) * 250;
+                return `
+                    <div class="bar" style="height: ${height}px;">
+                        <div class="bar-value">${value}</div>
+                        <div class="bar-label">${months[index]}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 加载排名
+        function loadRanking() {
+            const ranking = JSON.parse(localStorage.getItem('transporterRanking')) || [];
+            const rankList = document.getElementById('rankList');
+            
+            rankList.innerHTML = ranking.map(item => `
+                <div class="rank-item">
+                    <div class="rank-number">${item.rank}</div>
+                    <div class="rank-name">${item.name}</div>
+                    <div class="rank-score">${item.score}</div>
+                </div>
+            `).join('');
+        }
+
+        // 应用筛选
+        function applyFilters() {
+            const period = document.getElementById('period').value;
+            const year = document.getElementById('year').value;
+            const month = document.getElementById('month').value;
+            
+            // 这里可以根据筛选条件重新加载数据
+            console.log('应用筛选:', period, year, month);
+            alert('筛选功能开发中...');
+        }
+    </script>
+</body>
+</html>

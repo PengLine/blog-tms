@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>出库管理 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #45b7d1;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #45b7d1;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        /* 标签页样式 */
+        .tab-container {
+            margin-bottom: 2rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+        }
+
+        .tab-btn.active {
+            border-color: #45b7d1;
+            background-color: #45b7d1;
+            color: white;
+        }
+
+        .tab-content {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 表单样式 */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .btn-primary {
+            background: #45b7d1;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+        }
+
+        .btn-primary:hover {
+            background: #3a9fc0;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            margin-left: 0.5rem;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        /* 表格样式 */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background-color: #f9f9f9;
+            font-weight: 600;
+            color: #333;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        /* 统计卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #45b7d1;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            color: #666;
+        }
+
+        /* 装车区域 */
+        .loading-area {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .vehicle-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border: 2px solid #e0e0e0;
+            transition: all 0.3s ease;
+        }
+
+        .vehicle-card:hover {
+            border-color: #45b7d1;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        }
+
+        .vehicle-info {
+            margin-bottom: 1rem;
+        }
+
+        .vehicle-info h4 {
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        .vehicle-info p {
+            margin-bottom: 0.25rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .package-count {
+            font-size: 1.5rem;
+            color: #45b7d1;
+            font-weight: bold;
+            margin: 1rem 0;
+        }
+
+        /* 交接确认区域 */
+        .handover-area {
+            margin: 2rem 0;
+            padding: 2rem;
+            background: #f9f9f9;
+            border-radius: 10px;
+        }
+
+        .handover-form {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .tabs {
+                flex-direction: column;
+            }
+
+            .tab-btn {
+                width: 100%;
+            }
+
+            .loading-area {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 网点</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>网点功能</h3>
+                    <ul>
+                        <li><a href="branch-index.html">首页</a></li>
+                        <li><a href="branch-collection.html">揽收管理</a></li>
+                        <li><a href="branch-sorting.html">分拣处理</a></li>
+                        <li><a href="branch-outbound.html" class="active">出库管理</a></li>
+                        <li><a href="branch-inventory.html">库存与资产</a></li>
+                        <li><a href="branch-service.html">服务与售后</a></li>
+                        <li><a href="branch-operation.html">运营管理</a></li>
+                        <li><a href="branch-system.html">系统管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>出库管理</h2>
+                <p>今天是：<span id="current-date"></span></p>
+                
+                <!-- 统计概览 -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalVehicles">0</div>
+                        <div class="stat-label">今日发车数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="loadedPackages">0</div>
+                        <div class="stat-label">已装车包裹</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="handoveredPackages">0</div>
+                        <div class="stat-label">已交接包裹</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="pendingPackages">0</div>
+                        <div class="stat-label">待处理包裹</div>
+                    </div>
+                </div>
+
+                <!-- 标签页 -->
+                <div class="tab-container">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="loading">装车发运</button>
+                        <button class="tab-btn" data-tab="handover">交接确认</button>
+                        <button class="tab-btn" data-tab="vehicle-management">车辆管理</button>
+                        <button class="tab-btn" data-tab="outbound-records">出库记录</button>
+                    </div>
+
+                    <!-- 装车发运 -->
+                    <div class="tab-content" id="loading">
+                        <h3>装车发运</h3>
+                        <div class="form-group">
+                            <label for="loading-vehicle">选择车辆</label>
+                            <select id="loading-vehicle">
+                                <option value="vehicle1">京A12345 - 厢式货车</option>
+                                <option value="vehicle2">京B67890 - 厢式货车</option>
+                                <option value="vehicle3">京C24680 - 面包车</option>
+                                <option value="vehicle4">京D13579 - 厢式货车</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="loading-driver">司机</label>
+                            <select id="loading-driver">
+                                <option value="driver1">张三</option>
+                                <option value="driver2">李四</option>
+                                <option value="driver3">王五</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="loading-destination">目的地</label>
+                            <select id="loading-destination">
+                                <option value="dest1">北京分拨中心</option>
+                                <option value="dest2">上海分拨中心</option>
+                                <option value="dest3">广州分拨中心</option>
+                                <option value="dest4">深圳分拨中心</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="loading-packages">包裹数量</label>
+                            <input type="number" id="loading-packages" min="1" value="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="loading-notes">备注</label>
+                            <textarea id="loading-notes" rows="3"></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="confirmLoading()">确认装车</button>
+                        
+                        <!-- 车辆列表 -->
+                        <div class="loading-area" style="margin-top: 2rem;">
+                            <div class="vehicle-card">
+                                <div class="vehicle-info">
+                                    <h4>京A12345</h4>
+                                    <p>类型：厢式货车</p>
+                                    <p>司机：张三</p>
+                                    <p>目的地：北京分拨中心</p>
+                                    <p>计划发车：14:00</p>
+                                </div>
+                                <div class="package-count">25 件</div>
+                                <button class="btn btn-primary" onclick="addPackageToVehicle('vehicle1')">添加包裹</button>
+                            </div>
+                            <div class="vehicle-card">
+                                <div class="vehicle-info">
+                                    <h4>京B67890</h4>
+                                    <p>类型：厢式货车</p>
+                                    <p>司机：李四</p>
+                                    <p>目的地：上海分拨中心</p>
+                                    <p>计划发车：16:00</p>
+                                </div>
+                                <div class="package-count">18 件</div>
+                                <button class="btn btn-primary" onclick="addPackageToVehicle('vehicle2')">添加包裹</button>
+                            </div>
+                            <div class="vehicle-card">
+                                <div class="vehicle-info">
+                                    <h4>京C24680</h4>
+                                    <p>类型：面包车</p>
+                                    <p>司机：王五</p>
+                                    <p>目的地：本地派送</p>
+                                    <p>计划发车：10:30</p>
+                                </div>
+                                <div class="package-count">12 件</div>
+                                <button class="btn btn-primary" onclick="addPackageToVehicle('vehicle3')">添加包裹</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 交接确认 -->
+                    <div class="tab-content hidden" id="handover">
+                        <h3>交接确认</h3>
+                        <div class="handover-area">
+                            <h4>包裹交接</h4>
+                            <div class="handover-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="handover-waybill">运单号</label>
+                                        <input type="text" id="handover-waybill" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="handover-vehicle">车辆</label>
+                                        <select id="handover-vehicle">
+                                            <option value="vehicle1">京A12345</option>
+                                            <option value="vehicle2">京B67890</option>
+                                            <option value="vehicle3">京C24680</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="handover-receiver">接收人</label>
+                                        <input type="text" id="handover-receiver" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="handover-time">交接时间</label>
+                                        <input type="datetime-local" id="handover-time" value="2023-12-01T14:00" required>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="handover-notes">备注</label>
+                                    <textarea id="handover-notes" rows="3"></textarea>
+                                </div>
+                                <button class="btn btn-primary" onclick="confirmHandover()">确认交接</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="handover-table">
+                                <thead>
+                                    <tr>
+                                        <th>运单号</th>
+                                        <th>车辆</th>
+                                        <th>接收人</th>
+                                        <th>交接时间</th>
+                                        <th>操作人</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 交接记录将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 车辆管理 -->
+                    <div class="tab-content hidden" id="vehicle-management">
+                        <h3>车辆管理</h3>
+                        <div class="table-container">
+                            <table id="vehicle-table">
+                                <thead>
+                                    <tr>
+                                        <th>车牌号</th>
+                                        <th>车型</th>
+                                        <th>司机</th>
+                                        <th>状态</th>
+                                        <th>载重</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>京A12345</td>
+                                        <td>厢式货车</td>
+                                        <td>张三</td>
+                                        <td>待装货</td>
+                                        <td>5吨</td>
+                                        <td>
+                                            <button class="btn btn-primary">编辑</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>京B67890</td>
+                                        <td>厢式货车</td>
+                                        <td>李四</td>
+                                        <td>运输中</td>
+                                        <td>5吨</td>
+                                        <td>
+                                            <button class="btn btn-primary">编辑</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>京C24680</td>
+                                        <td>面包车</td>
+                                        <td>王五</td>
+                                        <td>已返回</td>
+                                        <td>1吨</td>
+                                        <td>
+                                            <button class="btn btn-primary">编辑</button>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>京D13579</td>
+                                        <td>厢式货车</td>
+                                        <td>赵六</td>
+                                        <td>维修中</td>
+                                        <td>5吨</td>
+                                        <td>
+                                            <button class="btn btn-primary">编辑</button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 出库记录 -->
+                    <div class="tab-content hidden" id="outbound-records">
+                        <h3>出库记录</h3>
+                        <div class="table-container">
+                            <table id="outbound-table">
+                                <thead>
+                                    <tr>
+                                        <th>记录ID</th>
+                                        <th>车辆</th>
+                                        <th>司机</th>
+                                        <th>目的地</th>
+                                        <th>包裹数量</th>
+                                        <th>出库时间</th>
+                                        <th>状态</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 出库记录将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 全局变量
+        let loadingRecords = [];
+        let handoverRecords = [];
+        let outboundRecords = [];
+
+        // 网点出库管理页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('branch');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 初始化数据
+            initializeData();
+            
+            // 加载统计数据
+            loadStats();
+            
+            // 加载交接记录
+            loadHandoverRecords();
+            
+            // 加载出库记录
+            loadOutboundRecords();
+
+            // 绑定标签页切换事件
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    const tabId = this.getAttribute('data-tab');
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.add('hidden');
+                    });
+                    const targetContent = document.getElementById(tabId);
+                    if (targetContent) {
+                        targetContent.classList.remove('hidden');
+                    }
+                });
+            });
+        });
+
+        // 初始化数据
+        function initializeData() {
+            // 初始化装车记录
+            if (!localStorage.getItem('loadingRecords')) {
+                const loadingRecords = [
+                    {
+                        id: 'LOAD1768999155001',
+                        vehicle: '京A12345',
+                        driver: '张三',
+                        destination: '北京分拨中心',
+                        packageCount: 25,
+                        notes: '包含加急件5件',
+                        loadingTime: new Date().toISOString(),
+                        status: '已装车'
+                    },
+                    {
+                        id: 'LOAD1768999155002',
+                        vehicle: '京B67890',
+                        driver: '李四',
+                        destination: '上海分拨中心',
+                        packageCount: 18,
+                        notes: '全为标准件',
+                        loadingTime: new Date().toISOString(),
+                        status: '已装车'
+                    }
+                ];
+                localStorage.setItem('loadingRecords', JSON.stringify(loadingRecords));
+            }
+
+            // 初始化交接记录
+            if (!localStorage.getItem('handoverRecords')) {
+                const handoverRecords = [
+                    {
+                        id: 'HAND1768999155001',
+                        waybillNumber: 'WB1234567890001',
+                        vehicle: '京A12345',
+                        receiver: '刘九',
+                        handoverTime: new Date().toISOString(),
+                        notes: '包裹完好',
+                        operator: '管理员'
+                    },
+                    {
+                        id: 'HAND1768999155002',
+                        waybillNumber: 'WB1234567890002',
+                        vehicle: '京B67890',
+                        receiver: '陈十',
+                        handoverTime: new Date().toISOString(),
+                        notes: '包裹完好',
+                        operator: '管理员'
+                    }
+                ];
+                localStorage.setItem('handoverRecords', JSON.stringify(handoverRecords));
+            }
+
+            // 初始化出库记录
+            if (!localStorage.getItem('outboundRecords')) {
+                const outboundRecords = [
+                    {
+                        id: 'OUT1768999155001',
+                        vehicle: '京A12345',
+                        driver: '张三',
+                        destination: '北京分拨中心',
+                        packageCount: 25,
+                        outboundTime: new Date().toISOString(),
+                        status: '已出库'
+                    },
+                    {
+                        id: 'OUT1768999155002',
+                        vehicle: '京B67890',
+                        driver: '李四',
+                        destination: '上海分拨中心',
+                        packageCount: 18,
+                        outboundTime: new Date().toISOString(),
+                        status: '已出库'
+                    },
+                    {
+                        id: 'OUT1768999155003',
+                        vehicle: '京C24680',
+                        driver: '王五',
+                        destination: '本地派送',
+                        packageCount: 12,
+                        outboundTime: new Date().toISOString(),
+                        status: '已出库'
+                    }
+                ];
+                localStorage.setItem('outboundRecords', JSON.stringify(outboundRecords));
+            }
+        }
+
+        // 加载统计数据
+        function loadStats() {
+            loadingRecords = JSON.parse(localStorage.getItem('loadingRecords')) || [];
+            handoverRecords = JSON.parse(localStorage.getItem('handoverRecords')) || [];
+            outboundRecords = JSON.parse(localStorage.getItem('outboundRecords')) || [];
+            
+            const today = new Date().toDateString();
+            
+            const todayLoading = loadingRecords.filter(record => {
+                return new Date(record.loadingTime).toDateString() === today;
+            });
+            
+            const todayHandover = handoverRecords.filter(record => {
+                return new Date(record.handoverTime).toDateString() === today;
+            });
+            
+            const todayOutbound = outboundRecords.filter(record => {
+                return new Date(record.outboundTime).toDateString() === today;
+            });
+            
+            document.getElementById('totalVehicles').textContent = todayLoading.length;
+            document.getElementById('loadedPackages').textContent = todayLoading.reduce((sum, record) => sum + record.packageCount, 0);
+            document.getElementById('handoveredPackages').textContent = todayHandover.length;
+            document.getElementById('pendingPackages').textContent = todayLoading.reduce((sum, record) => sum + record.packageCount, 0) - todayHandover.length;
+        }
+
+        // 确认装车
+        function confirmLoading() {
+            const vehicle = document.getElementById('loading-vehicle').value;
+            const driver = document.getElementById('loading-driver').value;
+            const destination = document.getElementById('loading-destination').value;
+            const packageCount = parseInt(document.getElementById('loading-packages').value);
+            const notes = document.getElementById('loading-notes').value;
+            
+            const vehicleMap = {
+                vehicle1: '京A12345',
+                vehicle2: '京B67890',
+                vehicle3: '京C24680',
+                vehicle4: '京D13579'
+            };
+            
+            const driverMap = {
+                driver1: '张三',
+                driver2: '李四',
+                driver3: '王五'
+            };
+            
+            const destinationMap = {
+                dest1: '北京分拨中心',
+                dest2: '上海分拨中心',
+                dest3: '广州分拨中心',
+                dest4: '深圳分拨中心'
+            };
+            
+            const loadingRecord = {
+                id: 'LOAD' + Date.now(),
+                vehicle: vehicleMap[vehicle],
+                driver: driverMap[driver],
+                destination: destinationMap[destination],
+                packageCount: packageCount,
+                notes: notes,
+                loadingTime: new Date().toISOString(),
+                status: '已装车'
+            };
+            
+            loadingRecords = JSON.parse(localStorage.getItem('loadingRecords')) || [];
+            loadingRecords.push(loadingRecord);
+            localStorage.setItem('loadingRecords', JSON.stringify(loadingRecords));
+            
+            // 添加到出库记录
+            const outboundRecord = {
+                id: 'OUT' + Date.now(),
+                vehicle: vehicleMap[vehicle],
+                driver: driverMap[driver],
+                destination: destinationMap[destination],
+                packageCount: packageCount,
+                outboundTime: new Date().toISOString(),
+                status: '已出库'
+            };
+            
+            outboundRecords = JSON.parse(localStorage.getItem('outboundRecords')) || [];
+            outboundRecords.push(outboundRecord);
+            localStorage.setItem('outboundRecords', JSON.stringify(outboundRecords));
+            
+            // 重置表单
+            document.getElementById('loading-packages').value = '';
+            document.getElementById('loading-notes').value = '';
+            
+            // 更新统计数据
+            loadStats();
+            
+            // 更新出库记录
+            loadOutboundRecords();
+            
+        }
+
+        // 添加包裹到车辆
+        function addPackageToVehicle(vehicleId) {
+            const waybillNumber = prompt('请输入运单号：');
+            if (!waybillNumber) return;
+            
+            alert(`包裹 ${waybillNumber} 已添加到车辆`);
+        }
+
+        // 确认交接
+        function confirmHandover() {
+            const waybillNumber = document.getElementById('handover-waybill').value.trim();
+            const vehicle = document.getElementById('handover-vehicle').value;
+            const receiver = document.getElementById('handover-receiver').value.trim();
+            const handoverTime = document.getElementById('handover-time').value;
+            const notes = document.getElementById('handover-notes').value.trim();
+            
+            if (!waybillNumber || !receiver || !handoverTime) {
+                alert('请填写完整信息');
+                return;
+            }
+            
+            const vehicleMap = {
+                vehicle1: '京A12345',
+                vehicle2: '京B67890',
+                vehicle3: '京C24680'
+            };
+            
+            const handoverRecord = {
+                id: 'HAND' + Date.now(),
+                waybillNumber: waybillNumber,
+                vehicle: vehicleMap[vehicle],
+                receiver: receiver,
+                handoverTime: new Date(handoverTime).toISOString(),
+                notes: notes,
+                operator: '当前用户'
+            };
+            
+            handoverRecords = JSON.parse(localStorage.getItem('handoverRecords')) || [];
+            handoverRecords.push(handoverRecord);
+            localStorage.setItem('handoverRecords', JSON.stringify(handoverRecords));
+            
+            // 重置表单
+            document.getElementById('handover-waybill').value = '';
+            document.getElementById('handover-receiver').value = '';
+            document.getElementById('handover-time').value = '';
+            document.getElementById('handover-notes').value = '';
+            
+            // 更新统计数据
+            loadStats();
+            
+            // 更新交接记录
+            loadHandoverRecords();
+            
+        }
+
+        // 加载交接记录
+        function loadHandoverRecords() {
+            handoverRecords = JSON.parse(localStorage.getItem('handoverRecords')) || [];
+            const tableBody = document.getElementById('handover-table').querySelector('tbody');
+            
+            tableBody.innerHTML = handoverRecords.slice(-10).reverse().map(record => `
+                <tr>
+                    <td>${record.waybillNumber}</td>
+                    <td>${record.vehicle}</td>
+                    <td>${record.receiver}</td>
+                    <td>${new Date(record.handoverTime).toLocaleString()}</td>
+                    <td>${record.operator}</td>
+                </tr>
+            `).join('');
+        }
+
+        // 加载出库记录
+        function loadOutboundRecords() {
+            outboundRecords = JSON.parse(localStorage.getItem('outboundRecords')) || [];
+            const tableBody = document.getElementById('outbound-table').querySelector('tbody');
+            
+            tableBody.innerHTML = outboundRecords.slice(-10).reverse().map(record => `
+                <tr>
+                    <td>${record.id}</td>
+                    <td>${record.vehicle}</td>
+                    <td>${record.driver}</td>
+                    <td>${record.destination}</td>
+                    <td>${record.packageCount}</td>
+                    <td>${new Date(record.outboundTime).toLocaleString()}</td>
+                    <td>${record.status}</td>
+                </tr>
+            `).join('');
+        }
+    </script>
+</body>
+</html>

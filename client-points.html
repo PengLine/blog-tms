@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的积分 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 积分卡片样式 */
+        .points-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .points-overview {
+            text-align: center;
+            padding: 2rem;
+            background: linear-gradient(135deg, #4ecdc4, #45b7aa);
+            border-radius: 10px;
+            color: white;
+            margin-bottom: 2rem;
+        }
+
+        .points-balance {
+            font-size: 3rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+
+        .points-label {
+            font-size: 1.2rem;
+        }
+
+        /* 标签页样式 */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #e0e0e0;
+            margin-bottom: 2rem;
+        }
+
+        .tab {
+            padding: 1rem 2rem;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .tab.active {
+            border-bottom-color: #4ecdc4;
+            color: #4ecdc4;
+            font-weight: bold;
+        }
+
+        /* 积分记录样式 */
+        .points-record {
+            margin-bottom: 2rem;
+        }
+
+        .record-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .record-info {
+            flex: 1;
+        }
+
+        .record-title {
+            font-weight: bold;
+            margin-bottom: 0.3rem;
+        }
+
+        .record-time {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .record-points {
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .points-in {
+            color: #4caf50;
+        }
+
+        .points-out {
+            color: #f44336;
+        }
+
+        /* 积分兑换样式 */
+        .rewards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .reward-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .reward-card:hover {
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            transform: translateY(-5px);
+        }
+
+        .reward-icon {
+            width: 80px;
+            height: 80px;
+            background: #f0f0f0;
+            border-radius: 50%;
+            margin: 0 auto 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+        }
+
+        .reward-name {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .reward-points {
+            color: #4ecdc4;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+
+        .reward-desc {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .exchange-btn {
+            padding: 0.75rem 1.5rem;
+            background: #4ecdc4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            width: 100%;
+        }
+
+        .exchange-btn:hover {
+            background: #45b7aa;
+        }
+
+        .exchange-btn:disabled {
+            background: #e0e0e0;
+            cursor: not-allowed;
+        }
+
+        /* 按钮样式 */
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            font-size: 1rem;
+        }
+
+        .btn-primary {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #45b7aa;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+
+            .points-balance {
+                font-size: 2rem;
+            }
+
+            .tabs {
+                overflow-x: auto;
+            }
+
+            .tab {
+                white-space: nowrap;
+            }
+
+            .rewards-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .record-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+
+            .record-points {
+                align-self: flex-end;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 客户端</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="client-nav" class="nav">
+                    <h3>客户端功能</h3>
+                    <ul>
+                        <li><a href="client-index.html">首页</a></li>
+                        <li><a href="client-send.html">我要寄件</a></li>
+                        <li><a href="client-order.html">订单查询</a></li>
+                        <li><a href="client-tracking.html">货物跟踪</a></li>
+                        <li><a href="client-branch.html">附近网点</a></li>
+                        <li><a href="client-profile.html">个人中心</a></li>
+                        <li><a href="client-points.html" class="active">我的积分</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <!-- 积分卡片 -->
+                <div class="points-card">
+                    <!-- 积分概览 -->
+                    <div class="points-overview">
+                        <div class="points-balance" id="points-balance">108</div>
+                        <div class="points-label">当前积分</div>
+                    </div>
+
+                    <!-- 标签页 -->
+                    <div class="tabs">
+                        <div class="tab active" data-tab="history">积分历史</div>
+                        <div class="tab" data-tab="exchange">积分兑换</div>
+                        <div class="tab" data-tab="rules">积分规则</div>
+                    </div>
+
+                    <!-- 积分历史 -->
+                    <div id="history-tab" class="tab-content">
+                        <div class="points-record">
+                            <h3>积分来源</h3>
+                            <div id="points-history"></div>
+                        </div>
+                    </div>
+
+                    <!-- 积分兑换 -->
+                    <div id="exchange-tab" class="tab-content hidden">
+                        <div class="rewards-grid" id="rewards-grid"></div>
+                    </div>
+
+                    <!-- 积分规则 -->
+                    <div id="rules-tab" class="tab-content hidden">
+                        <h3>积分获取规则</h3>
+                        <ul style="margin-left: 2rem; margin-bottom: 2rem;">
+                            <li>每完成一笔订单，获得订单金额的1%积分</li>
+                            <li>推荐新用户注册并下单，获得50积分奖励</li>
+                            <li>参与系统活动，获得相应积分奖励</li>
+                            <li>完善个人资料，获得20积分奖励</li>
+                        </ul>
+                        <h3>积分使用规则</h3>
+                        <ul style="margin-left: 2rem;">
+                            <li>100积分可兑换1元运费抵扣券</li>
+                            <li>积分可用于兑换系统提供的礼品</li>
+                            <li>积分有效期为1年，过期自动清零</li>
+                            <li>积分不可转让给其他用户</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 我的积分页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('client');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 初始化标签页
+            initTabs();
+
+            // 加载积分数据
+            loadPointsData();
+
+            // 加载兑换礼品
+            loadRewards();
+        });
+
+        // 初始化标签页
+        function initTabs() {
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    // 移除所有标签页的活动状态
+                    tabs.forEach(t => t.classList.remove('active'));
+                    // 添加当前标签页的活动状态
+                    tab.classList.add('active');
+
+                    // 隐藏所有内容
+                    const contents = document.querySelectorAll('.tab-content');
+                    contents.forEach(content => content.classList.add('hidden'));
+                    // 显示当前内容
+                    const tabId = tab.dataset.tab;
+                    document.getElementById(`${tabId}-tab`).classList.remove('hidden');
+                });
+            });
+        }
+
+        // 加载积分数据
+        function loadPointsData() {
+            // 获取当前用户
+            const user = getCurrentUser();
+            if (user) {
+                // 加载积分余额
+                let pointsData = JSON.parse(localStorage.getItem('tmsUserPoints'));
+
+                if (!pointsData) {
+                    pointsData = {
+                        balance: 1250,
+                        history: [
+                            {
+                                id: 1,
+                                type: 'order',
+                                description: '下单获得积分',
+                                points: 50,
+                                date: new Date().toLocaleString()
+                            },
+                            {
+                                id: 2,
+                                type: 'register',
+                                description: '注册奖励',
+                                points: 100,
+                                date: new Date(Date.now() - 86400000).toLocaleString()
+                            },
+                            {
+                                id: 3,
+                                type: 'order',
+                                description: '下单获得积分',
+                                points: 80,
+                                date: new Date(Date.now() - 172800000).toLocaleString()
+                            },
+                            {
+                                id: 4,
+                                type: 'reward',
+                                description: '完成订单评价',
+                                points: 20,
+                                date: new Date(Date.now() - 259200000).toLocaleString()
+                            },
+                            {
+                                id: 5,
+                                type: 'exchange',
+                                description: '兑换运费券',
+                                points: -200,
+                                date: new Date(Date.now() - 345600000).toLocaleString()
+                            },
+                            {
+                                id: 6,
+                                type: 'order',
+                                description: '下单获得积分',
+                                points: 120,
+                                date: new Date(Date.now() - 432000000).toLocaleString()
+                            },
+                            {
+                                id: 7,
+                                type: 'sign',
+                                description: '连续签到7天',
+                                points: 70,
+                                date: new Date(Date.now() - 518400000).toLocaleString()
+                            },
+                            {
+                                id: 8,
+                                type: 'order',
+                                description: '下单获得积分',
+                                points: 150,
+                                date: new Date(Date.now() - 604800000).toLocaleString()
+                            }
+                        ]
+                    };
+                    localStorage.setItem('tmsUserPoints', JSON.stringify(pointsData));
+                }
+
+                // 更新积分余额
+                document.getElementById('points-balance').textContent = pointsData.balance;
+
+                // 加载积分历史
+                const historyContainer = document.getElementById('points-history');
+                historyContainer.innerHTML = '';
+
+                if (pointsData.history.length === 0) {
+                    historyContainer.innerHTML = '<div style="text-align: center; color: #999; padding: 2rem;">暂无积分记录</div>';
+                    return;
+                }
+
+                // 渲染积分历史
+                pointsData.history.forEach(record => {
+                    const recordItem = document.createElement('div');
+                    recordItem.className = 'record-item';
+                    const pointsClass = record.points > 0 ? 'points-in' : 'points-out';
+                    const pointsPrefix = record.points > 0 ? '+' : '';
+                    recordItem.innerHTML = `
+                        <div class="record-info">
+                            <div class="record-title">${record.description}</div>
+                            <div class="record-time">${record.date}</div>
+                        </div>
+                        <div class="record-points ${pointsClass}">${pointsPrefix}${record.points}</div>
+                    `;
+                    historyContainer.appendChild(recordItem);
+                });
+            }
+        }
+
+        // 加载兑换礼品
+        function loadRewards() {
+            const rewards = [
+                {
+                    id: 1,
+                    name: '5元运费抵扣券',
+                    points: 500,
+                    description: '可用于抵扣任何订单的运费',
+                    icon: '🎫'
+                },
+                {
+                    id: 2,
+                    name: '10元运费抵扣券',
+                    points: 1000,
+                    description: '可用于抵扣任何订单的运费',
+                    icon: '🎫'
+                },
+                {
+                    id: 3,
+                    name: '定制笔记本',
+                    points: 800,
+                    description: 'TMS系统定制笔记本',
+                    icon: '📒'
+                },
+                {
+                    id: 4,
+                    name: '定制水杯',
+                    points: 1200,
+                    description: 'TMS系统定制水杯',
+                    icon: '☕'
+                }
+            ];
+
+            const rewardsGrid = document.getElementById('rewards-grid');
+            rewardsGrid.innerHTML = '';
+
+            rewards.forEach(reward => {
+                const rewardCard = document.createElement('div');
+                rewardCard.className = 'reward-card';
+                rewardCard.innerHTML = `
+                    <div class="reward-icon">${reward.icon}</div>
+                    <div class="reward-name">${reward.name}</div>
+                    <div class="reward-points">${reward.points} 积分</div>
+                    <div class="reward-desc">${reward.description}</div>
+                    <button class="exchange-btn" data-id="${reward.id}" data-points="${reward.points}">立即兑换</button>
+                `;
+                rewardsGrid.appendChild(rewardCard);
+            });
+
+            // 绑定兑换按钮事件
+            document.querySelectorAll('.exchange-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const rewardId = parseInt(btn.dataset.id);
+                    const requiredPoints = parseInt(btn.dataset.points);
+                    exchangeReward(rewardId, requiredPoints);
+                });
+            });
+        }
+
+        // 兑换礼品
+        function exchangeReward(rewardId, requiredPoints) {
+            const pointsData = JSON.parse(localStorage.getItem('tmsUserPoints')) || {
+                balance: 0,
+                history: []
+            };
+
+            if (pointsData.balance >= requiredPoints) {
+                // 扣除积分
+                pointsData.balance -= requiredPoints;
+
+                // 添加兑换记录
+                pointsData.history.unshift({
+                    id: Date.now(),
+                    type: 'exchange',
+                    description: '兑换礼品',
+                    points: -requiredPoints,
+                    date: new Date().toLocaleString()
+                });
+
+                // 保存数据
+                localStorage.setItem('tmsUserPoints', JSON.stringify(pointsData));
+
+                // 更新界面
+                document.getElementById('points-balance').textContent = pointsData.balance;
+                loadPointsData();
+
+                alert('兑换成功！');
+            } else {
+                alert('积分不足，无法兑换！');
+            }
+        }
+    </script>
+</body>
+</html>

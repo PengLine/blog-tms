@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>运输员 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #f9ca24;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #f9ca24;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 统计卡片样式 */
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* 快捷操作按钮 */
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .action-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .action-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
+        }
+
+        .action-card i {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+            color: #f9ca24;
+        }
+
+        .action-card h4 {
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        .action-card p {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        /* 今日任务列表 */
+        .today-tasks {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-top: 2rem;
+        }
+
+        .today-tasks h3 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .task-item {
+            padding: 1rem;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .task-item:last-child {
+            border-bottom: none;
+        }
+
+        .task-item .task-info {
+            flex: 1;
+        }
+
+        .task-item .task-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .task-status.pending {
+            background: #ff9ff3;
+            color: #990099;
+        }
+
+        .task-status.in-progress {
+            background: #74b9ff;
+            color: #0984e3;
+        }
+
+        .task-status.completed {
+            background: #55efc4;
+            color: #00b894;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运输员</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>运输员功能</h3>
+                    <ul>
+                        <li><a href="transporter-index.html" class="active">首页</a></li>
+                        <li><a href="transporter-loading.html">扫描装车</a></li>
+                        <li><a href="transporter-departure.html">发车管理</a></li>
+                        <li><a href="transporter-schedule.html">我的排班</a></li>
+                        <li><a href="transporter-route.html">发车路线</a></li>
+                        <li><a href="transporter-performance.html">我的绩效</a></li>
+                        <li><a href="transporter-clock.html">打卡记录</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>欢迎回来，运输员</h2>
+                <p>今天是：<span id="current-date"></span></p>
+                
+                <div class="stats">
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #f9ca24;">0</div>
+                        <div>今日已装车</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #e17055;">0</div>
+                        <div>今日已发车</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #6c5ce7;">0</div>
+                        <div>今日里程</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #666;">0</div>
+                        <div>本月绩效</div>
+                    </div>
+                </div>
+
+                <div class="quick-actions">
+                    <a href="transporter-clock.html" class="action-card">
+                        <i>⏰</i>
+                        <h4>打卡</h4>
+                        <p>开始/结束工作</p>
+                    </a>
+                    <a href="transporter-loading.html" class="action-card">
+                        <i>📦</i>
+                        <h4>装车</h4>
+                        <p>装车扫描</p>
+                    </a>
+                    <a href="transporter-departure.html" class="action-card">
+                        <i>🚚</i>
+                        <h4>发车</h4>
+                        <p>确认发车</p>
+                    </a>
+                    <a href="transporter-route.html" class="action-card">
+                        <i>🗺️</i>
+                        <h4>路线</h4>
+                        <p>查看路线</p>
+                    </a>
+                </div>
+
+                <div class="today-tasks">
+                    <h3>今日任务</h3>
+                    <div id="tasks-container">
+                        <!-- 任务将通过JS生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 运输员首页逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('transporter');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 加载今日任务
+            loadTodayTasks();
+            
+            // 加载统计数据
+            loadStats();
+        });
+
+        // 加载今日任务
+        function loadTodayTasks() {
+            // 从localStorage获取任务数据
+            const today = new Date().toISOString().split('T')[0];
+            const tasks = localStorage.getItem(`transporterTasks_${today}`);
+            
+            const container = document.getElementById('tasks-container');
+            
+            if (tasks) {
+                const taskList = JSON.parse(tasks);
+                
+                if (taskList.length > 0) {
+                    container.innerHTML = taskList.map(task => `
+                        <div class="task-item">
+                            <div class="task-info">
+                                <h4>${task.taskName}</h4>
+                                <p>${task.description}</p>
+                            </div>
+                            <span class="task-status ${task.status}">${task.status === 'pending' ? '待处理' : task.status === 'in-progress' ? '进行中' : '已完成'}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<p>今日暂无任务</p>';
+                }
+            } else {
+                // 初始化模拟任务数据
+                const mockTasks = [
+                    {
+                        taskName: '北京-上海运输任务',
+                        description: '车辆：京A12345，预计里程：1200km',
+                        status: 'pending'
+                    },
+                    {
+                        taskName: '上海-杭州运输任务',
+                        description: '车辆：沪B67890，预计里程：150km',
+                        status: 'pending'
+                    }
+                ];
+                
+                localStorage.setItem(`transporterTasks_${today}`, JSON.stringify(mockTasks));
+                container.innerHTML = mockTasks.map(task => `
+                    <div class="task-item">
+                        <div class="task-info">
+                            <h4>${task.taskName}</h4>
+                            <p>${task.description}</p>
+                        </div>
+                        <span class="task-status ${task.status}">${task.status === 'pending' ? '待处理' : task.status === 'in-progress' ? '进行中' : '已完成'}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        // 加载统计数据
+        function loadStats() {
+            // 从localStorage获取统计数据
+            const today = new Date().toISOString().split('T')[0];
+            const stats = localStorage.getItem(`transporterStats_${today}`);
+            
+            if (stats) {
+                const statsData = JSON.parse(stats);
+                document.querySelector('.stats .stat-card:nth-child(1) div').textContent = statsData.loaded || 0;
+                document.querySelector('.stats .stat-card:nth-child(2) div').textContent = statsData.departed || 0;
+                document.querySelector('.stats .stat-card:nth-child(3) div').textContent = statsData.mileage || 0;
+            } else {
+                // 添加默认示例数据
+                const defaultStats = {
+                    loaded: 12,
+                    departed: 8,
+                    mileage: 1560
+                };
+                localStorage.setItem(`transporterStats_${today}`, JSON.stringify(defaultStats));
+                document.querySelector('.stats .stat-card:nth-child(1) div').textContent = defaultStats.loaded;
+                document.querySelector('.stats .stat-card:nth-child(2) div').textContent = defaultStats.departed;
+                document.querySelector('.stats .stat-card:nth-child(3) div').textContent = defaultStats.mileage;
+            }
+            
+            // 加载本月绩效
+            const currentMonth = new Date().getMonth() + 1;
+            const currentYear = new Date().getFullYear();
+            const performance = localStorage.getItem(`transporterPerformance_${currentYear}_${currentMonth}`);
+            
+            if (performance) {
+                const perfData = JSON.parse(performance);
+                document.querySelector('.stats .stat-card:nth-child(4) div').textContent = perfData.total || 0;
+            } else {
+                // 添加默认示例数据
+                const defaultPerformance = {
+                    total: 85
+                };
+                localStorage.setItem(`transporterPerformance_${currentYear}_${currentMonth}`, JSON.stringify(defaultPerformance));
+                document.querySelector('.stats .stat-card:nth-child(4) div').textContent = defaultPerformance.total;
+            }
+        }
+    </script>
+</body>
+</html>

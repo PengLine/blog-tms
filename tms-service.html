@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>客服管理 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 统计卡片样式 */
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* 服务请求列表 */
+        .service-list {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+        }
+
+        .service-item {
+            padding: 1rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .service-item:last-child {
+            border-bottom: none;
+        }
+
+        .service-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .service-id {
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .service-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .status.pending {
+            background: #ffeb3b;
+            color: #333;
+        }
+
+        .status.processing {
+            background: #2196f3;
+            color: white;
+        }
+
+        .status.completed {
+            background: #4caf50;
+            color: white;
+        }
+
+        /* 子菜单样式 */
+        .has-submenu {
+            position: relative;
+        }
+
+        .has-submenu > a {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .has-submenu > a::after {
+            content: '▼';
+            font-size: 0.7rem;
+            transition: transform 0.3s ease;
+        }
+
+        .has-submenu.active > a::after {
+            transform: rotate(180deg);
+        }
+
+        .submenu {
+            display: none;
+            list-style: none;
+            margin: 0.5rem 0 0 1.5rem;
+            padding: 0;
+        }
+
+        .submenu li {
+            margin-bottom: 0.3rem;
+        }
+
+        .submenu a {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .has-submenu.active .submenu {
+            display: block;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .submenu {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                background: white;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                border-radius: 0 0 5px 5px;
+                min-width: 200px;
+                margin: 0;
+                z-index: 1000;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运营管理</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="admin-nav" class="nav">
+                    <h3>运营功能</h3>
+                    <ul>
+                        <li><a href="tms-index.html">首页</a></li>
+                        <li><a href="tms-monitor.html">系统监控</a></li>
+                        <li><a href="tms-user.html">用户管理</a></li>
+                        <li><a href="tms-exception.html">异常管理</a></li>
+                        <li><a href="tms-transport.html">运输管理</a></li>
+                        <li class="has-submenu">
+                            <a href="tms-operation.html">运营管理</a>
+                            <ul class="submenu">
+                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
+                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
+                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
+                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
+                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
+                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
+                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="tms-timing.html">时效管理</a></li>
+                        <li><a href="tms-scan.html">扫描管理</a></li>
+                        <li><a href="tms-loading.html">装卸管理</a></li>
+                        <li><a href="tms-sorting.html">分拣管理</a></li>
+                        <li><a href="tms-warehouse.html">仓储管理</a></li>
+                        <li><a href="tms-vehicle.html">车辆管理</a></li>
+                        <li><a href="tms-capacity.html">运力管理</a></li>
+                        <li><a href="tms-geofence.html">电子围栏</a></li>
+                        <li><a href="tms-service.html" class="active">客服管理</a></li>
+                        <li><a href="tms-claim.html">理赔管理</a></li>
+                        <li><a href="tms-finance.html">财务管理</a></li>
+                        <li><a href="tms-administration.html">行政管理</a></li>
+                        <li><a href="tms-material.html">物料管理</a></li>
+                        <li><a href="tms-evaluation.html">考核评级</a></li>
+                        <li><a href="tms-performance.html">绩效管理</a></li>
+                        <li><a href="tms-hr.html">人事管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>客服管理</h2>
+                
+                <div class="stats">
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #ff6b6b;">5</div>
+                        <div>待处理请求</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #4ecdc4;">3</div>
+                        <div>处理中请求</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #4caf50;">12</div>
+                        <div>已完成请求</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #ff9800;">2</div>
+                        <div>投诉请求</div>
+                    </div>
+                </div>
+
+                <div class="service-list">
+                    <h3>服务请求列表</h3>
+                    <div id="service-list">
+                        <!-- 服务请求将通过JS生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 子菜单切换功能
+        document.addEventListener('DOMContentLoaded', function() {
+            // 检查用户登录状态
+            checkLoginStatus('admin');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示用户信息
+            displayCurrentUser();
+
+            // 子菜单切换
+            const submenuItems = document.querySelectorAll('.has-submenu');
+            submenuItems.forEach(item => {
+                const link = item.querySelector('> a');
+                link.addEventListener('click', function(e) {
+                    // 切换当前菜单项的active状态
+                    item.classList.toggle('active');
+                    
+                    // 阻止默认跳转行为，因为我们只是想展开/折叠子菜单
+                    e.preventDefault();
+                });
+            });
+
+            // 初始化模拟数据
+            initMockServiceRequests();
+
+            // 渲染服务请求列表
+            renderServiceRequests();
+
+            // 初始化模拟服务请求数据
+            function initMockServiceRequests() {
+                const existingRequests = localStorage.getItem('tmsServiceRequests');
+                if (existingRequests) {
+                    return;
+                }
+
+                const mockRequests = [
+                    {
+                        id: 'SR202601200001',
+                        customerName: '张三',
+                        customerPhone: '13800138000',
+                        requestType: '查询',
+                        content: '查询订单HLBJ167373120012345678的物流状态',
+                        status: 'pending',
+                        createTime: '2026-01-20 09:30:00',
+                        orderId: 'HLBJ167373120012345678'
+                    },
+                    {
+                        id: 'SR202601200002',
+                        customerName: '李四',
+                        customerPhone: '13900139000',
+                        requestType: '投诉',
+                        content: '货物延迟送达，影响了我的业务',
+                        status: 'processing',
+                        createTime: '2026-01-20 10:15:00',
+                        orderId: 'HLSH167381760023456789'
+                    },
+                    {
+                        id: 'SR202601200003',
+                        customerName: '王五',
+                        customerPhone: '13700137000',
+                        requestType: '咨询',
+                        content: '如何申请退货',
+                        status: 'completed',
+                        createTime: '2026-01-20 11:00:00',
+                        processTime: '2026-01-20 11:30:00',
+                        processor: '客服小李',
+                        solution: '已为客户提供退货流程指导'
+                    },
+                    {
+                        id: 'SR202601200004',
+                        customerName: '赵六',
+                        customerPhone: '13600136000',
+                        requestType: '建议',
+                        content: '希望能提供更详细的物流信息',
+                        status: 'completed',
+                        createTime: '2026-01-20 14:20:00',
+                        processTime: '2026-01-20 14:45:00',
+                        processor: '客服小王',
+                        solution: '已记录客户建议，将反馈给产品团队'
+                    },
+                    {
+                        id: 'SR202601200005',
+                        customerName: '孙七',
+                        customerPhone: '13500135000',
+                        requestType: '查询',
+                        content: '我的订单什么时候能送达',
+                        status: 'pending',
+                        createTime: '2026-01-20 15:10:00',
+                        orderId: 'HLGZ167390400034567890'
+                    }
+                ];
+
+                localStorage.setItem('tmsServiceRequests', JSON.stringify(mockRequests));
+            }
+
+            // 渲染服务请求列表
+            function renderServiceRequests() {
+                const container = document.getElementById('service-list');
+                const requests = JSON.parse(localStorage.getItem('tmsServiceRequests') || '[]');
+
+                container.innerHTML = requests.map(request => `
+                    <div class="service-item">
+                        <div class="service-header">
+                            <span class="service-id">${request.id}</span>
+                            <span class="service-status status ${request.status}">${getStatusText(request.status)}</span>
+                        </div>
+                        <p><strong>客户:</strong> ${request.customerName} (${request.customerPhone})</p>
+                        <p><strong>类型:</strong> ${request.requestType}</p>
+                        <p><strong>内容:</strong> ${request.content}</p>
+                        ${request.orderId ? `<p><strong>关联订单:</strong> ${request.orderId}</p>` : ''}
+                        <p><strong>创建时间:</strong> ${request.createTime}</p>
+                        ${request.processTime ? `<p><strong>处理时间:</strong> ${request.processTime}</p>` : ''}
+                        ${request.processor ? `<p><strong>处理人:</strong> ${request.processor}</p>` : ''}
+                        ${request.solution ? `<p><strong>解决方案:</strong> ${request.solution}</p>` : ''}
+                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                            ${request.status === 'pending' ? `<button class="btn btn-primary" onclick="processRequest('${request.id}')">开始处理</button>` : ''}
+                            ${request.status === 'processing' ? `<button class="btn btn-success" onclick="completeRequest('${request.id}')">完成处理</button>` : ''}
+                            <button class="btn btn-secondary" onclick="viewRequestDetail('${request.id}')">查看详情</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // 获取状态文本
+            function getStatusText(status) {
+                const statusMap = {
+                    'pending': '待处理',
+                    'processing': '处理中',
+                    'completed': '已完成',
+                    'rejected': '已拒绝'
+                };
+                return statusMap[status] || status;
+            }
+
+            // 处理请求
+            window.processRequest = function(id) {
+                const requests = JSON.parse(localStorage.getItem('tmsServiceRequests') || '[]');
+                const request = requests.find(r => r.id === id);
+                if (request) {
+                    request.status = 'processing';
+                    request.processTime = new Date().toLocaleString();
+                    request.processor = getCurrentUser().username;
+                    localStorage.setItem('tmsServiceRequests', JSON.stringify(requests));
+                    renderServiceRequests();
+                    alert('已开始处理该请求');
+                }
+            }
+
+            // 完成请求
+            window.completeRequest = function(id) {
+                const solution = prompt('请输入解决方案:');
+                if (solution) {
+                    const requests = JSON.parse(localStorage.getItem('tmsServiceRequests') || '[]');
+                    const request = requests.find(r => r.id === id);
+                    if (request) {
+                        request.status = 'completed';
+                        request.solution = solution;
+                        localStorage.setItem('tmsServiceRequests', JSON.stringify(requests));
+                        renderServiceRequests();
+                        alert('请求处理完成');
+                    }
+                }
+            }
+
+            // 查看详情
+            window.viewRequestDetail = function(id) {
+                const requests = JSON.parse(localStorage.getItem('tmsServiceRequests') || '[]');
+                const request = requests.find(r => r.id === id);
+                if (request) {
+                    // 这里可以实现详情模态框
+                    alert(`查看请求 ${id} 的详细信息`);
+                }
+            }
+        });
+
+        // 标签页切换功能
+        function switchTab(tabId, sectionId = null) {
+            // 隐藏所有标签页内容
+            const tabContents = document.querySelectorAll('.tab-content');
+            tabContents.forEach(content => {
+                content.classList.add('hidden');
+            });
+
+            // 显示选中的标签页内容
+            const selectedTab = document.getElementById(tabId + '-tab');
+            if (selectedTab) {
+                selectedTab.classList.remove('hidden');
+            }
+
+            // 如果指定了sectionId，只显示该section，隐藏其他section
+            if (sectionId) {
+                const sections = document.querySelectorAll('[id$="-section"]');
+                sections.forEach(section => {
+                    section.style.display = 'none';
+                });
+                
+                const selectedSection = document.getElementById(sectionId);
+                if (selectedSection) {
+                    selectedSection.style.display = 'block';
+                }
+            }
+        }
+
+        // 滚动到指定区域
+        function scrollToSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+    </script>
+</body>
+</html>

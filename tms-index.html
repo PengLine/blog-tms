@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>运营 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #96ceb4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #96ceb4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 统计卡片样式 */
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* 子菜单样式 */
+        .has-submenu {
+            position: relative;
+        }
+
+        .has-submenu > a {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .has-submenu > a::after {
+            content: '▼';
+            font-size: 0.7rem;
+            transition: transform 0.3s ease;
+        }
+
+        .has-submenu.active > a::after {
+            transform: rotate(180deg);
+        }
+
+        .submenu {
+            display: none;
+            list-style: none;
+            margin: 0.5rem 0 0 1.5rem;
+            padding: 0;
+        }
+
+        .submenu li {
+            margin-bottom: 0.3rem;
+        }
+
+        .submenu a {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .has-submenu.active .submenu {
+            display: block;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .submenu {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                background: white;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                border-radius: 0 0 5px 5px;
+                min-width: 200px;
+                margin: 0;
+                z-index: 1000;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运营</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="admin-nav" class="nav">
+                    <h3>运营功能</h3>
+                    <ul>
+                        <li><a href="tms-index.html" class="active">首页</a></li>
+                        <li><a href="tms-monitor.html">系统监控</a></li>
+                        <li><a href="tms-user.html">用户管理</a></li>
+                        <li><a href="tms-exception.html">异常管理</a></li>
+                        <li><a href="tms-transport.html">运输管理</a></li>
+                        <li class="has-submenu">
+                            <a href="tms-operation.html">运营管理</a>
+                            <ul class="submenu">
+                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
+                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
+                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
+                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
+                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
+                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
+                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="tms-timing.html">时效管理</a></li>
+                        <li><a href="tms-scan.html">扫描管理</a></li>
+                        <li><a href="tms-loading.html">装卸管理</a></li>
+                        <li><a href="tms-sorting.html">分拣管理</a></li>
+                        <li><a href="tms-warehouse.html">仓储管理</a></li>
+                        <li><a href="tms-vehicle.html">车辆管理</a></li>
+                        <li><a href="tms-capacity.html">运力管理</a></li>
+                        <li><a href="tms-geofence.html">电子围栏</a></li>
+                        <li><a href="tms-service.html">客服管理</a></li>
+                        <li><a href="tms-claim.html">理赔管理</a></li>
+                        <li><a href="tms-finance.html">财务管理</a></li>
+                        <li><a href="tms-administration.html">行政管理</a></li>
+                        <li><a href="tms-material.html">物料管理</a></li>
+                        <li><a href="tms-evaluation.html">考核评级</a></li>
+                        <li><a href="tms-performance.html">绩效管理</a></li>
+                        <li><a href="tms-hr.html">人事管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>欢迎使用TMS系统</h2>
+                <p>作为运营管理员，您可以在这里监控系统状态和管理用户。</p>
+                
+                <div class="stats">
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #96ceb4;">23</div>
+                        <div>在线用户</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #ffd93d;">45%</div>
+                        <div>系统负载</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #4ecdc4;">120ms</div>
+                        <div>响应时间</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #4caf50;">99.9%</div>
+                        <div>系统可用率</div>
+                    </div>
+                </div>
+
+                <div style="background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); margin-top: 1rem;">
+                    <h3>系统状态概览</h3>
+                    <div style="margin-top: 1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+                        <div style="padding: 1rem; background: #f5f7fa; border-radius: 5px;">
+                            <strong>数据库状态</strong>
+                            <div style="margin-top: 0.5rem; color: #4caf50;">正常运行</div>
+                        </div>
+                        <div style="padding: 1rem; background: #f5f7fa; border-radius: 5px;">
+                            <strong>API接口</strong>
+                            <div style="margin-top: 0.5rem; color: #4caf50;">全部可用</div>
+                        </div>
+                        <div style="padding: 1rem; background: #f5f7fa; border-radius: 5px;">
+                            <strong>系统运行时间</strong>
+                            <div style="margin-top: 0.5rem; color: #666;">12天5小时30分钟</div>
+                        </div>
+                        <div style="padding: 1rem; background: #f5f7fa; border-radius: 5px;">
+                            <strong>最近备份</strong>
+                            <div style="margin-top: 0.5rem; color: #666;">2024-01-17 00:00</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 运营系统逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('admin');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 绑定子菜单点击事件
+            document.querySelectorAll('.has-submenu > a').forEach(item => {
+                item.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const parentLi = this.parentElement;
+                    parentLi.classList.toggle('active');
+                });
+            });
+        });
+
+        // 切换标签页函数
+        function switchTab(tabId, sectionId = null) {
+            // 隐藏所有标签页内容
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+
+            // 移除所有标签页的活跃状态
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // 显示选中的标签页内容
+            const targetTab = document.getElementById(`${tabId}-tab`);
+            if (targetTab) {
+                targetTab.classList.remove('hidden');
+            }
+
+            // 标记选中的标签页为活跃状态
+            const targetTabBtn = document.querySelector(`.tab[data-tab="${tabId}"]`);
+            if (targetTabBtn) {
+                targetTabBtn.classList.add('active');
+            }
+
+            // 如果是统计分析标签页，处理section显示
+            if (tabId === 'statistics' && sectionId) {
+                // 隐藏所有统计section
+                document.querySelectorAll('[id$="-section"]').forEach(section => {
+                    section.style.display = 'none';
+                });
+                // 显示指定的section
+                const targetSection = document.getElementById(sectionId);
+                if (targetSection) {
+                    targetSection.style.display = 'block';
+                }
+            } else if (tabId === 'statistics') {
+                // 如果没有指定section，显示所有统计section
+                document.querySelectorAll('[id$="-section"]').forEach(section => {
+                    section.style.display = 'block';
+                });
+            }
+        }
+
+        // 滚动到指定区块
+        function scrollToSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        }
+    </script>
+</body>
+</html>

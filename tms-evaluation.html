@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>考核评级 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 统计卡片样式 */
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* 考核列表 */
+        .evaluation-list {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+        }
+
+        .evaluation-item {
+            padding: 1rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .evaluation-item:last-child {
+            border-bottom: none;
+        }
+
+        .evaluation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .evaluation-id {
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .evaluation-grade {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .grade.excellent {
+            background: #4caf50;
+            color: white;
+        }
+
+        .grade.good {
+            background: #2196f3;
+            color: white;
+        }
+
+        .grade.average {
+            background: #ff9800;
+            color: white;
+        }
+
+        .grade.poor {
+            background: #f44336;
+            color: white;
+        }
+
+        /* 子菜单样式 */
+        .has-submenu {
+            position: relative;
+        }
+
+        .has-submenu > a {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .has-submenu > a::after {
+            content: '▼';
+            font-size: 0.7rem;
+            transition: transform 0.3s ease;
+        }
+
+        .has-submenu.active > a::after {
+            transform: rotate(180deg);
+        }
+
+        .submenu {
+            display: none;
+            list-style: none;
+            margin: 0.5rem 0 0 1.5rem;
+            padding: 0;
+        }
+
+        .submenu li {
+            margin-bottom: 0.3rem;
+        }
+
+        .submenu a {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .has-submenu.active .submenu {
+            display: block;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .submenu {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                background: white;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                border-radius: 0 0 5px 5px;
+                min-width: 200px;
+                margin: 0;
+                z-index: 1000;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运营管理</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="admin-nav" class="nav">
+                    <h3>运营功能</h3>
+                    <ul>
+                        <li><a href="tms-index.html">首页</a></li>
+                        <li><a href="tms-monitor.html">系统监控</a></li>
+                        <li><a href="tms-user.html">用户管理</a></li>
+                        <li><a href="tms-exception.html">异常管理</a></li>
+                        <li><a href="tms-transport.html">运输管理</a></li>
+                        <li class="has-submenu">
+                            <a href="tms-operation.html">运营管理</a>
+                            <ul class="submenu">
+                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
+                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
+                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
+                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
+                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
+                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
+                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="tms-timing.html">时效管理</a></li>
+                        <li><a href="tms-scan.html">扫描管理</a></li>
+                        <li><a href="tms-loading.html">装卸管理</a></li>
+                        <li><a href="tms-sorting.html">分拣管理</a></li>
+                        <li><a href="tms-warehouse.html">仓储管理</a></li>
+                        <li><a href="tms-vehicle.html">车辆管理</a></li>
+                        <li><a href="tms-capacity.html">运力管理</a></li>
+                        <li><a href="tms-geofence.html">电子围栏</a></li>
+                        <li><a href="tms-service.html">客服管理</a></li>
+                        <li><a href="tms-claim.html">理赔管理</a></li>
+                        <li><a href="tms-finance.html">财务管理</a></li>
+                        <li><a href="tms-administration.html">行政管理</a></li>
+                        <li><a href="tms-material.html">物料管理</a></li>
+                        <li><a href="tms-evaluation.html" class="active">考核评级</a></li>
+                        <li><a href="tms-performance.html">绩效管理</a></li>
+                        <li><a href="tms-hr.html">人事管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>考核评级</h2>
+                
+                <div class="stats">
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #4caf50;">12</div>
+                        <div>优秀员工</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #2196f3;">25</div>
+                        <div>良好员工</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #ff9800;">18</div>
+                        <div>合格员工</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #f44336;">3</div>
+                        <div>需改进员工</div>
+                    </div>
+                </div>
+
+                <div class="evaluation-list">
+                    <h3>员工考核列表</h3>
+                    <div id="evaluation-list">
+                        <!-- 员工考核将通过JS生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 子菜单切换功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const submenuItems = document.querySelectorAll('.has-submenu');
+            submenuItems.forEach(item => {
+                item.addEventListener('click', function(e) {
+                    if (e.target === this || e.target === this.querySelector('a')) {
+                        this.classList.toggle('active');
+                    }
+                });
+            });
+        });
+
+        // 切换标签页函数
+        function switchTab(tabId, sectionId = null) {
+            // 如果是切换到统计标签，隐藏所有统计部分
+            if (tabId === 'statistics') {
+                const sections = document.querySelectorAll('[id$="-section"]');
+                sections.forEach(section => {
+                    section.classList.add('hidden');
+                });
+                
+                // 如果指定了sectionId，显示该部分
+                if (sectionId) {
+                    const targetSection = document.getElementById(sectionId);
+                    if (targetSection) {
+                        targetSection.classList.remove('hidden');
+                    }
+                }
+            }
+        }
+
+        // 滚动到指定区域
+        function scrollToSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        // 考核评级系统逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('admin');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 初始化模拟数据
+            initMockEvaluations();
+
+            // 渲染考核列表
+            renderEvaluations();
+
+            
+
+                const userInfo = JSON.parse(user);
+                if (userInfo.role !== 'admin') {
+                    // 角色不匹配，跳转到登录页面
+                    window.location.href = 'index.html';
+                    return;
+                }
+
+                // 显示用户信息
+                displayCurrentUser();
+            
+
+            
+
+            // 初始化模拟考核数据
+            function initMockEvaluations() {
+                const existingEvaluations = localStorage.getItem('tmsEvaluations');
+                if (existingEvaluations) {
+                    return;
+                }
+
+                const mockEvaluations = [
+                    {
+                        id: 'EV202601200001',
+                        employeeName: '张三',
+                        employeeId: 'EMP001',
+                        department: '运营部',
+                        position: '运营经理',
+                        evaluationDate: '2026-01-20',
+                        period: '2025年12月',
+                        grade: 'excellent',
+                        score: 95,
+                        performance: '本月完成了120%的目标任务，带领团队超额完成指标',
+                        areasForImprovement: '需要加强团队成员培训',
+                        nextPlan: '制定2026年第一季度工作计划',
+                        status: 'completed'
+                    },
+                    {
+                        id: 'EV202601200002',
+                        employeeName: '李四',
+                        employeeId: 'EMP002',
+                        department: '客服部',
+                        position: '客服主管',
+                        evaluationDate: '2026-01-20',
+                        period: '2025年12月',
+                        grade: 'good',
+                        score: 85,
+                        performance: '本月处理了200个客户投诉，客户满意度达到95%',
+                        areasForImprovement: '需要提高处理效率',
+                        nextPlan: '优化客服流程',
+                        status: 'completed'
+                    },
+                    {
+                        id: 'EV202601200003',
+                        employeeName: '王五',
+                        employeeId: 'EMP003',
+                        department: '车队',
+                        position: '司机',
+                        evaluationDate: '2026-01-20',
+                        period: '2025年12月',
+                        grade: 'average',
+                        score: 75,
+                        performance: '本月完成了15000公里的运输任务，无安全事故',
+                        areasForImprovement: '需要注意车辆保养',
+                        nextPlan: '参加安全驾驶培训',
+                        status: 'completed'
+                    },
+                    {
+                        id: 'EV202601200004',
+                        employeeName: '赵六',
+                        employeeId: 'EMP004',
+                        department: '仓库',
+                        position: '仓库管理员',
+                        evaluationDate: '2026-01-20',
+                        period: '2025年12月',
+                        grade: 'poor',
+                        score: 65,
+                        performance: '本月出现了3次库存错误',
+                        areasForImprovement: '需要加强库存管理',
+                        nextPlan: '学习库存管理系统',
+                        status: 'pending'
+                    },
+                    {
+                        id: 'EV202601200005',
+                        employeeName: '孙七',
+                        employeeId: 'EMP005',
+                        department: '财务部',
+                        position: '财务专员',
+                        evaluationDate: '2026-01-20',
+                        period: '2025年12月',
+                        grade: 'good',
+                        score: 88,
+                        performance: '本月完成了财务报表的编制，无错误',
+                        areasForImprovement: '需要提高报表生成速度',
+                        nextPlan: '学习财务软件的高级功能',
+                        status: 'completed'
+                    }
+                ];
+
+                localStorage.setItem('tmsEvaluations', JSON.stringify(mockEvaluations));
+            }
+
+            // 渲染考核列表
+            function renderEvaluations() {
+                const container = document.getElementById('evaluation-list');
+                const evaluations = JSON.parse(localStorage.getItem('tmsEvaluations') || '[]');
+
+                container.innerHTML = evaluations.map(evaluation => `
+                    <div class="evaluation-item">
+                        <div class="evaluation-header">
+                            <span class="evaluation-id">${evaluation.id}</span>
+                            <span class="evaluation-grade grade ${evaluation.grade}">${getGradeText(evaluation.grade)}</span>
+                        </div>
+                        <h4>${evaluation.employeeName} (${evaluation.employeeId})</h4>
+                        <p><strong>部门:</strong> ${evaluation.department}</p>
+                        <p><strong>职位:</strong> ${evaluation.position}</p>
+                        <p><strong>考核日期:</strong> ${evaluation.evaluationDate}</p>
+                        <p><strong>考核周期:</strong> ${evaluation.period}</p>
+                        <p><strong>得分:</strong> ${evaluation.score}分</p>
+                        <p><strong>工作表现:</strong> ${evaluation.performance}</p>
+                        <p><strong>改进方向:</strong> ${evaluation.areasForImprovement}</p>
+                        <p><strong>下一步计划:</strong> ${evaluation.nextPlan}</p>
+                        <p><strong>状态:</strong> ${getStatusText(evaluation.status)}</p>
+                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                            ${evaluation.status === 'pending' ? `<button class="btn btn-primary" onclick="approveEvaluation('${evaluation.id}')">批准考核</button>` : ''}
+                            <button class="btn btn-secondary" onclick="viewEvaluationDetail('${evaluation.id}')">查看详情</button>
+                            <button class="btn btn-warning" onclick="editEvaluation('${evaluation.id}')">编辑考核</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // 获取等级文本
+            function getGradeText(grade) {
+                const gradeMap = {
+                    'excellent': '优秀',
+                    'good': '良好',
+                    'average': '合格',
+                    'poor': '需改进'
+                };
+                return gradeMap[grade] || grade;
+            }
+
+            // 获取状态文本
+            function getStatusText(status) {
+                const statusMap = {
+                    'pending': '待批准',
+                    'completed': '已完成',
+                    'rejected': '已拒绝'
+                };
+                return statusMap[status] || status;
+            }
+
+            // 批准考核
+            window.approveEvaluation = function(id) {
+                const evaluations = JSON.parse(localStorage.getItem('tmsEvaluations') || '[]');
+                const evaluation = evaluations.find(e => e.id === id);
+                if (evaluation) {
+                    evaluation.status = 'completed';
+                    localStorage.setItem('tmsEvaluations', JSON.stringify(evaluations));
+                    renderEvaluations();
+                    alert('考核已批准');
+                }
+            }
+
+            // 查看详情
+            window.viewEvaluationDetail = function(id) {
+                const evaluations = JSON.parse(localStorage.getItem('tmsEvaluations') || '[]');
+                const evaluation = evaluations.find(e => e.id === id);
+                if (evaluation) {
+                    // 这里可以实现详情模态框
+                    alert(`查看考核 ${id} 的详细信息`);
+                }
+            }
+
+            // 编辑考核
+            window.editEvaluation = function(id) {
+                // 这里可以实现编辑功能
+                alert(`编辑考核 ${id}`);
+            }
+        });
+    </script>
+</body>
+</html>

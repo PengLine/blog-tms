@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>派送区域 - TMS运输管理系统</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        /* 地图容器 */
+        .map-container {
+            height: 600px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 区域列表 */
+        .area-list {
+            margin-top: 2rem;
+        }
+
+        .area-item {
+            background: white;
+            padding: 1rem;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            margin-bottom: 1rem;
+            border-left: 4px solid #4ecdc4;
+        }
+
+        .area-item h4 {
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        .area-item p {
+            margin-bottom: 0.25rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .area-actions {
+            margin-top: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #45b7aa;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            margin-left: 0.5rem;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        /* 区域详情 */
+        .area-details {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #eee;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .map-container {
+                height: 400px;
+            }
+        }
+
+        /* 地图控制按钮 */
+        .map-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 0.5rem;
+        }
+
+        .map-control-btn {
+            display: block;
+            width: 100%;
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            text-align: center;
+        }
+
+        .map-control-btn:hover {
+            background: #e9ecef;
+        }
+
+        .map-control-btn:last-child {
+            margin-bottom: 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 派送员</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>派送员功能</h3>
+                    <ul>
+                        <li><a href="deliveryman-index.html">首页</a></li>
+                        <li><a href="deliveryman-tasks.html">我的任务</a></li>
+                        <li><a href="deliveryman-collection.html">订单提取</a></li>
+                        <li><a href="deliveryman-clock.html">打卡记录</a></li>
+                        <li><a href="deliveryman-performance.html">我的绩效</a></li>
+                        <li><a href="deliveryman-contacts.html">联系记录</a></li>
+                        <li><a href="deliveryman-exception.html">异常上报</a></li>
+                        <li><a href="deliveryman-areas.html" class="active">派送区域</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>派送区域</h2>
+                <p>今天是：<span id="current-date"></span></p>
+                
+                <!-- 地图展示 -->
+                <div class="card">
+                    <h3>区域围栏</h3>
+                    <div class="map-container">
+                        <div id="map"></div>
+                        <div class="map-controls">
+                            <button class="map-control-btn" onclick="zoomToAllAreas()">查看所有区域</button>
+                            <button class="map-control-btn" onclick="resetMap()">重置地图</button>
+                            <button class="map-control-btn" onclick="toggleAreaLabels()">显示/隐藏标签</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 区域列表 -->
+                <div class="card">
+                    <h3>我负责的区域</h3>
+                    <div class="area-list" id="area-list">
+                        <!-- 区域列表将通过JavaScript生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="common.js"></script>
+    <script>
+        // 全局变量
+        let map;
+        let areaLayers = [];
+        let areaLabels = [];
+        let showLabels = true;
+
+        // 派送员区域页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('deliveryman');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 初始化地图
+            initMap();
+            
+            // 加载区域数据
+            loadAreaData();
+        });
+
+        // 初始化地图
+        function initMap() {
+            // 创建地图实例，中心设置在默认位置
+            map = L.map('map').setView([39.9042, 116.4074], 13);
+
+            // 添加底图图层
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+        }
+
+        // 加载区域数据
+        function loadAreaData() {
+            // 初始化区域数据
+            initializeAreaData();
+            
+            // 从本地存储获取区域数据
+            const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
+            
+            // 显示区域列表
+            displayAreaList(areas);
+            
+            // 在地图上显示区域
+            displayAreasOnMap(areas);
+        }
+
+        // 初始化区域数据
+        function initializeAreaData() {
+            // 如果没有区域数据，初始化默认数据
+            if (!localStorage.getItem('deliverymanAreas')) {
+                const defaultAreas = [
+                    {
+                        id: '1',
+                        name: '朝阳区望京区域',
+                        type: '派送区域',
+                        coordinates: [
+                            [39.9900, 116.4700],
+                            [39.9900, 116.4900],
+                            [39.9700, 116.4900],
+                            [39.9700, 116.4700]
+                        ],
+                        taskCount: 25,
+                        address: '北京市朝阳区望京街道',
+                        notes: '主要覆盖望京SOHO、望京新城等区域'
+                    },
+                    {
+                        id: '2',
+                        name: '朝阳区酒仙桥区域',
+                        type: '收件区域',
+                        coordinates: [
+                            [39.9800, 116.4400],
+                            [39.9800, 116.4600],
+                            [39.9600, 116.4600],
+                            [39.9600, 116.4400]
+                        ],
+                        taskCount: 18,
+                        address: '北京市朝阳区酒仙桥街道',
+                        notes: '主要覆盖798艺术区、酒仙桥电子城等区域'
+                    },
+                    {
+                        id: '3',
+                        name: '朝阳区三里屯区域',
+                        type: '派送区域',
+                        coordinates: [
+                            [39.9300, 116.4500],
+                            [39.9300, 116.4700],
+                            [39.9100, 116.4700],
+                            [39.9100, 116.4500]
+                        ],
+                        taskCount: 32,
+                        address: '北京市朝阳区三里屯街道',
+                        notes: '主要覆盖三里屯商圈、工人体育场等区域'
+                    }
+                ];
+                
+                localStorage.setItem('deliverymanAreas', JSON.stringify(defaultAreas));
+            }
+        }
+
+        // 显示区域列表
+        function displayAreaList(areas) {
+            const areaList = document.getElementById('area-list');
+            
+            areaList.innerHTML = areas.map(area => `
+                <div class="area-item" data-id="${area.id}">
+                    <h4>${area.name}</h4>
+                    <p><strong>类型：</strong>${area.type}</p>
+                    <p><strong>任务数：</strong>${area.taskCount} 个</p>
+                    <p><strong>地址：</strong>${area.address}</p>
+                    <p><strong>备注：</strong>${area.notes}</p>
+                    <div class="area-actions">
+                        <button class="btn btn-primary" onclick="zoomToArea('${area.id}')">在地图上查看</button>
+                        <button class="btn btn-secondary" onclick="showAreaDetails('${area.id}')">查看详情</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 在地图上显示区域
+        function displayAreasOnMap(areas) {
+            // 清除现有图层
+            areaLayers.forEach(layer => map.removeLayer(layer));
+            areaLabels.forEach(label => map.removeLayer(label));
+            areaLayers = [];
+            areaLabels = [];
+
+            // 添加新图层
+            areas.forEach(area => {
+                // 创建多边形
+                const polygon = L.polygon(area.coordinates, {
+                    color: area.type === '派送区域' ? '#4ecdc4' : '#ff6b6b',
+                    fillColor: area.type === '派送区域' ? 'rgba(78, 205, 196, 0.2)' : 'rgba(255, 107, 107, 0.2)',
+                    fillOpacity: 0.5,
+                    weight: 2
+                }).addTo(map);
+                
+                // 添加弹出信息
+                polygon.bindPopup(`
+                    <div>
+                        <h3>${area.name}</h3>
+                        <p><strong>类型：</strong>${area.type}</p>
+                        <p><strong>任务数：</strong>${area.taskCount} 个</p>
+                        <p><strong>地址：</strong>${area.address}</p>
+                    </div>
+                `);
+                
+                // 添加到图层数组
+                areaLayers.push(polygon);
+                
+                // 添加标签
+                if (showLabels) {
+                    const center = getPolygonCenter(area.coordinates);
+                    const label = L.marker(center, {
+                        icon: L.divIcon({
+                            className: 'area-label',
+                            html: `<div style="background: white; padding: 5px 10px; border-radius: 3px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); font-size: 12px; font-weight: bold;">${area.name}</div>`,
+                            iconSize: [100, 30],
+                            iconAnchor: [50, 15]
+                        })
+                    }).addTo(map);
+                    areaLabels.push(label);
+                }
+            });
+        }
+
+        // 获取多边形中心点
+        function getPolygonCenter(coordinates) {
+            let latSum = 0;
+            let lngSum = 0;
+            
+            coordinates.forEach(coord => {
+                latSum += coord[0];
+                lngSum += coord[1];
+            });
+            
+            return [latSum / coordinates.length, lngSum / coordinates.length];
+        }
+
+        // 缩放到指定区域
+        function zoomToArea(areaId) {
+            const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
+            const area = areas.find(a => a.id === areaId);
+            
+            if (area) {
+                const polygon = L.polygon(area.coordinates);
+                map.fitBounds(polygon.getBounds(), { padding: [50, 50] });
+            }
+        }
+
+        // 缩放到所有区域
+        function zoomToAllAreas() {
+            const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
+            
+            if (areas.length > 0) {
+                const bounds = L.latLngBounds();
+                
+                areas.forEach(area => {
+                    const polygon = L.polygon(area.coordinates);
+                    bounds.extend(polygon.getBounds());
+                });
+                
+                map.fitBounds(bounds, { padding: [50, 50] });
+            }
+        }
+
+        // 重置地图
+        function resetMap() {
+            map.setView([39.9042, 116.4074], 13);
+        }
+
+        // 切换区域标签显示
+        function toggleAreaLabels() {
+            showLabels = !showLabels;
+            
+            // 重新加载区域
+            const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
+            displayAreasOnMap(areas);
+        }
+
+        // 显示区域详情
+        function showAreaDetails(areaId) {
+            const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
+            const area = areas.find(a => a.id === areaId);
+            
+            if (area) {
+                alert(`区域详情：\n名称：${area.name}\n类型：${area.type}\n任务数：${area.taskCount} 个\n地址：${area.address}\n备注：${area.notes}`);
+            }
+        }
+    </script>
+</body>
+</html>

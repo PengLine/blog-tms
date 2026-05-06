@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>派送员首页 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 统计卡片样式 */
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        /* 任务列表 */
+        .task-list {
+            margin-top: 1rem;
+        }
+
+        .task-item {
+            padding: 1rem;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            margin-bottom: 0.5rem;
+            background: #f9f9f9;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .task-item:hover {
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .task-title {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .task-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .status-in-progress {
+            background-color: #cce7ff;
+            color: #004085;
+        }
+
+        .status-completed {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 派送员</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>派送员功能</h3>
+                    <ul>
+                        <li><a href="deliveryman-index.html" class="active">首页</a></li>
+                        <li><a href="deliveryman-tasks.html">我的任务</a></li>
+                        <li><a href="deliveryman-collection.html">订单提取</a></li>
+                        <li><a href="deliveryman-clock.html">打卡记录</a></li>
+                        <li><a href="deliveryman-performance.html">我的绩效</a></li>
+                        <li><a href="deliveryman-contacts.html">联系记录</a></li>
+                        <li><a href="deliveryman-exception.html">异常上报</a></li>
+                        <li><a href="deliveryman-areas.html">派送区域</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>欢迎回来，<span id="welcome-username"></span></h2>
+                <p>今天是：<span id="current-date"></span></p>
+                
+                <!-- 统计卡片 -->
+                <div class="stats">
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #4ecdc4;" id="totalTasks">0</div>
+                        <div>今日任务</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #ff6b6b;" id="pendingTasks">0</div>
+                        <div>待处理</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #45b7d1;" id="inProgressTasks">0</div>
+                        <div>进行中</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #96ceb4;" id="completedTasks">0</div>
+                        <div>已完成</div>
+                    </div>
+                </div>
+
+                <!-- 今日任务 -->
+                <div class="card">
+                    <h3>今日任务</h3>
+                    <div class="task-list" id="todayTaskList">
+                        <!-- 任务列表将通过JavaScript生成 -->
+                    </div>
+                </div>
+
+                <!-- 最近异常 -->
+                <div class="card">
+                    <h3>最近异常</h3>
+                    <div class="task-list" id="recentExceptions">
+                        <!-- 异常列表将通过JavaScript生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 派送员首页逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('deliveryman');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            const user = displayCurrentUser();
+            if (user) {
+                document.getElementById('welcome-username').textContent = user.username;
+            }
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 初始化数据
+            initializeDeliverymanData();
+            
+            // 加载统计数据
+            loadStats();
+        });
+
+        // 初始化派送员数据
+        function initializeDeliverymanData() {
+            // 初始化任务数据
+            if (!localStorage.getItem('deliverymanTasks')) {
+                const tasks = [];
+                const today = new Date();
+                const todayStr = today.toISOString().split('T')[0];
+                
+                // 生成今日任务
+                for (let i = 1; i <= 8; i++) {
+                    tasks.push({
+                        id: `task-${i}`,
+                        type: i % 2 === 0 ? '收件' : '派件',
+                        title: i % 2 === 0 ? `收件任务 ${i}` : `派件任务 ${i}`,
+                        customer: `客户${i}`,
+                        address: `北京市朝阳区某某街道${i}号`,
+                        phone: `1380013800${i}`,
+                        time: `${todayStr} ${8 + i}:00`,
+                        status: i <= 3 ? 'pending' : i <= 6 ? 'in-progress' : 'completed',
+                        description: i % 2 === 0 ? `收取包裹，重量约${i}kg` : `派送包裹，单号：HL${Math.floor(Math.random() * 10000000000)}`
+                    });
+                }
+                
+                localStorage.setItem('deliverymanTasks', JSON.stringify(tasks));
+            }
+
+            // 初始化异常数据
+            if (!localStorage.getItem('deliverymanExceptions')) {
+                const exceptions = [];
+                const today = new Date();
+                
+                for (let i = 1; i <= 3; i++) {
+                    const exceptionDate = new Date(today);
+                    exceptionDate.setDate(today.getDate() - (3 - i));
+                    
+                    exceptions.push({
+                        id: `exception-${i}`,
+                        type: ['地址错误', '收件人拒收', '联系不上收件人'][i - 1],
+                        taskId: `task-${i}`,
+                        taskTitle: `任务 ${i}`,
+                        date: exceptionDate.toISOString().split('T')[0],
+                        status: i === 1 ? 'pending' : 'processed'
+                    });
+                }
+                
+                localStorage.setItem('deliverymanExceptions', JSON.stringify(exceptions));
+            }
+        }
+
+        // 加载统计数据
+        function loadStats() {
+            const tasks = JSON.parse(localStorage.getItem('deliverymanTasks')) || [];
+            const today = new Date().toISOString().split('T')[0];
+            
+            // 筛选今日任务
+            const todayTasks = tasks.filter(task => task.time.startsWith(today));
+            const pendingTasks = todayTasks.filter(task => task.status === 'pending').length;
+            const inProgressTasks = todayTasks.filter(task => task.status === 'in-progress').length;
+            const completedTasks = todayTasks.filter(task => task.status === 'completed').length;
+            
+            // 更新统计卡片
+            document.getElementById('totalTasks').textContent = todayTasks.length;
+            document.getElementById('pendingTasks').textContent = pendingTasks;
+            document.getElementById('inProgressTasks').textContent = inProgressTasks;
+            document.getElementById('completedTasks').textContent = completedTasks;
+            
+            // 加载今日任务列表
+            loadTodayTasks(todayTasks);
+            
+            // 加载最近异常
+            loadRecentExceptions();
+        }
+
+        // 加载今日任务列表
+        function loadTodayTasks(tasks) {
+            const taskList = document.getElementById('todayTaskList');
+            
+            if (tasks.length === 0) {
+                taskList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">今日暂无任务</p>';
+                return;
+            }
+            
+            taskList.innerHTML = tasks.map(task => `
+                <div class="task-item">
+                    <div class="task-header">
+                        <div class="task-title">${task.title}</div>
+                        <div class="task-status status-${task.status}">
+                            ${getStatusText(task.status)}
+                        </div>
+                    </div>
+                    <div style="font-size: 0.9rem; color: #666;">
+                        <p><strong>类型:</strong> ${task.type}</p>
+                        <p><strong>客户:</strong> ${task.customer} (${task.phone})</p>
+                        <p><strong>地址:</strong> ${task.address}</p>
+                        <p><strong>时间:</strong> ${task.time}</p>
+                        <p><strong>描述:</strong> ${task.description}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 加载最近异常
+        function loadRecentExceptions() {
+            const exceptions = JSON.parse(localStorage.getItem('deliverymanExceptions')) || [];
+            const exceptionList = document.getElementById('recentExceptions');
+            
+            if (exceptions.length === 0) {
+                exceptionList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">最近无异常记录</p>';
+                return;
+            }
+            
+            exceptionList.innerHTML = exceptions.map(exception => `
+                <div class="task-item">
+                    <div class="task-header">
+                        <div class="task-title">${exception.type}</div>
+                        <div class="task-status status-${exception.status}">
+                            ${exception.status === 'pending' ? '待处理' : '已处理'}
+                        </div>
+                    </div>
+                    <div style="font-size: 0.9rem; color: #666;">
+                        <p><strong>相关任务:</strong> ${exception.taskTitle}</p>
+                        <p><strong>日期:</strong> ${exception.date}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 获取状态文本
+        function getStatusText(status) {
+            const statusMap = {
+                'pending': '待处理',
+                'in-progress': '进行中',
+                'completed': '已完成'
+            };
+            return statusMap[status] || status;
+        }
+    </script>
+</body>
+</html>

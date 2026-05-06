@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>运营管理 - TMS运输管理系统</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #45b7d1;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #45b7d1;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        /* 标签页样式 */
+        .tab-container {
+            margin-bottom: 2rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+        }
+
+        .tab-btn.active {
+            border-color: #45b7d1;
+            background-color: #45b7d1;
+            color: white;
+        }
+
+        .tab-content {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 表单样式 */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .btn-primary {
+            background: #45b7d1;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+        }
+
+        .btn-primary:hover {
+            background: #3a9fc0;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            margin-left: 0.5rem;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        /* 表格样式 */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background-color: #f9f9f9;
+            font-weight: 600;
+            color: #333;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        /* 统计卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #45b7d1;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            color: #666;
+        }
+
+        /* 图表容器 */
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 2rem 0;
+        }
+
+        /* 状态标签 */
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status-active {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-inactive {
+            background: #dc3545;
+            color: white;
+        }
+
+        .status-pending {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .tabs {
+                flex-direction: column;
+            }
+
+            .tab-btn {
+                width: 100%;
+            }
+
+            .chart-container {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 网点</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>网点功能</h3>
+                    <ul>
+                        <li><a href="branch-index.html">首页</a></li>
+                        <li><a href="branch-collection.html">揽收管理</a></li>
+                        <li><a href="branch-sorting.html">分拣处理</a></li>
+                        <li><a href="branch-outbound.html">出库管理</a></li>
+                        <li><a href="branch-inventory.html">库存与资产</a></li>
+                        <li><a href="branch-service.html">服务与售后</a></li>
+                        <li><a href="branch-operation.html" class="active">运营管理</a></li>
+                        <li><a href="branch-system.html">系统管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>运营管理</h2>
+                <p>今天是：<span id="current-date"></span></p>
+                
+                <!-- 统计概览 -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalOrders">0</div>
+                        <div class="stat-label">今日订单数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalRevenue">¥0</div>
+                        <div class="stat-label">今日营收</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="completionRate">0%</div>
+                        <div class="stat-label">订单完成率</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="satisfactionRate">0%</div>
+                        <div class="stat-label">客户满意度</div>
+                    </div>
+                </div>
+
+                <!-- 标签页 -->
+                <div class="tab-container">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="collection-rate">揽件率</button>
+                        <button class="tab-btn" data-tab="send-rate">寄件率</button>
+                        <button class="tab-btn" data-tab="miss-rate">漏件率</button>
+                        <button class="tab-btn" data-tab="delivery-rate">派送率</button>
+                        <button class="tab-btn" data-tab="error-rate">错件率</button>
+                        <button class="tab-btn" data-tab="return-rate">退货率</button>
+                    </div>
+
+                    <!-- 揽件率 -->
+                    <div class="tab-content" id="collection-rate">
+                        <h3>揽件率统计</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="collection-staff">员工</label>
+                                <select id="collection-staff">
+                                    <option value="all">全部员工</option>
+                                    <option value="staff1">张三</option>
+                                    <option value="staff2">李四</option>
+                                    <option value="staff3">王五</option>
+                                    <option value="staff4">赵六</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="collection-period">时间周期</label>
+                                <select id="collection-period">
+                                    <option value="week">本周</option>
+                                    <option value="month">本月</option>
+                                    <option value="quarter">本季度</option>
+                                    <option value="year">本年</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="loadCollectionData()">查询数据</button>
+                        
+                        <!-- 揽件率图表 -->
+                        <div class="chart-container">
+                            <canvas id="collectionChart"></canvas>
+                        </div>
+                        
+                        <div class="table-container">
+                            <table id="collection-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>应揽件数</th>
+                                        <th>实际揽件数</th>
+                                        <th>揽件率</th>
+                                        <th>未揽件原因</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 揽件数据将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 寄件率 -->
+                    <div class="tab-content hidden" id="send-rate">
+                        <h3>寄件率统计</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="send-staff">员工</label>
+                                <select id="send-staff">
+                                    <option value="all">全部员工</option>
+                                    <option value="staff1">张三</option>
+                                    <option value="staff2">李四</option>
+                                    <option value="staff3">王五</option>
+                                    <option value="staff4">赵六</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="send-period">时间周期</label>
+                                <select id="send-period">
+                                    <option value="week">本周</option>
+                                    <option value="month">本月</option>
+                                    <option value="quarter">本季度</option>
+                                    <option value="year">本年</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="loadSendData()">查询数据</button>
+                        
+                        <!-- 寄件率图表 -->
+                        <div class="chart-container">
+                            <canvas id="sendChart"></canvas>
+                        </div>
+                        
+                        <div class="table-container">
+                            <table id="send-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>应寄件数</th>
+                                        <th>实际寄件数</th>
+                                        <th>寄件率</th>
+                                        <th>未寄件原因</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 寄件数据将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 漏件率 -->
+                    <div class="tab-content hidden" id="miss-rate">
+                        <h3>漏件率统计</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="miss-staff">员工</label>
+                                <select id="miss-staff">
+                                    <option value="all">全部员工</option>
+                                    <option value="staff1">张三</option>
+                                    <option value="staff2">李四</option>
+                                    <option value="staff3">王五</option>
+                                    <option value="staff4">赵六</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="miss-period">时间周期</label>
+                                <select id="miss-period">
+                                    <option value="week">本周</option>
+                                    <option value="month">本月</option>
+                                    <option value="quarter">本季度</option>
+                                    <option value="year">本年</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="loadMissData()">查询数据</button>
+                        
+                        <!-- 漏件率图表 -->
+                        <div class="chart-container">
+                            <canvas id="missChart"></canvas>
+                        </div>
+                        
+                        <div class="table-container">
+                            <table id="miss-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>总件数</th>
+                                        <th>漏件数</th>
+                                        <th>漏件率</th>
+                                        <th>漏件原因</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 漏件数据将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 派送率 -->
+                    <div class="tab-content hidden" id="delivery-rate">
+                        <h3>派送率统计</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="delivery-staff">员工</label>
+                                <select id="delivery-staff">
+                                    <option value="all">全部员工</option>
+                                    <option value="staff1">张三</option>
+                                    <option value="staff2">李四</option>
+                                    <option value="staff3">王五</option>
+                                    <option value="staff4">赵六</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="delivery-period">时间周期</label>
+                                <select id="delivery-period">
+                                    <option value="week">本周</option>
+                                    <option value="month">本月</option>
+                                    <option value="quarter">本季度</option>
+                                    <option value="year">本年</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="loadDeliveryData()">查询数据</button>
+                        
+                        <!-- 派送率图表 -->
+                        <div class="chart-container">
+                            <canvas id="deliveryChart"></canvas>
+                        </div>
+                        
+                        <div class="table-container">
+                            <table id="delivery-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>应派送数</th>
+                                        <th>实际派送数</th>
+                                        <th>派送率</th>
+                                        <th>未派送原因</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 派送数据将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 错件率 -->
+                    <div class="tab-content hidden" id="error-rate">
+                        <h3>错件率统计</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="error-staff">员工</label>
+                                <select id="error-staff">
+                                    <option value="all">全部员工</option>
+                                    <option value="staff1">张三</option>
+                                    <option value="staff2">李四</option>
+                                    <option value="staff3">王五</option>
+                                    <option value="staff4">赵六</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="error-period">时间周期</label>
+                                <select id="error-period">
+                                    <option value="week">本周</option>
+                                    <option value="month">本月</option>
+                                    <option value="quarter">本季度</option>
+                                    <option value="year">本年</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="loadErrorData()">查询数据</button>
+                        
+                        <!-- 错件率图表 -->
+                        <div class="chart-container">
+                            <canvas id="errorChart"></canvas>
+                        </div>
+                        
+                        <div class="table-container">
+                            <table id="error-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>总件数</th>
+                                        <th>错件数</th>
+                                        <th>错件率</th>
+                                        <th>错件原因</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 错件数据将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 退货率 -->
+                    <div class="tab-content hidden" id="return-rate">
+                        <h3>退货率统计</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="return-staff">员工</label>
+                                <select id="return-staff">
+                                    <option value="all">全部员工</option>
+                                    <option value="staff1">张三</option>
+                                    <option value="staff2">李四</option>
+                                    <option value="staff3">王五</option>
+                                    <option value="staff4">赵六</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="return-period">时间周期</label>
+                                <select id="return-period">
+                                    <option value="week">本周</option>
+                                    <option value="month">本月</option>
+                                    <option value="quarter">本季度</option>
+                                    <option value="year">本年</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" onclick="loadReturnData()">查询数据</button>
+                        
+                        <!-- 退货率图表 -->
+                        <div class="chart-container">
+                            <canvas id="returnChart"></canvas>
+                        </div>
+                        
+                        <div class="table-container">
+                            <table id="return-table">
+                                <thead>
+                                    <tr>
+                                        <th>日期</th>
+                                        <th>总件数</th>
+                                        <th>退货数</th>
+                                        <th>退货率</th>
+                                        <th>退货原因</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 退货数据将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 全局变量
+        let collectionChartInstance = null;
+        let sendChartInstance = null;
+        let missChartInstance = null;
+        let deliveryChartInstance = null;
+        let errorChartInstance = null;
+        let returnChartInstance = null;
+
+        // 网点运营管理页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('branch');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 初始化数据
+            initializeData();
+            
+            // 加载统计数据
+            loadStats();
+            
+            // 加载揽件率数据
+            setTimeout(() => {
+                try {
+                    loadCollectionData();
+                } catch (error) {
+                    console.error('加载揽件率数据时出错:', error);
+                }
+            }, 300);
+            
+            // 绑定标签页切换事件
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    const tabId = this.getAttribute('data-tab');
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.add('hidden');
+                    });
+                    document.getElementById(tabId).classList.remove('hidden');
+                    
+                    // 根据标签页加载对应数据
+                    switch(tabId) {
+                        case 'collection-rate':
+                            loadCollectionData();
+                            break;
+                        case 'send-rate':
+                            loadSendData();
+                            break;
+                        case 'miss-rate':
+                            loadMissData();
+                            break;
+                        case 'delivery-rate':
+                            loadDeliveryData();
+                            break;
+                        case 'error-rate':
+                            loadErrorData();
+                            break;
+                        case 'return-rate':
+                            loadReturnData();
+                            break;
+                    }
+                });
+            });
+        });
+
+        // 初始化数据
+        function initializeData() {
+            // 初始化订单数据
+            if (!localStorage.getItem('orderRecords')) {
+                const defaultOrders = [
+                    {
+                        id: 'ORD001',
+                        orderNo: 'HLBJ16725312001234567890',
+                        type: 'collection',
+                        status: 'completed',
+                        createTime: '2024-01-20 09:00:00',
+                        completeTime: '2024-01-20 10:30:00',
+                        staffId: 'EMP001',
+                        staffName: '张三',
+                        customerName: '客户A',
+                        customerPhone: '13800138001',
+                        address: '北京市朝阳区望京街道',
+                        amount: 20.00
+                    },
+                    {
+                        id: 'ORD002',
+                        orderNo: 'HLSH16726176002345678901',
+                        type: 'delivery',
+                        status: 'completed',
+                        createTime: '2024-01-20 10:00:00',
+                        completeTime: '2024-01-20 11:45:00',
+                        staffId: 'EMP002',
+                        staffName: '李四',
+                        customerName: '客户B',
+                        customerPhone: '13800138002',
+                        address: '上海市浦东新区陆家嘴街道',
+                        amount: 15.00
+                    },
+                    {
+                        id: 'ORD003',
+                        orderNo: 'HLGZ16727040003456789012',
+                        type: 'collection',
+                        status: 'pending',
+                        createTime: '2024-01-20 11:00:00',
+                        staffId: 'EMP003',
+                        staffName: '王五',
+                        customerName: '客户C',
+                        customerPhone: '13800138003',
+                        address: '广州市天河区珠江新城街道',
+                        amount: 25.00
+                    },
+                    {
+                        id: 'ORD004',
+                        orderNo: 'HLCD16727904004567890123',
+                        type: 'delivery',
+                        status: 'completed',
+                        createTime: '2024-01-20 12:00:00',
+                        completeTime: '2024-01-20 14:20:00',
+                        staffId: 'EMP004',
+                        staffName: '赵六',
+                        customerName: '客户D',
+                        customerPhone: '13800138004',
+                        address: '成都市武侯区锦里街道',
+                        amount: 18.00
+                    },
+                    {
+                        id: 'ORD005',
+                        orderNo: 'HLHZ16728768005678901234',
+                        type: 'collection',
+                        status: 'completed',
+                        createTime: '2024-01-20 13:00:00',
+                        completeTime: '2024-01-20 15:10:00',
+                        staffId: 'EMP001',
+                        staffName: '张三',
+                        customerName: '客户E',
+                        customerPhone: '13800138005',
+                        address: '杭州市西湖区西湖街道',
+                        amount: 30.00
+                    }
+                ];
+                localStorage.setItem('orderRecords', JSON.stringify(defaultOrders));
+            }
+        }
+
+        // 加载统计数据
+        function loadStats() {
+            const orderRecords = JSON.parse(localStorage.getItem('orderRecords')) || [];
+            
+            // 模拟数据
+            const totalOrders = orderRecords.length;
+            const completedOrders = orderRecords.filter(order => order.status === 'completed').length;
+            const completionRate = Math.round((completedOrders / totalOrders) * 100);
+            const totalRevenue = orderRecords.reduce((sum, order) => sum + order.amount, 0);
+            const satisfactionRate = 95;
+            
+            document.getElementById('totalOrders').textContent = totalOrders;
+            document.getElementById('totalRevenue').textContent = '¥' + totalRevenue.toLocaleString();
+            document.getElementById('completionRate').textContent = completionRate + '%';
+            document.getElementById('satisfactionRate').textContent = satisfactionRate + '%';
+        }
+
+        // 生成模拟数据
+        function generateRateData(period, baseRate, variance) {
+            const data = [];
+            const labels = [];
+            
+            if (period === 'week') {
+                const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+                days.forEach(day => {
+                    labels.push(day);
+                    data.push(baseRate + (Math.random() * variance * 2 - variance));
+                });
+            } else if (period === 'month') {
+                for (let i = 1; i <= 30; i++) {
+                    labels.push(i + '日');
+                    data.push(baseRate + (Math.random() * variance * 2 - variance));
+                }
+            } else if (period === 'quarter') {
+                const months = ['1月', '2月', '3月'];
+                months.forEach(month => {
+                    labels.push(month);
+                    data.push(baseRate + (Math.random() * variance * 2 - variance));
+                });
+            } else if (period === 'year') {
+                const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
+                quarters.forEach(quarter => {
+                    labels.push(quarter);
+                    data.push(baseRate + (Math.random() * variance * 2 - variance));
+                });
+            }
+            
+            return { labels, data };
+        }
+
+        // 加载揽件率数据
+        function loadCollectionData() {
+            const staff = document.getElementById('collection-staff').value;
+            const period = document.getElementById('collection-period').value;
+            
+            // 生成模拟数据
+            const { labels, data } = generateRateData(period, 95, 5);
+            
+            // 更新揽件率图表
+            updateChart('collectionChart', collectionChartInstance, labels, data, '揽件率 (%)', '#45b7d1');
+            
+            // 更新表格数据
+            updateRateTable('collection-table', labels, data, '应揽件数', '实际揽件数', '揽件率', '未揽件原因');
+        }
+
+        // 加载寄件率数据
+        function loadSendData() {
+            const staff = document.getElementById('send-staff').value;
+            const period = document.getElementById('send-period').value;
+            
+            // 生成模拟数据
+            const { labels, data } = generateRateData(period, 93, 6);
+            
+            // 更新寄件率图表
+            updateChart('sendChart', sendChartInstance, labels, data, '寄件率 (%)', '#ff6b6b');
+            
+            // 更新表格数据
+            updateRateTable('send-table', labels, data, '应寄件数', '实际寄件数', '寄件率', '未寄件原因');
+        }
+
+        // 加载漏件率数据
+        function loadMissData() {
+            const staff = document.getElementById('miss-staff').value;
+            const period = document.getElementById('miss-period').value;
+            
+            // 生成模拟数据
+            const { labels, data } = generateRateData(period, 2, 1);
+            
+            // 更新漏件率图表
+            updateChart('missChart', missChartInstance, labels, data, '漏件率 (%)', '#4ecdc4');
+            
+            // 更新表格数据
+            updateRateTable('miss-table', labels, data, '总件数', '漏件数', '漏件率', '漏件原因');
+        }
+
+        // 加载派送率数据
+        function loadDeliveryData() {
+            const staff = document.getElementById('delivery-staff').value;
+            const period = document.getElementById('delivery-period').value;
+            
+            // 生成模拟数据
+            const { labels, data } = generateRateData(period, 94, 5);
+            
+            // 更新派送率图表
+            updateChart('deliveryChart', deliveryChartInstance, labels, data, '派送率 (%)', '#45b7d1');
+            
+            // 更新表格数据
+            updateRateTable('delivery-table', labels, data, '应派送数', '实际派送数', '派送率', '未派送原因');
+        }
+
+        // 加载错件率数据
+        function loadErrorData() {
+            const staff = document.getElementById('error-staff').value;
+            const period = document.getElementById('error-period').value;
+            
+            // 生成模拟数据
+            const { labels, data } = generateRateData(period, 1.5, 0.8);
+            
+            // 更新错件率图表
+            updateChart('errorChart', errorChartInstance, labels, data, '错件率 (%)', '#ff9f43');
+            
+            // 更新表格数据
+            updateRateTable('error-table', labels, data, '总件数', '错件数', '错件率', '错件原因');
+        }
+
+        // 加载退货率数据
+        function loadReturnData() {
+            const staff = document.getElementById('return-staff').value;
+            const period = document.getElementById('return-period').value;
+            
+            // 生成模拟数据
+            const { labels, data } = generateRateData(period, 3, 1.5);
+            
+            // 更新退货率图表
+            updateChart('returnChart', returnChartInstance, labels, data, '退货率 (%)', '#ee5a6f');
+            
+            // 更新表格数据
+            updateRateTable('return-table', labels, data, '总件数', '退货数', '退货率', '退货原因');
+        }
+
+        // 更新图表
+        function updateChart(canvasId, chartInstance, labels, data, label, color) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            
+            // 销毁现有图表
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+            
+            // 创建新图表
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: label,
+                        data: data,
+                        borderColor: color,
+                        backgroundColor: color + '20',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointBackgroundColor: color,
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return label + ': ' + context.parsed.y.toFixed(2) + '%';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            min: 0,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // 更新图表实例
+            switch(canvasId) {
+                case 'collectionChart':
+                    collectionChartInstance = chartInstance;
+                    break;
+                case 'sendChart':
+                    sendChartInstance = chartInstance;
+                    break;
+                case 'missChart':
+                    missChartInstance = chartInstance;
+                    break;
+                case 'deliveryChart':
+                    deliveryChartInstance = chartInstance;
+                    break;
+                case 'errorChart':
+                    errorChartInstance = chartInstance;
+                    break;
+                case 'returnChart':
+                    returnChartInstance = chartInstance;
+                    break;
+            }
+        }
+
+        // 更新率表格
+        function updateRateTable(tableId, labels, data, col1, col2, col3, col4) {
+            const tableBody = document.querySelector('#' + tableId + ' tbody');
+            tableBody.innerHTML = '';
+            
+            labels.forEach((label, index) => {
+                const rate = data[index];
+                const total = Math.floor(Math.random() * 100) + 50;
+                const actual = Math.floor(total * rate / 100);
+                const reason = getRandomReason();
+                
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${label}</td>
+                    <td>${total}</td>
+                    <td>${actual}</td>
+                    <td>${rate.toFixed(2)}%</td>
+                    <td>${reason}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        // 获取随机原因
+        function getRandomReason() {
+            const reasons = [
+                '客户不在家',
+                '地址不详',
+                '电话无人接听',
+                '天气原因',
+                '交通堵塞',
+                '系统故障',
+                '员工请假',
+                '设备故障',
+                '其他原因'
+            ];
+            return reasons[Math.floor(Math.random() * reasons.length)];
+        }
+    </script>
+</body>
+</html>

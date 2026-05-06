@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>货物跟踪 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        .view h2 {
+            margin-bottom: 2rem;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 1rem;
+        }
+
+        /* 搜索框样式 */
+        .tracking-box {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .tracking-box input {
+            flex: 1;
+            padding: 1rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .tracking-box button {
+            padding: 1rem 2rem;
+            background: #4ecdc4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .tracking-box button:hover {
+            background: #45b7aa;
+        }
+
+        /* 跟踪结果样式 */
+        .tracking-result {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .tracking-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        .tracking-item::after {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 30px;
+            bottom: -20px;
+            width: 2px;
+            background: #e0e0e0;
+        }
+
+        .tracking-item:last-child::after {
+            display: none;
+        }
+
+        .tracking-dot {
+            width: 20px;
+            height: 20px;
+            background: #4ecdc4;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            flex-shrink: 0;
+            margin-top: 4px;
+            z-index: 1;
+        }
+
+        .tracking-dot.completed {
+            background: #4caf50;
+        }
+
+        .tracking-dot.current {
+            background: #45b7d1;
+            width: 24px;
+            height: 24px;
+            margin-top: 2px;
+        }
+
+        /* 状态类型标签样式 */
+        .tracking-type {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin-right: 0.5rem;
+            vertical-align: middle;
+        }
+
+        .tracking-type.shipping {
+            background: #ff9800;
+            color: white;
+        }
+
+        .tracking-type.sorting {
+            background: #2196f3;
+            color: white;
+        }
+
+        .tracking-type.transit {
+            background: #9c27b0;
+            color: white;
+        }
+
+        .tracking-type.delivery {
+            background: #4caf50;
+            color: white;
+        }
+
+        .tracking-content {
+            flex: 1;
+        }
+
+        .tracking-time {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .tracking-status {
+            margin-bottom: 0.3rem;
+        }
+
+        .tracking-description {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .tracking-box {
+                flex-direction: column;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 客户端</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="client-nav" class="nav">
+                    <h3>客户端功能</h3>
+                    <ul>
+                        <li><a href="client-index.html">首页</a></li>
+                        <li><a href="client-send.html">我要寄件</a></li>
+                        <li><a href="client-order.html">订单查询</a></li>
+                        <li><a href="client-tracking.html" class="active">货物跟踪</a></li>
+                        <li><a href="client-branch.html">附近网点</a></li>
+                        <li><a href="client-profile.html">个人中心</a></li>
+                        <li><a href="client-points.html">我的积分</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <div class="view">
+                    <h2>货物跟踪</h2>
+                    <div class="tracking-box">
+                        <input type="text" id="waybill-search" placeholder="输入运单号查询">
+                        <button id="track-btn" class="btn btn-primary">跟踪</button>
+                    </div>
+                    <div class="tracking-result" id="tracking-result">
+                        <h4>货物跟踪示例</h4>
+                        <p>请输入运单号进行货物跟踪</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 货物跟踪页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('client');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 绑定跟踪事件
+            document.getElementById('track-btn').addEventListener('click', () => {
+                trackCargo();
+            });
+
+            // 回车键跟踪
+            document.getElementById('waybill-search').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    trackCargo();
+                }
+            });
+
+            // 页面加载完成后，自动显示示例跟踪数据
+            const exampleWaybill = generateWaybillNumber('HLSH17053997000005602314');
+            const secondWaybill = generateWaybillNumber('HLBJ17053194000007238456');
+            const exampleTrackingData = [
+                { time: '2024-01-16 10:00', location: '上海网点', status: '货物已发出', type: 'shipping', completed: true, description: '上海网点已揽收货物' },
+                { time: '2024-01-16 12:00', location: '上海分拣中心', status: '开始分拣', type: 'sorting', completed: true, description: '货物到达上海分拣中心，开始分拣' },
+                { time: '2024-01-16 13:30', location: '上海分拣中心', status: '分拣完成', type: 'sorting', completed: true, description: '货物分拣完成，准备发往杭州中转站' },
+                { time: '2024-01-16 14:30', location: '杭州中转站', status: '货物已到达', type: 'transit', completed: true, description: '货物到达杭州中转站' },
+                { time: '2024-01-16 15:30', location: '杭州中转站', status: '开始分拣', type: 'sorting', completed: true, description: '货物到达杭州分拣中心，开始分拣' },
+                { time: '2024-01-16 17:00', location: '杭州中转站', status: '分拣完成', type: 'sorting', completed: true, description: '货物分拣完成，准备发往杭州网点' },
+                { time: '2024-01-17 08:15', location: '杭州网点', status: '货物已到达', type: 'transit', completed: true, description: '货物到达杭州网点' },
+                { time: '2024-01-17 09:00', location: '杭州网点', status: '开始配送', type: 'delivery', completed: true, description: '货物已分配给配送员，准备配送' },
+                { time: '2024-01-17 10:30', location: '目的地附近', status: '正在配送', type: 'delivery', completed: true, description: '配送员正在配送途中' },
+                { time: '2024-01-17 11:00', location: '目的地', status: '即将送达', type: 'delivery', completed: false, description: '配送员即将到达目的地' }
+            ];
+
+            // 检查用户登录状态
+            checkLoginStatus('client');
+            // 显示当前用户名
+            displayCurrentUser();
+            
+            // 设置输入框默认值
+            document.getElementById('waybill-search').value = exampleWaybill;
+            // 渲染示例跟踪结果
+            renderTrackingResult(exampleWaybill, exampleTrackingData);
+
+            function trackCargo() {
+                const waybillNumber = document.getElementById('waybill-search').value.trim();
+                if (!waybillNumber) {
+                    alert('请输入运单号');
+                    return;
+                }
+
+                // 模拟跟踪数据
+            const mockTrackingData = {
+                [exampleWaybill]: [
+                        { time: '2024-01-16 10:00', location: '上海网点', status: '货物已发出', type: 'shipping', completed: true, description: '上海网点已揽收货物' },
+                        { time: '2024-01-16 12:00', location: '上海分拣中心', status: '开始分拣', type: 'sorting', completed: true, description: '货物到达上海分拣中心，开始分拣' },
+                        { time: '2024-01-16 13:30', location: '上海分拣中心', status: '分拣完成', type: 'sorting', completed: true, description: '货物分拣完成，准备发往杭州中转站' },
+                        { time: '2024-01-16 14:30', location: '杭州中转站', status: '货物已到达', type: 'transit', completed: true, description: '货物到达杭州中转站' },
+                        { time: '2024-01-16 15:30', location: '杭州中转站', status: '开始分拣', type: 'sorting', completed: true, description: '货物到达杭州分拣中心，开始分拣' },
+                        { time: '2024-01-16 17:00', location: '杭州中转站', status: '分拣完成', type: 'sorting', completed: true, description: '货物分拣完成，准备发往杭州网点' },
+                        { time: '2024-01-17 08:15', location: '杭州网点', status: '货物已到达', type: 'transit', completed: true, description: '货物到达杭州网点' },
+                        { time: '2024-01-17 09:00', location: '杭州网点', status: '开始配送', type: 'delivery', completed: true, description: '货物已分配给配送员，准备配送' },
+                        { time: '2024-01-17 10:30', location: '目的地附近', status: '正在配送', type: 'delivery', completed: true, description: '配送员正在配送途中' },
+                        { time: '2024-01-17 11:00', location: '目的地', status: '即将送达', type: 'delivery', completed: false, description: '配送员即将到达目的地' }
+                    ],
+                    [secondWaybill]: [
+                        { time: '2024-01-15 09:00', location: '北京网点', status: '货物已发出', type: 'shipping', completed: true, description: '北京网点已揽收货物' },
+                        { time: '2024-01-15 11:30', location: '北京分拣中心', status: '开始分拣', type: 'sorting', completed: true, description: '货物到达北京分拣中心，开始分拣' },
+                        { time: '2024-01-15 14:00', location: '北京分拣中心', status: '分拣完成', type: 'sorting', completed: true, description: '货物分拣完成，准备发往上海中转站' },
+                        { time: '2024-01-15 16:45', location: '上海中转站', status: '货物已到达', type: 'transit', completed: true, description: '货物到达上海中转站' },
+                        { time: '2024-01-15 18:00', location: '上海中转站', status: '开始分拣', type: 'sorting', completed: true, description: '货物到达上海分拣中心，开始分拣' },
+                        { time: '2024-01-15 20:00', location: '上海中转站', status: '分拣完成', type: 'sorting', completed: true, description: '货物分拣完成，准备发往上海网点' },
+                        { time: '2024-01-16 07:30', location: '上海网点', status: '货物已到达', type: 'transit', completed: true, description: '货物到达上海网点' },
+                        { time: '2024-01-16 08:30', location: '上海网点', status: '开始配送', type: 'delivery', completed: true, description: '货物已分配给配送员，准备配送' },
+                        { time: '2024-01-16 10:30', location: '目的地附近', status: '正在配送', type: 'delivery', completed: true, description: '配送员正在配送途中' },
+                        { time: '2024-01-16 12:00', location: '目的地', status: '货物已送达', type: 'delivery', completed: true, description: '货物已成功送达，客户已签收' }
+                    ]
+                };
+
+                const trackingData = mockTrackingData[waybillNumber] || [];
+                renderTrackingResult(waybillNumber, trackingData);
+            }
+
+            function renderTrackingResult(waybillNumber, trackingData) {
+                const container = document.getElementById('tracking-result');
+                
+                if (trackingData.length === 0) {
+                    container.innerHTML = `
+                        <h4>运单号: ${waybillNumber}</h4>
+                        <p style="margin-top: 1rem; color: #666;">未找到该运单的跟踪信息</p>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = `
+                    <h4>运单号: ${waybillNumber}</h4>
+                    <div style="margin-top: 2rem;">
+                        ${trackingData.map((item, index) => `
+                            <div class="tracking-item">
+                                <div class="tracking-dot ${item.completed ? (index === trackingData.length - 1 ? 'current' : 'completed') : ''}">
+                                    ${item.completed ? '✓' : '→'}
+                                </div>
+                                <div class="tracking-content">
+                                    <div class="tracking-time">${item.time}</div>
+                                    <div class="tracking-status">
+                                        <span class="tracking-type ${item.type || 'shipping'}">${getTrackingTypeText(item.type)}</span>
+                                        <strong>${item.location}</strong>
+                                    </div>
+                                    <div style="margin-top: 0.3rem;">${item.status}</div>
+                                    <div class="tracking-description">${item.description}</div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            // 获取跟踪类型文本
+            function getTrackingTypeText(type) {
+                const typeMap = {
+                    'shipping': '发货',
+                    'sorting': '分拣',
+                    'transit': '运输',
+                    'delivery': '配送'
+                };
+                return typeMap[type] || '未知';
+            }
+        });
+    </script>
+</body>
+</html>

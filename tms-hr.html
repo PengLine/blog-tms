@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人事管理 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 子菜单样式 */
+        .has-submenu {
+            position: relative;
+        }
+
+        .has-submenu > a {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .has-submenu > a::after {
+            content: '▼';
+            font-size: 0.7rem;
+            transition: transform 0.3s ease;
+        }
+
+        .has-submenu.active > a::after {
+            transform: rotate(180deg);
+        }
+
+        .submenu {
+            display: none;
+            list-style: none;
+            margin: 0.5rem 0 0 1.5rem;
+            padding: 0;
+        }
+
+        .submenu li {
+            margin-bottom: 0.3rem;
+        }
+
+        .submenu a {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .has-submenu.active .submenu {
+            display: block;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 统计卡片样式 */
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* 员工列表 */
+        .employee-list {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+        }
+
+        .employee-item {
+            padding: 1rem;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .employee-item:last-child {
+            border-bottom: none;
+        }
+
+        .employee-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .employee-id {
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .employee-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .status.active {
+            background: #4caf50;
+            color: white;
+        }
+
+        .status.on_leave {
+            background: #2196f3;
+            color: white;
+        }
+
+        .status.inactive {
+            background: #9e9e9e;
+            color: white;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .submenu {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                background: white;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                border-radius: 0 0 5px 5px;
+                min-width: 200px;
+                margin: 0;
+                z-index: 1000;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运营管理</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="admin-nav" class="nav">
+                    <h3>运营功能</h3>
+                    <ul>
+                        <li><a href="tms-index.html">首页</a></li>
+                        <li><a href="tms-monitor.html">系统监控</a></li>
+                        <li><a href="tms-user.html">用户管理</a></li>
+                        <li><a href="tms-exception.html">异常管理</a></li>
+                        <li><a href="tms-transport.html">运输管理</a></li>
+                        <li class="has-submenu">
+                            <a href="tms-operation.html">运营管理</a>
+                            <ul class="submenu">
+                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
+                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
+                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
+                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
+                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
+                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
+                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="tms-timing.html">时效管理</a></li>
+                        <li><a href="tms-scan.html">扫描管理</a></li>
+                        <li><a href="tms-loading.html">装卸管理</a></li>
+                        <li><a href="tms-sorting.html">分拣管理</a></li>
+                        <li><a href="tms-warehouse.html">仓储管理</a></li>
+                        <li><a href="tms-vehicle.html">车辆管理</a></li>
+                        <li><a href="tms-capacity.html">运力管理</a></li>
+                        <li><a href="tms-geofence.html">电子围栏</a></li>
+                        <li><a href="tms-service.html">客服管理</a></li>
+                        <li><a href="tms-claim.html">理赔管理</a></li>
+                        <li><a href="tms-finance.html">财务管理</a></li>
+                        <li><a href="tms-administration.html">行政管理</a></li>
+                        <li><a href="tms-material.html">物料管理</a></li>
+                        <li><a href="tms-evaluation.html">考核评级</a></li>
+                        <li><a href="tms-performance.html">绩效管理</a></li>
+                        <li><a href="tms-hr.html" class="active">人事管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>人事管理</h2>
+                
+                <div class="stats">
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #4ecdc4;">58</div>
+                        <div>员工总数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #4caf50;">55</div>
+                        <div>在职员工</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #2196f3;">2</div>
+                        <div>休假员工</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #9e9e9e;">1</div>
+                        <div>离职员工</div>
+                    </div>
+                </div>
+
+                <div class="employee-list">
+                    <h3>员工列表</h3>
+                    <div id="employee-list">
+                        <!-- 员工信息将通过JS生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 子菜单切换功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const submenuItems = document.querySelectorAll('.has-submenu');
+            submenuItems.forEach(item => {
+                item.addEventListener('click', function(e) {
+                    if (e.target === this || e.target === this.querySelector('a')) {
+                        this.classList.toggle('active');
+                    }
+                });
+            });
+        });
+
+        // 切换标签页函数
+        function switchTab(tabId, sectionId = null) {
+            // 如果是切换到统计标签，隐藏所有统计部分
+            if (tabId === 'statistics') {
+                const sections = document.querySelectorAll('[id$="-section"]');
+                sections.forEach(section => {
+                    section.classList.add('hidden');
+                });
+                
+                // 如果指定了sectionId，显示该部分
+                if (sectionId) {
+                    const targetSection = document.getElementById(sectionId);
+                    if (targetSection) {
+                        targetSection.classList.remove('hidden');
+                    }
+                }
+            }
+        }
+
+        // 滚动到指定区域
+        function scrollToSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        // 人事管理系统逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('admin');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 初始化模拟数据
+            initMockEmployees();
+
+            // 渲染员工列表
+            renderEmployees();
+
+            
+
+                const userInfo = JSON.parse(user);
+                if (userInfo.role !== 'admin') {
+                    // 角色不匹配，跳转到登录页面
+                    window.location.href = 'index.html';
+                    return;
+                }
+
+                // 显示用户信息
+                displayCurrentUser();
+            
+
+            
+
+            // 初始化模拟员工数据
+            function initMockEmployees() {
+                const existingEmployees = localStorage.getItem('tmsEmployees');
+                if (existingEmployees) {
+                    return;
+                }
+
+                const mockEmployees = [
+                    {
+                        id: 'EMP001',
+                        name: '张三',
+                        department: '运营部',
+                        position: '运营经理',
+                        email: 'zhangsan@tms.com',
+                        phone: '13800138000',
+                        hireDate: '2023-01-15',
+                        status: 'active',
+                        role: 'admin',
+                        description: '负责运营部的日常管理工作'
+                    },
+                    {
+                        id: 'EMP002',
+                        name: '李四',
+                        department: '客服部',
+                        position: '客服主管',
+                        email: 'lisi@tms.com',
+                        phone: '13900139000',
+                        hireDate: '2023-03-20',
+                        status: 'active',
+                        role: 'admin',
+                        description: '负责客服部的日常管理工作'
+                    },
+                    {
+                        id: 'EMP003',
+                        name: '王五',
+                        department: '车队',
+                        position: '司机',
+                        email: 'wangwu@tms.com',
+                        phone: '13700137000',
+                        hireDate: '2023-05-10',
+                        status: 'on_leave',
+                        role: 'branch',
+                        description: '负责货物运输工作'
+                    },
+                    {
+                        id: 'EMP004',
+                        name: '赵六',
+                        department: '仓库',
+                        position: '仓库管理员',
+                        email: 'zhaoliu@tms.com',
+                        phone: '13600136000',
+                        hireDate: '2023-07-05',
+                        status: 'active',
+                        role: 'branch',
+                        description: '负责仓库管理工作'
+                    },
+                    {
+                        id: 'EMP005',
+                        name: '孙七',
+                        department: '财务部',
+                        position: '财务专员',
+                        email: 'sunqi@tms.com',
+                        phone: '13500135000',
+                        hireDate: '2023-09-18',
+                        status: 'active',
+                        role: 'admin',
+                        description: '负责财务工作'
+                    },
+                    {
+                        id: 'EMP006',
+                        name: '周八',
+                        department: '行政部',
+                        position: '行政专员',
+                        email: 'zhouba@tms.com',
+                        phone: '13400134000',
+                        hireDate: '2023-11-25',
+                        status: 'inactive',
+                        role: 'admin',
+                        description: '负责行政工作'
+                    }
+                ];
+
+                localStorage.setItem('tmsEmployees', JSON.stringify(mockEmployees));
+            }
+
+            // 渲染员工列表
+            function renderEmployees() {
+                const container = document.getElementById('employee-list');
+                const employees = JSON.parse(localStorage.getItem('tmsEmployees') || '[]');
+
+                container.innerHTML = employees.map(employee => `
+                    <div class="employee-item">
+                        <div class="employee-header">
+                            <span class="employee-id">${employee.id}</span>
+                            <span class="employee-status status ${employee.status}">${getStatusText(employee.status)}</span>
+                        </div>
+                        <h4>${employee.name}</h4>
+                        <p><strong>部门:</strong> ${employee.department}</p>
+                        <p><strong>职位:</strong> ${employee.position}</p>
+                        <p><strong>邮箱:</strong> ${employee.email}</p>
+                        <p><strong>电话:</strong> ${employee.phone}</p>
+                        <p><strong>入职日期:</strong> ${employee.hireDate}</p>
+                        <p><strong>系统角色:</strong> ${getRoleText(employee.role)}</p>
+                        <p><strong>描述:</strong> ${employee.description}</p>
+                        <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                            <button class="btn btn-secondary" onclick="viewEmployeeDetail('${employee.id}')">查看详情</button>
+                            <button class="btn btn-warning" onclick="editEmployee('${employee.id}')">编辑信息</button>
+                            ${employee.status === 'active' ? `<button class="btn btn-danger" onclick="deactivateEmployee('${employee.id}')">停用</button>` : `<button class="btn btn-success" onclick="activateEmployee('${employee.id}')">启用</button>`}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // 获取状态文本
+            function getStatusText(status) {
+                const statusMap = {
+                    'active': '在职',
+                    'on_leave': '休假',
+                    'inactive': '离职'
+                };
+                return statusMap[status] || status;
+            }
+
+            // 获取角色文本
+            function getRoleText(role) {
+                const roleMap = {
+                    'admin': '管理员',
+                    'branch': '网点人员',
+                    'client': '客户端用户'
+                };
+                return roleMap[role] || role;
+            }
+
+            // 查看详情
+            window.viewEmployeeDetail = function(id) {
+                const employees = JSON.parse(localStorage.getItem('tmsEmployees') || '[]');
+                const employee = employees.find(e => e.id === id);
+                if (employee) {
+                    // 这里可以实现详情模态框
+                    alert(`查看员工 ${id} 的详细信息`);
+                }
+            }
+
+            // 编辑信息
+            window.editEmployee = function(id) {
+                // 这里可以实现编辑功能
+                alert(`编辑员工 ${id} 的信息`);
+            }
+
+            // 停用员工
+            window.deactivateEmployee = function(id) {
+                const employees = JSON.parse(localStorage.getItem('tmsEmployees') || '[]');
+                const employee = employees.find(e => e.id === id);
+                if (employee) {
+                    employee.status = 'inactive';
+                    localStorage.setItem('tmsEmployees', JSON.stringify(employees));
+                    renderEmployees();
+                    alert(`员工 ${employee.name} 已停用`);
+                }
+            }
+
+            // 启用员工
+            window.activateEmployee = function(id) {
+                const employees = JSON.parse(localStorage.getItem('tmsEmployees') || '[]');
+                const employee = employees.find(e => e.id === id);
+                if (employee) {
+                    employee.status = 'active';
+                    localStorage.setItem('tmsEmployees', JSON.stringify(employees));
+                    renderEmployees();
+                    alert(`员工 ${employee.name} 已启用`);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

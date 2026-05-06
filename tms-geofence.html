@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电子围栏管理 - TMS运输管理系统</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 子菜单样式 */
+        .has-submenu {
+            position: relative;
+        }
+
+        .has-submenu > a {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .has-submenu > a::after {
+            content: '▼';
+            font-size: 0.7rem;
+            transition: transform 0.3s ease;
+        }
+
+        .has-submenu.active > a::after {
+            transform: rotate(180deg);
+        }
+
+        .submenu {
+            display: none;
+            list-style: none;
+            margin: 0.5rem 0 0 1.5rem;
+            padding: 0;
+        }
+
+        .submenu li {
+            margin-bottom: 0.3rem;
+        }
+
+        .submenu a {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .has-submenu.active .submenu {
+            display: block;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        /* 地图容器 */
+        .map-container {
+            height: 600px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 围栏控制按钮 */
+        .fence-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 0.5rem;
+        }
+
+        .fence-control-btn {
+            display: block;
+            width: 100%;
+            padding: 0.5rem;
+            margin-bottom: 0.5rem;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            text-align: center;
+        }
+
+        .fence-control-btn:hover {
+            background: #e9ecef;
+        }
+
+        .fence-control-btn:last-child {
+            margin-bottom: 0;
+        }
+
+        /* 围栏列表 */
+        .fence-list {
+            margin-top: 2rem;
+        }
+
+        .fence-item {
+            background: white;
+            padding: 1rem;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            margin-bottom: 1rem;
+            border-left: 4px solid #4ecdc4;
+        }
+
+        .fence-item h4 {
+            margin-bottom: 0.5rem;
+            color: #333;
+        }
+
+        .fence-item p {
+            margin-bottom: 0.25rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .fence-actions {
+            margin-top: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #45b7aa;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            margin-left: 0.5rem;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            margin-left: 0.5rem;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        /* 表单样式 */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .form-actions {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        /* 模态框样式 */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 10px;
+            padding: 2rem;
+            width: 90%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .close-btn:hover {
+            color: #333;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .submenu {
+                position: absolute;
+                top: 100%;
+                left: 0;
+                background: white;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                border-radius: 0 0 5px 5px;
+                min-width: 200px;
+                margin: 0;
+                z-index: 1000;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .map-container {
+                height: 400px;
+            }
+
+            .form-actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                margin-left: 0;
+                margin-bottom: 0.5rem;
+            }
+
+            .btn:last-child {
+                margin-bottom: 0;
+            }
+        }
+
+        /* 围栏类型样式 */
+        .fence-type {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .type-delivery {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .type-arrival {
+            background-color: #e8f5e9;
+            color: #388e3c;
+        }
+
+        .type-courier {
+            background-color: #fff3e0;
+            color: #ef6c00;
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 电子围栏管理</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="admin-nav" class="nav">
+                    <h3>运营功能</h3>
+                    <ul>
+                        <li><a href="tms-index.html">首页</a></li>
+                        <li><a href="tms-monitor.html">系统监控</a></li>
+                        <li><a href="tms-user.html">用户管理</a></li>
+                        <li><a href="tms-exception.html">异常管理</a></li>
+                        <li><a href="tms-transport.html">运输管理</a></li>
+                        <li class="has-submenu">
+                            <a href="tms-operation.html">运营管理</a>
+                            <ul class="submenu">
+                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
+                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
+                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
+                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
+                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
+                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
+                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                            </ul>
+                        </li>
+                        <li><a href="tms-timing.html">时效管理</a></li>
+                        <li><a href="tms-scan.html">扫描管理</a></li>
+                        <li><a href="tms-loading.html">装卸管理</a></li>
+                        <li><a href="tms-sorting.html">分拣管理</a></li>
+                        <li><a href="tms-warehouse.html">仓储管理</a></li>
+                        <li><a href="tms-vehicle.html">车辆管理</a></li>
+                        <li><a href="tms-capacity.html">运力管理</a></li>
+                        <li><a href="tms-geofence.html" class="active">电子围栏</a></li>
+                        <li><a href="tms-service.html">客服管理</a></li>
+                        <li><a href="tms-claim.html">理赔管理</a></li>
+                        <li><a href="tms-finance.html">财务管理</a></li>
+                        <li><a href="tms-administration.html">行政管理</a></li>
+                        <li><a href="tms-material.html">物料管理</a></li>
+                        <li><a href="tms-evaluation.html">考核评级</a></li>
+                        <li><a href="tms-performance.html">绩效管理</a></li>
+                        <li><a href="tms-hr.html">人事管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>电子围栏管理</h2>
+                <p>今天是：<span id="current-date"></span></p>
+                
+                <!-- 地图展示 -->
+                <div class="card">
+                    <h3>围栏绘制与管理</h3>
+                    <div class="map-container">
+                        <div id="map"></div>
+                        <div class="fence-controls">
+                            <button class="fence-control-btn" onclick="startDrawing('delivery')">绘制派送围栏</button>
+                            <button class="fence-control-btn" onclick="startDrawing('arrival')">绘制到货围栏</button>
+                            <button class="fence-control-btn" onclick="startDrawing('courier')">绘制派送员围栏</button>
+                            <button class="fence-control-btn" onclick="cancelDrawing()">取消绘制</button>
+                            <button class="fence-control-btn" onclick="zoomToAllFences()">查看所有围栏</button>
+                            <button class="fence-control-btn" onclick="resetMap()">重置地图</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 围栏列表 -->
+                <div class="card">
+                    <h3>围栏列表</h3>
+                    <div class="fence-list" id="fence-list">
+                        <!-- 围栏列表将通过JavaScript生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 围栏编辑模态框 -->
+    <div id="fence-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modal-title">编辑围栏</h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="fence-form">
+                <input type="hidden" id="fence-id">
+                <div class="form-group">
+                    <label for="fence-name">围栏名称：</label>
+                    <input type="text" id="fence-name" name="fenceName" required>
+                </div>
+                <div class="form-group">
+                    <label for="fence-type">围栏类型：</label>
+                    <select id="fence-type" name="fenceType" required>
+                        <option value="delivery">派送围栏</option>
+                        <option value="arrival">到货围栏</option>
+                        <option value="courier">派送员围栏</option>
+                    </select>
+                </div>
+                <div class="form-group" id="branch-group">
+                    <label for="fence-branch">关联网点：</label>
+                    <select id="fence-branch" name="fenceBranch">
+                        <option value="">请选择网点</option>
+                        <!-- 网点选项将通过JavaScript生成 -->
+                    </select>
+                </div>
+                <div class="form-group" id="courier-group">
+                    <label for="fence-courier">关联派送员：</label>
+                    <select id="fence-courier" name="fenceCourier">
+                        <option value="">请选择派送员</option>
+                        <!-- 派送员选项将通过JavaScript生成 -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="fence-description">围栏描述：</label>
+                    <textarea id="fence-description" name="fenceDescription" placeholder="详细描述围栏用途..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script src="common.js"></script>
+    <script>
+        // 子菜单切换功能
+        document.addEventListener('DOMContentLoaded', function() {
+            const submenuItems = document.querySelectorAll('.has-submenu');
+            submenuItems.forEach(item => {
+                item.addEventListener('click', function(e) {
+                    if (e.target === this || e.target === this.querySelector('a')) {
+                        this.classList.toggle('active');
+                    }
+                });
+            });
+        });
+
+        // 切换标签页函数
+        function switchTab(tabId, sectionId = null) {
+            // 如果是切换到统计标签，隐藏所有统计部分
+            if (tabId === 'statistics') {
+                const sections = document.querySelectorAll('[id$="-section"]');
+                sections.forEach(section => {
+                    section.classList.add('hidden');
+                });
+                
+                // 如果指定了sectionId，显示该部分
+                if (sectionId) {
+                    const targetSection = document.getElementById(sectionId);
+                    if (targetSection) {
+                        targetSection.classList.remove('hidden');
+                    }
+                }
+            }
+        }
+
+        // 滚动到指定区域
+        function scrollToSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        // 全局变量
+        let map;
+        let drawControl;
+        let currentFenceType;
+        let fenceLayers = [];
+        let fenceLabels = [];
+
+        // 电子围栏管理系统逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('admin');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 初始化地图
+            initMap();
+            
+            // 初始化围栏数据
+            initializeFenceData();
+            
+            // 加载围栏数据
+            loadFenceData();
+
+            // 绑定表单提交事件
+            document.getElementById('fence-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveFence();
+            });
+
+            // 绑定围栏类型变化事件
+            document.getElementById('fence-type').addEventListener('change', function() {
+                updateFormFields();
+            });
+        });
+
+        // 初始化地图
+        function initMap() {
+            // 创建地图实例，中心设置在默认位置
+            map = L.map('map').setView([39.9042, 116.4074], 13);
+
+            // 添加底图图层
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            // 初始化绘制控件
+            initDrawControl();
+        }
+
+        // 初始化绘制控件
+        function initDrawControl() {
+            // 禁用默认的绘制控件
+            const drawControl = new L.Control.Draw({
+                draw: {
+                    polyline: false,
+                    polygon: false,
+                    rectangle: false,
+                    circle: false,
+                    marker: false,
+                    circlemarker: false
+                },
+                edit: {
+                    featureGroup: new L.FeatureGroup(),
+                    remove: true
+                }
+            });
+            map.addControl(drawControl);
+
+            // 监听绘制完成事件
+            map.on(L.Draw.Event.CREATED, function(e) {
+                const layer = e.layer;
+                const coordinates = layer.getLatLngs()[0].map(latLng => [latLng.lat, latLng.lng]);
+                
+                // 显示编辑模态框
+                openEditModal(null, {
+                    type: currentFenceType,
+                    coordinates: coordinates
+                });
+            });
+        }
+
+        // 开始绘制围栏
+        function startDrawing(type) {
+            currentFenceType = type;
+            
+            // 移除现有的绘制控件
+            if (map.getControl('draw')) {
+                map.removeControl(map.getControl('draw'));
+            }
+            
+            // 创建新的绘制控件
+            drawControl = new L.Control.Draw({
+                draw: {
+                    polyline: false,
+                    polygon: true,
+                    rectangle: false,
+                    circle: false,
+                    marker: false,
+                    circlemarker: false
+                },
+                edit: {
+                    featureGroup: new L.FeatureGroup(),
+                    remove: true
+                }
+            });
+            map.addControl(drawControl);
+            
+            // 提示用户开始绘制
+            alert(`请在地图上绘制${getTypeText(type)}围栏，双击完成绘制`);
+        }
+
+        // 取消绘制
+        function cancelDrawing() {
+            if (drawControl) {
+                map.removeControl(drawControl);
+                drawControl = null;
+            }
+            currentFenceType = null;
+            alert('已取消绘制');
+        }
+
+        // 初始化围栏数据
+        function initializeFenceData() {
+            // 如果没有围栏数据，初始化默认数据
+            if (!localStorage.getItem('tmsGeofences')) {
+                const defaultFences = [
+                    {
+                        id: '1',
+                        name: '朝阳区派送围栏',
+                        type: 'delivery',
+                        coordinates: [
+                            [39.9042, 116.4074],
+                            [39.9042, 116.4274],
+                            [39.8842, 116.4274],
+                            [39.8842, 116.4074]
+                        ],
+                        branchId: 'branch-1',
+                        branchName: '朝阳区网点',
+                        courierId: '',
+                        courierName: '',
+                        description: '覆盖朝阳区中心区域的派送围栏'
+                    },
+                    {
+                        id: '2',
+                        name: '朝阳区到货围栏',
+                        type: 'arrival',
+                        coordinates: [
+                            [39.9042, 116.4074],
+                            [39.9042, 116.4374],
+                            [39.8742, 116.4374],
+                            [39.8742, 116.4074]
+                        ],
+                        branchId: 'branch-1',
+                        branchName: '朝阳区网点',
+                        courierId: '',
+                        courierName: '',
+                        description: '朝阳区网点的到货围栏'
+                    },
+                    {
+                        id: '3',
+                        name: '张师傅派送区域',
+                        type: 'courier',
+                        coordinates: [
+                            [39.9042, 116.4074],
+                            [39.9042, 116.4174],
+                            [39.8942, 116.4174],
+                            [39.8942, 116.4074]
+                        ],
+                        branchId: '',
+                        branchName: '',
+                        courierId: 'courier-1',
+                        courierName: '张师傅',
+                        description: '张师傅负责的派送区域'
+                    }
+                ];
+                
+                localStorage.setItem('tmsGeofences', JSON.stringify(defaultFences));
+            }
+        }
+
+        // 加载围栏数据
+        function loadFenceData() {
+            const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
+            
+            // 显示围栏列表
+            displayFenceList(fences);
+            
+            // 在地图上显示围栏
+            displayFencesOnMap(fences);
+        }
+
+        // 显示围栏列表
+        function displayFenceList(fences) {
+            const fenceList = document.getElementById('fence-list');
+            
+            fenceList.innerHTML = fences.map(fence => `
+                <div class="fence-item" data-id="${fence.id}">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h4>${fence.name}</h4>
+                        <span class="fence-type type-${fence.type}">${getTypeText(fence.type)}</span>
+                    </div>
+                    ${fence.branchId ? `<p><strong>关联网点：</strong>${fence.branchName}</p>` : ''}
+                    ${fence.courierId ? `<p><strong>关联派送员：</strong>${fence.courierName}</p>` : ''}
+                    <p><strong>描述：</strong>${fence.description}</p>
+                    <p><strong>坐标点数量：</strong>${fence.coordinates.length} 个</p>
+                    <div class="fence-actions">
+                        <button class="btn btn-primary" onclick="zoomToFence('${fence.id}')">在地图上查看</button>
+                        <button class="btn btn-secondary" onclick="openEditModal('${fence.id}')">编辑</button>
+                        <button class="btn btn-danger" onclick="deleteFence('${fence.id}')">删除</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 在地图上显示围栏
+        function displayFencesOnMap(fences) {
+            // 清除现有图层
+            fenceLayers.forEach(layer => map.removeLayer(layer));
+            fenceLabels.forEach(label => map.removeLayer(label));
+            fenceLayers = [];
+            fenceLabels = [];
+
+            // 添加新图层
+            fences.forEach(fence => {
+                // 创建多边形
+                const polygon = L.polygon(fence.coordinates, {
+                    color: getTypeColor(fence.type),
+                    fillColor: getTypeFillColor(fence.type),
+                    fillOpacity: 0.5,
+                    weight: 2
+                }).addTo(map);
+                
+                // 添加弹出信息
+                polygon.bindPopup(`
+                    <div>
+                        <h3>${fence.name}</h3>
+                        <p><strong>类型：</strong>${getTypeText(fence.type)}</p>
+                        ${fence.branchId ? `<p><strong>关联网点：</strong>${fence.branchName}</p>` : ''}
+                        ${fence.courierId ? `<p><strong>关联派送员：</strong>${fence.courierName}</p>` : ''}
+                        <p><strong>描述：</strong>${fence.description}</p>
+                    </div>
+                `);
+                
+                // 添加到图层数组
+                fenceLayers.push(polygon);
+                
+                // 添加标签
+                const center = getPolygonCenter(fence.coordinates);
+                const label = L.marker(center, {
+                    icon: L.divIcon({
+                        className: 'fence-label',
+                        html: `<div style="background: white; padding: 5px 10px; border-radius: 3px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); font-size: 12px; font-weight: bold;">${fence.name}</div>`,
+                        iconSize: [100, 30],
+                        iconAnchor: [50, 15]
+                    })
+                }).addTo(map);
+                fenceLabels.push(label);
+            });
+        }
+
+        // 获取多边形中心点
+        function getPolygonCenter(coordinates) {
+            let latSum = 0;
+            let lngSum = 0;
+            
+            coordinates.forEach(coord => {
+                latSum += coord[0];
+                lngSum += coord[1];
+            });
+            
+            return [latSum / coordinates.length, lngSum / coordinates.length];
+        }
+
+        // 获取围栏类型文本
+        function getTypeText(type) {
+            const typeMap = {
+                'delivery': '派送围栏',
+                'arrival': '到货围栏',
+                'courier': '派送员围栏'
+            };
+            return typeMap[type] || type;
+        }
+
+        // 获取围栏类型颜色
+        function getTypeColor(type) {
+            const colorMap = {
+                'delivery': '#1976d2',
+                'arrival': '#388e3c',
+                'courier': '#ef6c00'
+            };
+            return colorMap[type] || '#4ecdc4';
+        }
+
+        // 获取围栏类型填充颜色
+        function getTypeFillColor(type) {
+            const colorMap = {
+                'delivery': 'rgba(25, 118, 210, 0.2)',
+                'arrival': 'rgba(56, 142, 60, 0.2)',
+                'courier': 'rgba(239, 108, 0, 0.2)'
+            };
+            return colorMap[type] || 'rgba(78, 205, 196, 0.2)';
+        }
+
+        // 缩放到指定围栏
+        function zoomToFence(fenceId) {
+            const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
+            const fence = fences.find(f => f.id === fenceId);
+            
+            if (fence) {
+                const polygon = L.polygon(fence.coordinates);
+                map.fitBounds(polygon.getBounds(), { padding: [50, 50] });
+            }
+        }
+
+        // 缩放到所有围栏
+        function zoomToAllFences() {
+            const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
+            
+            if (fences.length > 0) {
+                const bounds = L.latLngBounds();
+                
+                fences.forEach(fence => {
+                    const polygon = L.polygon(fence.coordinates);
+                    bounds.extend(polygon.getBounds());
+                });
+                
+                map.fitBounds(bounds, { padding: [50, 50] });
+            }
+        }
+
+        // 重置地图
+        function resetMap() {
+            map.setView([39.9042, 116.4074], 13);
+        }
+
+        // 打开编辑模态框
+        function openEditModal(fenceId, fenceData = null) {
+            const modal = document.getElementById('fence-modal');
+            const modalTitle = document.getElementById('modal-title');
+            const fenceForm = document.getElementById('fence-form');
+            
+            if (fenceId) {
+                // 编辑现有围栏
+                const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
+                const fence = fences.find(f => f.id === fenceId);
+                
+                if (fence) {
+                    modalTitle.textContent = '编辑围栏';
+                    document.getElementById('fence-id').value = fence.id;
+                    document.getElementById('fence-name').value = fence.name;
+                    document.getElementById('fence-type').value = fence.type;
+                    document.getElementById('fence-description').value = fence.description;
+                    document.getElementById('fence-branch').value = fence.branchId || '';
+                    document.getElementById('fence-courier').value = fence.courierId || '';
+                    
+                    // 更新表单字段显示
+                    updateFormFields();
+                    
+                    // 显示模态框
+                    modal.classList.remove('hidden');
+                }
+            } else {
+                // 新增围栏
+                modalTitle.textContent = '新增围栏';
+                fenceForm.reset();
+                document.getElementById('fence-id').value = '';
+                document.getElementById('fence-type').value = fenceData.type;
+                
+                // 存储临时坐标
+                fenceForm.dataset.coordinates = JSON.stringify(fenceData.coordinates);
+                
+                // 更新表单字段显示
+                updateFormFields();
+                
+                // 显示模态框
+                modal.classList.remove('hidden');
+            }
+        }
+
+        // 关闭模态框
+        function closeModal() {
+            const modal = document.getElementById('fence-modal');
+            modal.classList.add('hidden');
+        }
+
+        // 更新表单字段显示
+        function updateFormFields() {
+            const fenceType = document.getElementById('fence-type').value;
+            const branchGroup = document.getElementById('branch-group');
+            const courierGroup = document.getElementById('courier-group');
+            
+            // 重置显示
+            branchGroup.classList.remove('hidden');
+            courierGroup.classList.remove('hidden');
+            
+            // 根据围栏类型显示/隐藏字段
+            if (fenceType === 'delivery') {
+                // 派送围栏需要关联网点
+                branchGroup.classList.remove('hidden');
+                courierGroup.classList.add('hidden');
+            } else if (fenceType === 'arrival') {
+                // 到货围栏需要关联网点
+                branchGroup.classList.remove('hidden');
+                courierGroup.classList.add('hidden');
+            } else if (fenceType === 'courier') {
+                // 派送员围栏需要关联派送员
+                branchGroup.classList.add('hidden');
+                courierGroup.classList.remove('hidden');
+            }
+            
+            // 加载网点和派送员选项
+            loadBranchOptions();
+            loadCourierOptions();
+        }
+
+        // 加载网点选项
+        function loadBranchOptions() {
+            const branchSelect = document.getElementById('fence-branch');
+            
+            // 清空现有选项
+            branchSelect.innerHTML = '<option value="">请选择网点</option>';
+            
+            // 模拟网点数据
+            const branches = [
+                { id: 'branch-1', name: '朝阳区网点' },
+                { id: 'branch-2', name: '海淀区网点' },
+                { id: 'branch-3', name: '东城区网点' },
+                { id: 'branch-4', name: '西城区网点' },
+                { id: 'branch-5', name: '丰台区网点' }
+            ];
+            
+            // 添加选项
+            branches.forEach(branch => {
+                const option = document.createElement('option');
+                option.value = branch.id;
+                option.textContent = branch.name;
+                branchSelect.appendChild(option);
+            });
+        }
+
+        // 加载派送员选项
+        function loadCourierOptions() {
+            const courierSelect = document.getElementById('fence-courier');
+            
+            // 清空现有选项
+            courierSelect.innerHTML = '<option value="">请选择派送员</option>';
+            
+            // 模拟派送员数据
+            const couriers = [
+                { id: 'courier-1', name: '张师傅' },
+                { id: 'courier-2', name: '李师傅' },
+                { id: 'courier-3', name: '王师傅' },
+                { id: 'courier-4', name: '赵师傅' },
+                { id: 'courier-5', name: '刘师傅' }
+            ];
+            
+            // 添加选项
+            couriers.forEach(courier => {
+                const option = document.createElement('option');
+                option.value = courier.id;
+                option.textContent = courier.name;
+                courierSelect.appendChild(option);
+            });
+        }
+
+        // 保存围栏
+        function saveFence() {
+            const fenceForm = document.getElementById('fence-form');
+            const fenceId = document.getElementById('fence-id').value;
+            const fenceName = document.getElementById('fence-name').value;
+            const fenceType = document.getElementById('fence-type').value;
+            const fenceDescription = document.getElementById('fence-description').value;
+            const fenceBranch = document.getElementById('fence-branch').value;
+            const fenceCourier = document.getElementById('fence-courier').value;
+            
+            // 验证表单
+            if (!fenceName || !fenceType) {
+                alert('请填写完整的围栏信息');
+                return;
+            }
+            
+            // 获取围栏数据
+            let fenceData;
+            if (fenceId) {
+                // 编辑现有围栏
+                const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
+                fenceData = fences.find(f => f.id === fenceId);
+            } else {
+                // 新增围栏
+                fenceData = {
+                    id: `fence-${Date.now()}`,
+                    coordinates: JSON.parse(fenceForm.dataset.coordinates || '[]')
+                };
+            }
+            
+            // 更新围栏数据
+            fenceData.name = fenceName;
+            fenceData.type = fenceType;
+            fenceData.description = fenceDescription;
+            
+            // 处理关联数据
+            if (fenceType === 'delivery' || fenceType === 'arrival') {
+                // 关联网点
+                fenceData.branchId = fenceBranch;
+                fenceData.branchName = getBranchName(fenceBranch);
+                fenceData.courierId = '';
+                fenceData.courierName = '';
+            } else if (fenceType === 'courier') {
+                // 关联派送员
+                fenceData.courierId = fenceCourier;
+                fenceData.courierName = getCourierName(fenceCourier);
+                fenceData.branchId = '';
+                fenceData.branchName = '';
+            }
+            
+            // 保存到本地存储
+            const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
+            
+            if (fenceId) {
+                // 更新现有围栏
+                const index = fences.findIndex(f => f.id === fenceId);
+                if (index !== -1) {
+                    fences[index] = fenceData;
+                }
+            } else {
+                // 添加新围栏
+                fences.push(fenceData);
+            }
+            
+            localStorage.setItem('tmsGeofences', JSON.stringify(fences));
+            
+            // 关闭模态框
+            closeModal();
+            
+            // 重新加载围栏数据
+            loadFenceData();
+            
+            // 提示保存成功
+            alert('围栏保存成功');
+        }
+
+        // 删除围栏
+        function deleteFence(fenceId) {
+            if (confirm('确定要删除这个围栏吗？')) {
+                const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
+                const updatedFences = fences.filter(f => f.id !== fenceId);
+                localStorage.setItem('tmsGeofences', JSON.stringify(updatedFences));
+                
+                // 重新加载围栏数据
+                loadFenceData();
+                
+                // 提示删除成功
+                alert('围栏删除成功');
+            }
+        }
+
+        // 获取网点名称
+        function getBranchName(branchId) {
+            const branches = {
+                'branch-1': '朝阳区网点',
+                'branch-2': '海淀区网点',
+                'branch-3': '东城区网点',
+                'branch-4': '西城区网点',
+                'branch-5': '丰台区网点'
+            };
+            return branches[branchId] || '';
+        }
+
+        // 获取派送员名称
+        function getCourierName(courierId) {
+            const couriers = {
+                'courier-1': '张师傅',
+                'courier-2': '李师傅',
+                'courier-3': '王师傅',
+                'courier-4': '赵师傅',
+                'courier-5': '刘师傅'
+            };
+            return couriers[courierId] || '';
+        }
+
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('fence-modal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+    </script>
+</body>
+</html>

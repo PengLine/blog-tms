@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>揽收管理 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #45b7d1;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #45b7d1;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        /* 标签页样式 */
+        .tab-container {
+            margin-bottom: 2rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+        }
+
+        .tab-btn.active {
+            border-color: #45b7d1;
+            background-color: #45b7d1;
+            color: white;
+        }
+
+        .tab-content {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 表单样式 */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .btn-primary {
+            background: #45b7d1;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+        }
+
+        .btn-primary:hover {
+            background: #3a9fc0;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            margin-left: 0.5rem;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        /* 表格样式 */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background-color: #f9f9f9;
+            font-weight: 600;
+            color: #333;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        /* 统计卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #45b7d1;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            color: #666;
+        }
+
+        /* 条码标签样式 */
+        .barcode-container {
+            margin: 2rem 0;
+            padding: 2rem;
+            background: #f9f9f9;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .barcode {
+            margin: 1rem 0;
+            padding: 1rem;
+            background: white;
+            display: inline-block;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .tabs {
+                flex-direction: column;
+            }
+
+            .tab-btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 网点</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>网点功能</h3>
+                    <ul>
+                        <li><a href="branch-index.html">首页</a></li>
+                        <li><a href="branch-collection.html" class="active">揽收管理</a></li>
+                        <li><a href="branch-sorting.html">分拣处理</a></li>
+                        <li><a href="branch-outbound.html">出库管理</a></li>
+                        <li><a href="branch-inventory.html">库存与资产</a></li>
+                        <li><a href="branch-service.html">服务与售后</a></li>
+                        <li><a href="branch-operation.html">运营管理</a></li>
+                        <li><a href="branch-system.html">系统管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>揽收管理</h2>
+                <p>今天是：<span id="current-date"></span></p>
+                
+                <!-- 统计概览 -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalOrders">0</div>
+                        <div class="stat-label">今日订单数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="pendingOrders">0</div>
+                        <div class="stat-label">待处理订单</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="completedOrders">0</div>
+                        <div class="stat-label">已完成订单</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalRevenue">¥0</div>
+                        <div class="stat-label">今日营收</div>
+                    </div>
+                </div>
+
+                <!-- 标签页 -->
+                <div class="tab-container">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="order-receive">订单接收</button>
+                        <button class="tab-btn" data-tab="task-assign">任务分配</button>
+                        <button class="tab-btn" data-tab="weight-calculate">称重计费</button>
+                        <button class="tab-btn" data-tab="barcode-label">条码标签</button>
+                    </div>
+
+                    <!-- 订单接收 -->
+                    <div class="tab-content" id="order-receive">
+                        <h3>订单接收</h3>
+                        <form id="order-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="sender-name">寄件人姓名</label>
+                                    <input type="text" id="sender-name" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="sender-phone">寄件人电话</label>
+                                    <input type="tel" id="sender-phone" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="sender-address">寄件地址</label>
+                                    <input type="text" id="sender-address" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="receiver-name">收件人姓名</label>
+                                    <input type="text" id="receiver-name" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="receiver-phone">收件人电话</label>
+                                    <input type="tel" id="receiver-phone" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="receiver-address">收件地址</label>
+                                    <input type="text" id="receiver-address" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="package-type">包裹类型</label>
+                                    <select id="package-type">
+                                        <option value="document">文件</option>
+                                        <option value="small">小件</option>
+                                        <option value="medium">中件</option>
+                                        <option value="large">大件</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="weight">重量(kg)</label>
+                                    <input type="number" id="weight" step="0.1" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="value">保价金额</label>
+                                    <input type="number" id="value" step="100">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="notes">备注</label>
+                                <textarea id="notes" rows="3"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">提交订单</button>
+                            <button type="reset" class="btn btn-secondary">重置</button>
+                        </form>
+                    </div>
+
+                    <!-- 任务分配 -->
+                    <div class="tab-content hidden" id="task-assign">
+                        <h3>任务分配</h3>
+                        <div class="table-container">
+                            <table id="tasks-table">
+                                <thead>
+                                    <tr>
+                                        <th>订单号</th>
+                                        <th>寄件人</th>
+                                        <th>收件人</th>
+                                        <th>包裹类型</th>
+                                        <th>重量</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 任务列表将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 称重计费 -->
+                    <div class="tab-content hidden" id="weight-calculate">
+                        <h3>称重计费</h3>
+                        <form id="calculate-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="order-number">订单号</label>
+                                    <input type="text" id="order-number" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="actual-weight">实际重量(kg)</label>
+                                    <input type="number" id="actual-weight" step="0.1" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="volume-weight">体积重量(kg)</label>
+                                    <input type="number" id="volume-weight" step="0.1">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="distance">距离(km)</label>
+                                    <input type="number" id="distance" step="0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label for="service-type">服务类型</label>
+                                    <select id="service-type">
+                                        <option value="standard">标准快递</option>
+                                        <option value="express">加急快递</option>
+                                        <option value="same-day">当日达</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="insurance-fee">保价费</label>
+                                    <input type="number" id="insurance-fee" step="0.01" readonly>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="total-fee">总计费用</label>
+                                <input type="number" id="total-fee" step="0.01" readonly>
+                            </div>
+                            <button type="submit" class="btn btn-primary">计算费用</button>
+                            <button type="button" class="btn btn-secondary" onclick="printWaybill()">打印运单</button>
+                        </form>
+                    </div>
+
+                    <!-- 条码标签 -->
+                    <div class="tab-content hidden" id="barcode-label">
+                        <h3>条码标签</h3>
+                        <div class="form-group">
+                            <label for="barcode-order">订单号</label>
+                            <input type="text" id="barcode-order" required>
+                        </div>
+                        <button class="btn btn-primary" onclick="generateBarcode()">生成条码</button>
+                        
+                        <div class="barcode-container">
+                            <h4>条码预览</h4>
+                            <div class="barcode" id="barcode-preview">
+                                <!-- 条码将通过JavaScript生成 -->
+                                <p>请输入订单号并点击生成条码</p>
+                            </div>
+                            <button class="btn btn-secondary" onclick="printBarcode()">打印标签</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 网点揽收管理页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('branch');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 初始化数据
+            initializeData();
+            
+            // 加载统计数据
+            loadStats();
+            
+            // 加载任务列表
+            loadTasks();
+
+            // 绑定标签页切换事件
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    const tabId = this.getAttribute('data-tab');
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.add('hidden');
+                    });
+                    document.getElementById(tabId).classList.remove('hidden');
+                });
+            });
+
+            // 订单表单提交
+            document.getElementById('order-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                submitOrder();
+            });
+
+            // 计算表单提交
+            document.getElementById('calculate-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                calculateFee();
+            });
+        });
+
+        // 初始化数据
+        function initializeData() {
+            // 初始化订单数据
+            if (!localStorage.getItem('branchOrders')) {
+                const orders = [
+                    {
+                        id: 'ORD1768999155001',
+                        senderName: '张三',
+                        senderPhone: '13800138001',
+                        senderAddress: '北京市朝阳区建国路88号',
+                        receiverName: '李四',
+                        receiverPhone: '13900139001',
+                        receiverAddress: '上海市浦东新区陆家嘴金融中心',
+                        packageType: 'document',
+                        weight: 0.5,
+                        value: 0,
+                        notes: '重要文件，请妥善保管',
+                        status: 'pending',
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: 'ORD1768999155002',
+                        senderName: '王五',
+                        senderPhone: '13700137001',
+                        senderAddress: '广州市天河区天河路385号',
+                        receiverName: '赵六',
+                        receiverPhone: '13600136001',
+                        receiverAddress: '深圳市南山区科技园',
+                        packageType: 'small',
+                        weight: 2.5,
+                        value: 1000,
+                        notes: '电子产品，易碎',
+                        status: 'completed',
+                        totalFee: 25.5,
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: 'ORD1768999155003',
+                        senderName: '钱七',
+                        senderPhone: '13500135001',
+                        senderAddress: '杭州市西湖区文三路',
+                        receiverName: '孙八',
+                        receiverPhone: '13400134001',
+                        receiverAddress: '南京市玄武区中山路',
+                        packageType: 'medium',
+                        weight: 5.0,
+                        value: 2000,
+                        notes: '服装包裹',
+                        status: 'pending',
+                        createdAt: new Date().toISOString()
+                    }
+                ];
+                localStorage.setItem('branchOrders', JSON.stringify(orders));
+            }
+
+            // 初始化任务数据
+            if (!localStorage.getItem('branchTasks')) {
+                const tasks = [
+                    {
+                        id: 'ORD1768999155001',
+                        senderName: '张三',
+                        receiverName: '李四',
+                        packageType: 'document',
+                        weight: 0.5,
+                        status: 'pending',
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: 'ORD1768999155002',
+                        senderName: '王五',
+                        receiverName: '赵六',
+                        packageType: 'small',
+                        weight: 2.5,
+                        status: 'completed',
+                        createdAt: new Date().toISOString()
+                    },
+                    {
+                        id: 'ORD1768999155003',
+                        senderName: '钱七',
+                        receiverName: '孙八',
+                        packageType: 'medium',
+                        weight: 5.0,
+                        status: 'pending',
+                        createdAt: new Date().toISOString()
+                    }
+                ];
+                localStorage.setItem('branchTasks', JSON.stringify(tasks));
+            }
+        }
+
+        // 加载统计数据
+        function loadStats() {
+            const orders = JSON.parse(localStorage.getItem('branchOrders')) || [];
+            const today = new Date().toDateString();
+            
+            const todayOrders = orders.filter(order => {
+                return new Date(order.createdAt).toDateString() === today;
+            });
+            
+            const pendingOrders = todayOrders.filter(order => order.status === 'pending');
+            const completedOrders = todayOrders.filter(order => order.status === 'completed');
+            const totalRevenue = todayOrders.reduce((sum, order) => sum + (order.totalFee || 0), 0);
+            
+            document.getElementById('totalOrders').textContent = todayOrders.length;
+            document.getElementById('pendingOrders').textContent = pendingOrders.length;
+            document.getElementById('completedOrders').textContent = completedOrders.length;
+            document.getElementById('totalRevenue').textContent = `¥${totalRevenue.toFixed(2)}`;
+        }
+
+        // 提交订单
+        function submitOrder() {
+            const order = {
+                id: 'ORD' + Date.now(),
+                senderName: document.getElementById('sender-name').value,
+                senderPhone: document.getElementById('sender-phone').value,
+                senderAddress: document.getElementById('sender-address').value,
+                receiverName: document.getElementById('receiver-name').value,
+                receiverPhone: document.getElementById('receiver-phone').value,
+                receiverAddress: document.getElementById('receiver-address').value,
+                packageType: document.getElementById('package-type').value,
+                weight: parseFloat(document.getElementById('weight').value),
+                value: parseFloat(document.getElementById('value').value) || 0,
+                notes: document.getElementById('notes').value,
+                status: 'pending',
+                createdAt: new Date().toISOString()
+            };
+            
+            const orders = JSON.parse(localStorage.getItem('branchOrders')) || [];
+            orders.push(order);
+            localStorage.setItem('branchOrders', JSON.stringify(orders));
+            
+            // 添加到任务列表
+            const task = {
+                id: order.id,
+                senderName: order.senderName,
+                receiverName: order.receiverName,
+                packageType: order.packageType,
+                weight: order.weight,
+                status: 'pending',
+                createdAt: order.createdAt
+            };
+            
+            const tasks = JSON.parse(localStorage.getItem('branchTasks')) || [];
+            tasks.push(task);
+            localStorage.setItem('branchTasks', JSON.stringify(tasks));
+            
+            // 重置表单
+            document.getElementById('order-form').reset();
+            
+            // 更新统计数据
+            loadStats();
+            
+            // 更新任务列表
+            loadTasks();
+        }
+
+        // 加载任务列表
+        function loadTasks() {
+            const tasks = JSON.parse(localStorage.getItem('branchTasks')) || [];
+            const tableBody = document.getElementById('tasks-table').querySelector('tbody');
+            
+            tableBody.innerHTML = tasks.map(task => `
+                <tr>
+                    <td>${task.id}</td>
+                    <td>${task.senderName}</td>
+                    <td>${task.receiverName}</td>
+                    <td>${task.packageType}</td>
+                    <td>${task.weight}kg</td>
+                    <td>${task.status === 'pending' ? '待处理' : '已完成'}</td>
+                    <td>
+                        <button class="btn btn-primary" onclick="assignTask('${task.id}')">分配</button>
+                        <button class="btn btn-secondary" onclick="completeTask('${task.id}')">完成</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 分配任务
+        function assignTask(taskId) {
+            const courier = prompt('请输入派送员姓名：');
+            if (courier) {
+                alert(`任务 ${taskId} 已分配给 ${courier}`);
+            }
+        }
+
+        // 完成任务
+        function completeTask(taskId) {
+            const tasks = JSON.parse(localStorage.getItem('branchTasks')) || [];
+            const updatedTasks = tasks.map(task => {
+                if (task.id === taskId) {
+                    return { ...task, status: 'completed' };
+                }
+                return task;
+            });
+            localStorage.setItem('branchTasks', JSON.stringify(updatedTasks));
+            
+            // 更新任务列表
+            loadTasks();
+            
+            // 更新统计数据
+            loadStats();
+            
+        }
+
+        // 计算费用
+        function calculateFee() {
+            const orderNumber = document.getElementById('order-number').value;
+            const actualWeight = parseFloat(document.getElementById('actual-weight').value);
+            const volumeWeight = parseFloat(document.getElementById('volume-weight').value) || 0;
+            const distance = parseFloat(document.getElementById('distance').value) || 0;
+            const serviceType = document.getElementById('service-type').value;
+            
+            // 基础费用
+            let baseFee = 10;
+            
+            // 根据重量计算费用
+            const weight = Math.max(actualWeight, volumeWeight);
+            if (weight > 1) {
+                baseFee += (weight - 1) * 5;
+            }
+            
+            // 根据服务类型调整费用
+            switch (serviceType) {
+                case 'express':
+                    baseFee *= 1.5;
+                    break;
+                case 'same-day':
+                    baseFee *= 2;
+                    break;
+            }
+            
+            // 根据距离调整费用
+            if (distance > 5) {
+                baseFee += (distance - 5) * 0.5;
+            }
+            
+            // 保价费
+            const insuranceFee = 0;
+            
+            // 总费用
+            const totalFee = baseFee + insuranceFee;
+            
+            document.getElementById('insurance-fee').value = insuranceFee.toFixed(2);
+            document.getElementById('total-fee').value = totalFee.toFixed(2);
+            
+            // 更新订单费用
+            const orders = JSON.parse(localStorage.getItem('branchOrders')) || [];
+            const updatedOrders = orders.map(order => {
+                if (order.id === orderNumber) {
+                    return { ...order, totalFee: totalFee };
+                }
+                return order;
+            });
+            localStorage.setItem('branchOrders', JSON.stringify(updatedOrders));
+        }
+
+        // 生成条码
+        function generateBarcode() {
+            const orderNumber = document.getElementById('barcode-order').value;
+            if (!orderNumber) {
+                alert('请输入订单号');
+                return;
+            }
+            
+            const barcodePreview = document.getElementById('barcode-preview');
+            barcodePreview.innerHTML = `
+                <div style="font-family: monospace; font-size: 24px; letter-spacing: 2px; margin: 1rem 0;">
+                    ${'|' + orderNumber.split('').join('|') + '|'}
+                </div>
+                <div style="margin-top: 1rem; font-weight: bold;">
+                    ${orderNumber}
+                </div>
+            `;
+        }
+
+        // 打印运单
+        function printWaybill() {
+            alert('运单打印功能已触发');
+        }
+
+        // 打印条码
+        function printBarcode() {
+            alert('条码标签打印功能已触发');
+        }
+    </script>
+</body>
+</html>

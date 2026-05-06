@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>发车路线 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #f9ca24;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #f9ca24;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 统计卡片样式 */
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+        }
+
+        /* 标签页 */
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 15px 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            border: none;
+            background: none;
+            color: #666;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .tab.active {
+            color: #f9ca24;
+        }
+
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: #f9ca24;
+        }
+
+        /* 标签页内容 */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        /* 路线规划表单 */
+        .route-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #f9ca24;
+        }
+
+        /* 路线地图区域 */
+        .route-map {
+            height: 400px;
+            background-color: #f5f7fa;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            position: relative;
+        }
+
+        /* 路线信息卡片 */
+        .route-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-item {
+            padding: 15px;
+            background: #f5f7fa;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #f9ca24;
+        }
+
+        /* 路线历史列表 */
+        .route-list {
+            margin-top: 20px;
+        }
+
+        .route-item {
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            background: white;
+            transition: box-shadow 0.3s ease;
+            cursor: pointer;
+        }
+
+        .route-item:hover {
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .route-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .route-title {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .route-date {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .route-details {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            color: #555;
+        }
+
+        /* 表格样式 */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th, .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-table th {
+            background: #f9f9f9;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .data-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        /* 按钮样式 */
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: #f9ca24;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #f0c14b;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运输员</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>运输员功能</h3>
+                    <ul>
+                        <li><a href="transporter-index.html">首页</a></li>
+                        <li><a href="transporter-loading.html">扫描装车</a></li>
+                        <li><a href="transporter-departure.html">发车管理</a></li>
+                        <li><a href="transporter-schedule.html">我的排班</a></li>
+                        <li><a href="transporter-route.html" class="active">发车路线</a></li>
+                        <li><a href="transporter-performance.html">我的绩效</a></li>
+                        <li><a href="transporter-clock.html">打卡记录</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>路线管理</h2>
+                <p>今天是：<span id="current-date"></span></p>
+                
+                <!-- 标签页 -->
+                <div class="tabs">
+                    <button class="tab active" data-tab="planning">路线规划</button>
+                    <button class="tab" data-tab="history">路线历史</button>
+                    <button class="tab" data-tab="favorites">常用路线</button>
+                </div>
+
+                <!-- 路线规划标签页内容 -->
+                <div id="planning" class="tab-content active">
+                    <div class="card">
+                        <h3>路线规划</h3>
+                        <form id="routePlanningForm">
+                            <div class="route-form">
+                                <div>
+                                    <div class="form-group">
+                                        <label for="origin">出发地</label>
+                                        <input type="text" id="origin" placeholder="输入出发地" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="destination">目的地</label>
+                                        <input type="text" id="destination" placeholder="输入目的地" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="departureTime">出发时间</label>
+                                        <input type="datetime-local" id="departureTime" required>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="form-group">
+                                        <label for="vehicle">车辆选择</label>
+                                        <select id="vehicle" required>
+                                            <option value="">请选择车辆</option>
+                                            <option value="京A12345">京A12345 (厢式货车)</option>
+                                            <option value="京B67890">京B67890 (冷藏车)</option>
+                                            <option value="京C54321">京C54321 (平板车)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="cargoType">货物类型</label>
+                                        <select id="cargoType" required>
+                                            <option value="">请选择货物类型</option>
+                                            <option value="electronics">电子产品</option>
+                                            <option value="clothing">服装</option>
+                                            <option value="food">食品</option>
+                                            <option value="chemical">化工产品</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="routeType">路线偏好</label>
+                                        <select id="routeType" required>
+                                            <option value="fastest">最快路线</option>
+                                            <option value="shortest">最短路线</option>
+                                            <option value="avoid-tolls">避开高速</option>
+                                            <option value="scenic">风景路线</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">规划路线</button>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h3>路线预览</h3>
+                        <div class="route-map">
+                            <div>
+                                <h4>地图预览</h4>
+                                <p>路线将在这里显示</p>
+                            </div>
+                        </div>
+                        <div class="route-info">
+                            <div class="info-item">
+                                <div class="info-label">预计距离</div>
+                                <div class="info-value" id="distance">-- km</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">预计时间</div>
+                                <div class="info-value" id="duration">-- 小时</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">预计油耗</div>
+                                <div class="info-value" id="fuel">-- L</div>
+                            </div>
+                            <div class="info-item">
+                                <div class="info-label">过路费</div>
+                                <div class="info-value" id="tolls">-- 元</div>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" id="saveRoute">保存路线</button>
+                    </div>
+                </div>
+
+                <!-- 路线历史标签页内容 -->
+                <div id="history" class="tab-content">
+                    <div class="card">
+                        <h3>路线历史</h3>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>路线名称</th>
+                                        <th>出发地</th>
+                                        <th>目的地</th>
+                                        <th>出发时间</th>
+                                        <th>距离</th>
+                                        <th>耗时</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="routeHistoryTable">
+                                    <!-- 路线历史数据将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 常用路线标签页内容 -->
+                <div id="favorites" class="tab-content">
+                    <div class="card">
+                        <h3>常用路线</h3>
+                        <div class="route-list" id="favoriteRoutes">
+                            <!-- 常用路线将通过JavaScript生成 -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 运输员路线管理页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('transporter');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 初始化数据
+            initializeRouteData();
+            
+            // 加载路线数据
+            loadRouteHistory();
+            loadFavoriteRoutes();
+            
+            // 绑定标签页事件
+            bindTabEvents();
+            
+            // 绑定表单提交事件
+            bindFormEvents();
+        });
+
+        // 初始化路线数据
+        function initializeRouteData() {
+            // 初始化路线历史
+            if (!localStorage.getItem('routeHistory')) {
+                const currentYear = new Date().getFullYear();
+                const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+                const currentDate = new Date().getDate();
+                
+                const routeHistory = [
+                    {
+                        id: 'rh-001',
+                        name: '北京-上海运输路线',
+                        origin: '北京仓库',
+                        destination: '上海分拨中心',
+                        departureTime: `${currentYear}-${currentMonth}-${String(currentDate - 2).padStart(2, '0')} 08:00`,
+                        distance: 1200,
+                        duration: 14,
+                        fuel: 180,
+                        tolls: 550,
+                        vehicle: '京A12345',
+                        cargoType: 'electronics'
+                    },
+                    {
+                        id: 'rh-002',
+                        name: '上海-杭州运输路线',
+                        origin: '上海分拨中心',
+                        destination: '杭州分拨中心',
+                        departureTime: `${currentYear}-${currentMonth}-${String(currentDate - 1).padStart(2, '0')} 09:30`,
+                        distance: 180,
+                        duration: 3,
+                        fuel: 27,
+                        tolls: 80,
+                        vehicle: '京B67890',
+                        cargoType: 'clothing'
+                    },
+                    {
+                        id: 'rh-003',
+                        name: '杭州-南京运输路线',
+                        origin: '杭州分拨中心',
+                        destination: '南京分拨中心',
+                        departureTime: `${currentYear}-${currentMonth}-${String(currentDate).padStart(2, '0')} 08:30`,
+                        distance: 280,
+                        duration: 4,
+                        fuel: 42,
+                        tolls: 120,
+                        vehicle: '浙C54321',
+                        cargoType: 'food'
+                    }
+                ];
+                localStorage.setItem('routeHistory', JSON.stringify(routeHistory));
+            }
+            
+            // 初始化常用路线
+            if (!localStorage.getItem('favoriteRoutes')) {
+                const favoriteRoutes = [
+                    {
+                        id: 'fr-001',
+                        name: '北京-上海专线',
+                        origin: '北京仓库',
+                        destination: '上海分拨中心',
+                        distance: 1200,
+                        duration: 14,
+                        frequency: 15
+                    },
+                    {
+                        id: 'fr-002',
+                        name: '上海-杭州短途',
+                        origin: '上海分拨中心',
+                        destination: '杭州分拨中心',
+                        distance: 180,
+                        duration: 3,
+                        frequency: 25
+                    },
+                    {
+                        id: 'fr-003',
+                        name: '北京-南京直达',
+                        origin: '北京仓库',
+                        destination: '南京分拨中心',
+                        distance: 950,
+                        duration: 11,
+                        frequency: 10
+                    }
+                ];
+                localStorage.setItem('favoriteRoutes', JSON.stringify(favoriteRoutes));
+            }
+        }
+
+        // 绑定标签页事件
+        function bindTabEvents() {
+            const tabs = document.querySelectorAll('.tab');
+            
+            tabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    // 移除所有标签页的激活状态
+                    tabs.forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.remove('active');
+                    });
+                    
+                    // 添加当前标签页的激活状态
+                    this.classList.add('active');
+                    const tabId = this.getAttribute('data-tab');
+                    document.getElementById(tabId).classList.add('active');
+                });
+            });
+        }
+
+        // 绑定表单事件
+        function bindFormEvents() {
+            const routeForm = document.getElementById('routePlanningForm');
+            
+            routeForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const origin = document.getElementById('origin').value;
+                const destination = document.getElementById('destination').value;
+                const departureTime = document.getElementById('departureTime').value;
+                const vehicle = document.getElementById('vehicle').value;
+                const cargoType = document.getElementById('cargoType').value;
+                const routeType = document.getElementById('routeType').value;
+                
+                // 模拟路线规划计算
+                simulateRoutePlanning(origin, destination);
+            });
+            
+            // 绑定保存路线事件
+            document.getElementById('saveRoute').addEventListener('click', saveRoute);
+        }
+
+        // 模拟路线规划
+        function simulateRoutePlanning(origin, destination) {
+            // 随机生成路线信息
+            const distance = Math.floor(Math.random() * 1000) + 200;
+            const duration = Math.floor(distance / 80);
+            const fuel = Math.floor(distance * 0.15);
+            const tolls = Math.floor(distance * 0.45);
+            
+            // 更新路线信息显示
+            document.getElementById('distance').textContent = distance + ' km';
+            document.getElementById('duration').textContent = duration + ' 小时';
+            document.getElementById('fuel').textContent = fuel + ' L';
+            document.getElementById('tolls').textContent = tolls + ' 元';
+            
+            // 更新地图预览
+            updateMapPreview(origin, destination);
+        }
+
+        // 更新地图预览
+        function updateMapPreview(origin, destination) {
+            const mapDiv = document.querySelector('.route-map');
+            mapDiv.innerHTML = `
+                <div style="text-align: center;">
+                    <h4>规划路线: ${origin} → ${destination}</h4>
+                    <p style="margin: 10px 0;">地图预览区域</p>
+                    <div style="display: flex; justify-content: center; gap: 20px; margin-top: 20px;">
+                        <div style="background: #e3f2fd; padding: 10px; border-radius: 4px;">
+                            <strong>出发地:</strong> ${origin}
+                        </div>
+                        <div style="color: #f9ca24;">→</div>
+                        <div style="background: #e8f5e9; padding: 10px; border-radius: 4px;">
+                            <strong>目的地:</strong> ${destination}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // 保存路线
+        function saveRoute() {
+            const origin = document.getElementById('origin').value;
+            const destination = document.getElementById('destination').value;
+            const departureTime = document.getElementById('departureTime').value;
+            const distance = document.getElementById('distance').textContent;
+            const duration = document.getElementById('duration').textContent;
+            
+            if (!origin || !destination) {
+                alert('请先规划路线');
+                return;
+            }
+            
+            // 创建新路线记录
+            const newRoute = {
+                id: 'rh-' + Date.now(),
+                name: `${origin}-${destination}路线`,
+                origin: origin,
+                destination: destination,
+                departureTime: new Date(departureTime).toLocaleString('zh-CN'),
+                distance: parseInt(distance),
+                duration: parseInt(duration),
+                fuel: parseInt(document.getElementById('fuel').textContent),
+                tolls: parseInt(document.getElementById('tolls').textContent),
+                vehicle: document.getElementById('vehicle').value,
+                cargoType: document.getElementById('cargoType').value
+            };
+            
+            // 添加到路线历史
+            const routeHistory = JSON.parse(localStorage.getItem('routeHistory')) || [];
+            routeHistory.unshift(newRoute);
+            localStorage.setItem('routeHistory', JSON.stringify(routeHistory));
+            
+            // 重新加载路线历史
+            loadRouteHistory();
+            
+            alert('路线已保存到历史记录');
+        }
+
+        // 加载路线历史
+        function loadRouteHistory() {
+            const routeHistory = JSON.parse(localStorage.getItem('routeHistory')) || [];
+            const tableBody = document.getElementById('routeHistoryTable');
+            
+            tableBody.innerHTML = routeHistory.map(route => `
+                <tr>
+                    <td>${route.name}</td>
+                    <td>${route.origin}</td>
+                    <td>${route.destination}</td>
+                    <td>${route.departureTime}</td>
+                    <td>${route.distance} km</td>
+                    <td>${route.duration} 小时</td>
+                    <td>
+                        <button class="btn btn-primary" onclick="useRoute('${route.id}')">使用</button>
+                        <button class="btn btn-secondary" onclick="addToFavorites('${route.id}')">收藏</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 加载常用路线
+        function loadFavoriteRoutes() {
+            const favoriteRoutes = JSON.parse(localStorage.getItem('favoriteRoutes')) || [];
+            const routesList = document.getElementById('favoriteRoutes');
+            
+            routesList.innerHTML = favoriteRoutes.map(route => `
+                <div class="route-item">
+                    <div class="route-header">
+                        <div class="route-title">${route.name}</div>
+                        <div class="route-date">使用频率: ${route.frequency} 次</div>
+                    </div>
+                    <div class="route-details">
+                        <div>${route.origin} → ${route.destination}</div>
+                        <div>${route.distance} km · ${route.duration} 小时</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 使用路线
+        function useRoute(routeId) {
+            const routeHistory = JSON.parse(localStorage.getItem('routeHistory')) || [];
+            const route = routeHistory.find(r => r.id === routeId);
+            
+            if (route) {
+                // 填充表单
+                document.getElementById('origin').value = route.origin;
+                document.getElementById('destination').value = route.destination;
+                
+                // 切换到路线规划标签页
+                document.querySelector('.tab[data-tab="planning"]').click();
+                
+                // 模拟路线规划
+                simulateRoutePlanning(route.origin, route.destination);
+            }
+        }
+
+        // 添加到常用路线
+        function addToFavorites(routeId) {
+            const routeHistory = JSON.parse(localStorage.getItem('routeHistory')) || [];
+            const favoriteRoutes = JSON.parse(localStorage.getItem('favoriteRoutes')) || [];
+            
+            const route = routeHistory.find(r => r.id === routeId);
+            if (!route) return;
+            
+            // 检查是否已在常用路线中
+            const existingRoute = favoriteRoutes.find(fr => 
+                fr.origin === route.origin && fr.destination === route.destination
+            );
+            
+            if (existingRoute) {
+                // 增加使用频率
+                existingRoute.frequency++;
+            } else {
+                // 添加新的常用路线
+                const newFavorite = {
+                    id: 'fr-' + Date.now(),
+                    name: route.name,
+                    origin: route.origin,
+                    destination: route.destination,
+                    distance: route.distance,
+                    duration: route.duration,
+                    frequency: 1
+                };
+                favoriteRoutes.push(newFavorite);
+            }
+            
+            localStorage.setItem('favoriteRoutes', JSON.stringify(favoriteRoutes));
+            loadFavoriteRoutes();
+            
+            alert('已添加到常用路线');
+        }
+    </script>
+</body>
+</html>

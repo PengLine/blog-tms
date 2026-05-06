@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>服务与售后 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #45b7d1;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #45b7d1;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        /* 标签页样式 */
+        .tab-container {
+            margin-bottom: 2rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+        }
+
+        .tab-btn.active {
+            border-color: #45b7d1;
+            background-color: #45b7d1;
+            color: white;
+        }
+
+        .tab-content {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* 表单样式 */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .btn-primary {
+            background: #45b7d1;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+        }
+
+        .btn-primary:hover {
+            background: #3a9fc0;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            margin-left: 0.5rem;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        /* 表格样式 */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background-color: #f9f9f9;
+            font-weight: 600;
+            color: #333;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        /* 统计卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            color: #45b7d1;
+        }
+
+        .stat-label {
+            font-size: 1rem;
+            color: #666;
+        }
+
+        /* 自提区域 */
+        .self-pickup-area {
+            margin: 2rem 0;
+            padding: 2rem;
+            background: #f9f9f9;
+            border-radius: 10px;
+        }
+
+        .self-pickup-form {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* 问题件区域 */
+        .issue-area {
+            margin: 2rem 0;
+        }
+
+        .issue-form {
+            max-width: 800px;
+        }
+
+        /* 退货/拒收件区域 */
+        .return-area {
+            margin: 2rem 0;
+            padding: 2rem;
+            background: #f9f9f9;
+            border-radius: 10px;
+        }
+
+        .return-form {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* 状态标签 */
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status-pending {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .status-processing {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .status-completed {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-cancelled {
+            background: #dc3545;
+            color: white;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .tabs {
+                flex-direction: column;
+            }
+
+            .tab-btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 网点</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>网点功能</h3>
+                    <ul>
+                        <li><a href="branch-index.html">首页</a></li>
+                        <li><a href="branch-collection.html">揽收管理</a></li>
+                        <li><a href="branch-sorting.html">分拣处理</a></li>
+                        <li><a href="branch-outbound.html">出库管理</a></li>
+                        <li><a href="branch-inventory.html">库存与资产</a></li>
+                        <li><a href="branch-service.html" class="active">服务与售后</a></li>
+                        <li><a href="branch-operation.html">运营管理</a></li>
+                        <li><a href="branch-system.html">系统管理</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>服务与售后</h2>
+                <p>今天是：<span id="current-date"></span></p>
+                
+                <!-- 统计概览 -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="selfPickupCount">0</div>
+                        <div class="stat-label">今日自提数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="issueCount">0</div>
+                        <div class="stat-label">问题件数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="returnCount">0</div>
+                        <div class="stat-label">退货/拒收数</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="pendingServiceCount">0</div>
+                        <div class="stat-label">待处理服务</div>
+                    </div>
+                </div>
+
+                <!-- 标签页 -->
+                <div class="tab-container">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="self-pickup">客户自提</button>
+                        <button class="tab-btn" data-tab="issue-handling">问题件处理</button>
+                        <button class="tab-btn" data-tab="return-reject">退货/拒收件</button>
+                        <button class="tab-btn" data-tab="service-records">服务记录</button>
+                    </div>
+
+                    <!-- 客户自提 -->
+                    <div class="tab-content" id="self-pickup">
+                        <h3>客户自提</h3>
+                        <div class="self-pickup-area">
+                            <h4>自提登记</h4>
+                            <div class="self-pickup-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="pickup-waybill">运单号</label>
+                                        <input type="text" id="pickup-waybill" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="pickup-customer">客户姓名</label>
+                                        <input type="text" id="pickup-customer" required>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="pickup-id">身份证号</label>
+                                        <input type="text" id="pickup-id" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="pickup-phone">联系电话</label>
+                                        <input type="tel" id="pickup-phone" required>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="pickup-notes">备注</label>
+                                    <textarea id="pickup-notes" rows="3"></textarea>
+                                </div>
+                                <button class="btn btn-primary" onclick="confirmSelfPickup()">确认自提</button>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table id="self-pickup-table">
+                                <thead>
+                                    <tr>
+                                        <th>运单号</th>
+                                        <th>客户姓名</th>
+                                        <th>身份证号</th>
+                                        <th>联系电话</th>
+                                        <th>自提时间</th>
+                                        <th>操作人</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 自提记录将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 问题件处理 -->
+                    <div class="tab-content hidden" id="issue-handling">
+                        <h3>问题件处理</h3>
+                        <div class="issue-area">
+                            <div class="issue-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="issue-waybill">运单号</label>
+                                        <input type="text" id="issue-waybill" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="issue-type">问题类型</label>
+                                        <select id="issue-type" required>
+                                            <option value="damaged">包裹破损</option>
+                                            <option value="missing">物品丢失</option>
+                                            <option value="wrong_address">地址错误</option>
+                                            <option value="contact_failed">联系失败</option>
+                                            <option value="other">其他问题</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="issue-description">问题描述</label>
+                                    <textarea id="issue-description" rows="4" required></textarea>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="issue-reporter">上报人</label>
+                                        <input type="text" id="issue-reporter" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="issue-time">上报时间</label>
+                                        <input type="datetime-local" id="issue-time" required>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="issue-solution">解决方案</label>
+                                    <textarea id="issue-solution" rows="3"></textarea>
+                                </div>
+                                <button class="btn btn-primary" onclick="reportIssue()">上报问题</button>
+                                <button class="btn btn-secondary" onclick="resolveIssue()">处理问题</button>
+                            </div>
+                        </div>
+                        <div class="table-container" style="margin-top: 2rem;">
+                            <table id="issue-table">
+                                <thead>
+                                    <tr>
+                                        <th>运单号</th>
+                                        <th>问题类型</th>
+                                        <th>问题描述</th>
+                                        <th>上报人</th>
+                                        <th>上报时间</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 问题件记录将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 退货/拒收件 -->
+                    <div class="tab-content hidden" id="return-reject">
+                        <h3>退货/拒收件</h3>
+                        <div class="return-area">
+                            <h4>退货/拒收登记</h4>
+                            <div class="return-form">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="return-waybill">运单号</label>
+                                        <input type="text" id="return-waybill" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="return-type">类型</label>
+                                        <select id="return-type" required>
+                                            <option value="return">退货</option>
+                                            <option value="reject">拒收</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="return-reason">原因</label>
+                                        <select id="return-reason" required>
+                                            <option value="quality">质量问题</option>
+                                            <option value="wrong_item">发错货</option>
+                                            <option value="no_need">不需要了</option>
+                                            <option value="other">其他原因</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="return-time">登记时间</label>
+                                        <input type="datetime-local" id="return-time" required>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="return-description">详细说明</label>
+                                    <textarea id="return-description" rows="3"></textarea>
+                                </div>
+                                <button class="btn btn-primary" onclick="confirmReturn()">确认登记</button>
+                            </div>
+                        </div>
+                        <div class="table-container" style="margin-top: 2rem;">
+                            <table id="return-table">
+                                <thead>
+                                    <tr>
+                                        <th>运单号</th>
+                                        <th>类型</th>
+                                        <th>原因</th>
+                                        <th>详细说明</th>
+                                        <th>登记时间</th>
+                                        <th>状态</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 退货/拒收记录将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 服务记录 -->
+                    <div class="tab-content hidden" id="service-records">
+                        <h3>服务记录</h3>
+                        <div class="table-container">
+                            <table id="service-table">
+                                <thead>
+                                    <tr>
+                                        <th>记录ID</th>
+                                        <th>服务类型</th>
+                                        <th>运单号</th>
+                                        <th>客户信息</th>
+                                        <th>服务时间</th>
+                                        <th>状态</th>
+                                        <th>操作人</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 服务记录将通过JavaScript生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 全局变量
+        let selfPickupRecords = [];
+        let issueRecords = [];
+        let returnRecords = [];
+        let serviceRecords = [];
+
+        // 网点服务与售后页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('branch');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 初始化数据
+            initializeData();
+            
+            // 加载统计数据
+            loadStats();
+            
+            // 加载自提记录
+            loadSelfPickupRecords();
+            
+            // 加载问题件记录
+            loadIssueRecords();
+            
+            // 加载退货/拒收记录
+            loadReturnRecords();
+            
+            // 加载服务记录
+            loadServiceRecords();
+
+            // 绑定标签页切换事件
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    const tabId = this.getAttribute('data-tab');
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.add('hidden');
+                    });
+                    document.getElementById(tabId).classList.remove('hidden');
+                });
+            });
+        });
+
+        // 初始化数据
+        function initializeData() {
+            // 初始化自提记录
+            if (!localStorage.getItem('selfPickupRecords')) {
+                const sampleSelfPickup = [
+                    {
+                        id: 'PICK1641000000000',
+                        waybillNumber: 'SF1234567890123',
+                        customerName: '张三',
+                        idNumber: '110101199001011234',
+                        phoneNumber: '13800138000',
+                        notes: '客户凭身份证自提',
+                        pickupTime: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+                        operator: '网点操作员'
+                    },
+                    {
+                        id: 'PICK1641000000001',
+                        waybillNumber: 'YT9876543210987',
+                        customerName: '李四',
+                        idNumber: '110101199002022345',
+                        phoneNumber: '13900139000',
+                        notes: '代取，需验证身份证',
+                        pickupTime: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+                        operator: '网点操作员'
+                    },
+                    {
+                        id: 'PICK1641000000002',
+                        waybillNumber: 'JD6543217890654',
+                        customerName: '王五',
+                        idNumber: '110101199003033456',
+                        phoneNumber: '13700137000',
+                        notes: '正常自提',
+                        pickupTime: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+                        operator: '网点操作员'
+                    }
+                ];
+                localStorage.setItem('selfPickupRecords', JSON.stringify(sampleSelfPickup));
+            }
+
+            // 初始化问题件记录
+            if (!localStorage.getItem('issueRecords')) {
+                const sampleIssues = [
+                    {
+                        id: 'ISSUE1641000000000',
+                        waybillNumber: 'SF1234567890124',
+                        issueType: 'damaged',
+                        issueTypeName: '包裹破损',
+                        description: '包裹外包装有明显破损，内部物品可能受损',
+                        reporter: '派送员1',
+                        issueTime: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
+                        solution: '',
+                        status: 'pending'
+                    },
+                    {
+                        id: 'ISSUE1641000000001',
+                        waybillNumber: 'YT9876543210988',
+                        issueType: 'wrong_address',
+                        issueTypeName: '地址错误',
+                        description: '收件人地址填写错误，无法送达',
+                        reporter: '派送员2',
+                        issueTime: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+                        solution: '已联系发件人确认正确地址',
+                        status: 'resolved'
+                    },
+                    {
+                        id: 'ISSUE1641000000002',
+                        waybillNumber: 'JD6543217890655',
+                        issueType: 'contact_failed',
+                        issueTypeName: '联系失败',
+                        description: '多次联系收件人电话无人接听',
+                        reporter: '派送员3',
+                        issueTime: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+                        solution: '',
+                        status: 'pending'
+                    }
+                ];
+                localStorage.setItem('issueRecords', JSON.stringify(sampleIssues));
+            }
+
+            // 初始化退货/拒收记录
+            if (!localStorage.getItem('returnRecords')) {
+                const sampleReturns = [
+                    {
+                        id: 'RETURN1641000000000',
+                        waybillNumber: 'SF1234567890125',
+                        returnType: 'return',
+                        returnTypeName: '退货',
+                        returnReason: 'quality',
+                        reasonName: '质量问题',
+                        description: '商品存在质量问题，客户要求退货',
+                        returnTime: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+                        status: 'registered'
+                    },
+                    {
+                        id: 'RETURN1641000000001',
+                        waybillNumber: 'YT9876543210989',
+                        returnType: 'reject',
+                        returnTypeName: '拒收',
+                        returnReason: 'wrong_item',
+                        reasonName: '发错货',
+                        description: '客户收到的商品与订单不符，拒绝签收',
+                        returnTime: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+                        status: 'registered'
+                    },
+                    {
+                        id: 'RETURN1641000000002',
+                        waybillNumber: 'JD6543217890656',
+                        returnType: 'return',
+                        returnTypeName: '退货',
+                        returnReason: 'no_need',
+                        reasonName: '不需要了',
+                        description: '客户改变主意，不需要该商品',
+                        returnTime: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+                        status: 'registered'
+                    }
+                ];
+                localStorage.setItem('returnRecords', JSON.stringify(sampleReturns));
+            }
+
+            // 初始化服务记录
+            if (!localStorage.getItem('serviceRecords')) {
+                const sampleServices = [
+                    {
+                        id: 'SERV1641000000000',
+                        serviceType: 'self_pickup',
+                        serviceTypeName: '客户自提',
+                        waybillNumber: 'SF1234567890123',
+                        customerInfo: '张三 13800138000',
+                        serviceTime: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+                        status: 'completed',
+                        operator: '网点操作员'
+                    },
+                    {
+                        id: 'SERV1641000000001',
+                        serviceType: 'issue_handling',
+                        serviceTypeName: '问题件处理',
+                        waybillNumber: 'SF1234567890124',
+                        customerInfo: 'N/A',
+                        serviceTime: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
+                        status: 'pending',
+                        operator: '派送员1'
+                    },
+                    {
+                        id: 'SERV1641000000002',
+                        serviceType: 'return_reject',
+                        serviceTypeName: '退货/拒收件',
+                        waybillNumber: 'SF1234567890125',
+                        customerInfo: 'N/A',
+                        serviceTime: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+                        status: 'completed',
+                        operator: '网点操作员'
+                    },
+                    {
+                        id: 'SERV1641000000003',
+                        serviceType: 'self_pickup',
+                        serviceTypeName: '客户自提',
+                        waybillNumber: 'YT9876543210987',
+                        customerInfo: '李四 13900139000',
+                        serviceTime: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+                        status: 'completed',
+                        operator: '网点操作员'
+                    },
+                    {
+                        id: 'SERV1641000000004',
+                        serviceType: 'issue_handling',
+                        serviceTypeName: '问题件处理',
+                        waybillNumber: 'YT9876543210988',
+                        customerInfo: 'N/A',
+                        serviceTime: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+                        status: 'completed',
+                        operator: '派送员2'
+                    }
+                ];
+                localStorage.setItem('serviceRecords', JSON.stringify(sampleServices));
+            }
+        }
+
+        // 加载统计数据
+        function loadStats() {
+            selfPickupRecords = JSON.parse(localStorage.getItem('selfPickupRecords')) || [];
+            issueRecords = JSON.parse(localStorage.getItem('issueRecords')) || [];
+            returnRecords = JSON.parse(localStorage.getItem('returnRecords')) || [];
+            serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
+            
+            const today = new Date().toDateString();
+            
+            const todaySelfPickup = selfPickupRecords.filter(record => {
+                return new Date(record.pickupTime).toDateString() === today;
+            });
+            
+            const todayIssues = issueRecords.filter(record => {
+                return new Date(record.issueTime).toDateString() === today;
+            });
+            
+            const todayReturns = returnRecords.filter(record => {
+                return new Date(record.returnTime).toDateString() === today;
+            });
+            
+            const pendingServices = serviceRecords.filter(record => {
+                return record.status === 'pending';
+            });
+            
+            document.getElementById('selfPickupCount').textContent = todaySelfPickup.length;
+            document.getElementById('issueCount').textContent = todayIssues.length;
+            document.getElementById('returnCount').textContent = todayReturns.length;
+            document.getElementById('pendingServiceCount').textContent = pendingServices.length;
+        }
+
+        // 确认自提
+        function confirmSelfPickup() {
+            const waybillNumber = document.getElementById('pickup-waybill').value.trim();
+            const customerName = document.getElementById('pickup-customer').value.trim();
+            const idNumber = document.getElementById('pickup-id').value.trim();
+            const phoneNumber = document.getElementById('pickup-phone').value.trim();
+            const notes = document.getElementById('pickup-notes').value.trim();
+            
+            if (!waybillNumber || !customerName || !idNumber || !phoneNumber) {
+                alert('请填写完整信息');
+                return;
+            }
+            
+            const pickupRecord = {
+                id: 'PICK' + Date.now(),
+                waybillNumber: waybillNumber,
+                customerName: customerName,
+                idNumber: idNumber,
+                phoneNumber: phoneNumber,
+                notes: notes,
+                pickupTime: new Date().toISOString(),
+                operator: '当前用户'
+            };
+            
+            selfPickupRecords = JSON.parse(localStorage.getItem('selfPickupRecords')) || [];
+            selfPickupRecords.push(pickupRecord);
+            localStorage.setItem('selfPickupRecords', JSON.stringify(selfPickupRecords));
+            
+            // 添加到服务记录
+            const serviceRecord = {
+                id: 'SERV' + Date.now(),
+                serviceType: 'self_pickup',
+                serviceTypeName: '客户自提',
+                waybillNumber: waybillNumber,
+                customerInfo: customerName + ' ' + phoneNumber,
+                serviceTime: new Date().toISOString(),
+                status: 'completed',
+                operator: '当前用户'
+            };
+            
+            serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
+            serviceRecords.push(serviceRecord);
+            localStorage.setItem('serviceRecords', JSON.stringify(serviceRecords));
+            
+            // 重置表单
+            document.getElementById('pickup-waybill').value = '';
+            document.getElementById('pickup-customer').value = '';
+            document.getElementById('pickup-id').value = '';
+            document.getElementById('pickup-phone').value = '';
+            document.getElementById('pickup-notes').value = '';
+            
+            // 更新统计数据
+            loadStats();
+            
+            // 更新自提记录
+            loadSelfPickupRecords();
+            
+            // 更新服务记录
+            loadServiceRecords();
+            
+        }
+
+        // 加载自提记录
+        function loadSelfPickupRecords() {
+            selfPickupRecords = JSON.parse(localStorage.getItem('selfPickupRecords')) || [];
+            const tableBody = document.getElementById('self-pickup-table').querySelector('tbody');
+            
+            tableBody.innerHTML = selfPickupRecords.slice(-10).reverse().map(record => `
+                <tr>
+                    <td>${record.waybillNumber}</td>
+                    <td>${record.customerName}</td>
+                    <td>${record.idNumber}</td>
+                    <td>${record.phoneNumber}</td>
+                    <td>${new Date(record.pickupTime).toLocaleString()}</td>
+                    <td>${record.operator}</td>
+                </tr>
+            `).join('');
+        }
+
+        // 上报问题
+        function reportIssue() {
+            const waybillNumber = document.getElementById('issue-waybill').value.trim();
+            const issueType = document.getElementById('issue-type').value;
+            const description = document.getElementById('issue-description').value.trim();
+            const reporter = document.getElementById('issue-reporter').value.trim();
+            const issueTime = document.getElementById('issue-time').value;
+            const solution = document.getElementById('issue-solution').value.trim();
+            
+            if (!waybillNumber || !description || !reporter || !issueTime) {
+                alert('请填写完整信息');
+                return;
+            }
+            
+            const issueRecord = {
+                id: 'ISSUE' + Date.now(),
+                waybillNumber: waybillNumber,
+                issueType: issueType,
+                issueTypeName: {
+                    damaged: '包裹破损',
+                    missing: '物品丢失',
+                    wrong_address: '地址错误',
+                    contact_failed: '联系失败',
+                    other: '其他问题'
+                }[issueType],
+                description: description,
+                reporter: reporter,
+                issueTime: new Date(issueTime).toISOString(),
+                solution: solution,
+                status: solution ? 'resolved' : 'pending'
+            };
+            
+            issueRecords = JSON.parse(localStorage.getItem('issueRecords')) || [];
+            issueRecords.push(issueRecord);
+            localStorage.setItem('issueRecords', JSON.stringify(issueRecords));
+            
+            // 添加到服务记录
+            const serviceRecord = {
+                id: 'SERV' + Date.now(),
+                serviceType: 'issue_handling',
+                serviceTypeName: '问题件处理',
+                waybillNumber: waybillNumber,
+                customerInfo: 'N/A',
+                serviceTime: new Date(issueTime).toISOString(),
+                status: solution ? 'completed' : 'pending',
+                operator: reporter
+            };
+            
+            serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
+            serviceRecords.push(serviceRecord);
+            localStorage.setItem('serviceRecords', JSON.stringify(serviceRecords));
+            
+            // 重置表单
+            document.getElementById('issue-waybill').value = '';
+            document.getElementById('issue-description').value = '';
+            document.getElementById('issue-reporter').value = '';
+            document.getElementById('issue-time').value = '';
+            document.getElementById('issue-solution').value = '';
+            
+            // 更新统计数据
+            loadStats();
+            
+            // 更新问题件记录
+            loadIssueRecords();
+            
+            // 更新服务记录
+            loadServiceRecords();
+            
+        }
+
+        // 处理问题
+        function resolveIssue() {
+            const issueId = prompt('请输入问题件ID：');
+            if (!issueId) return;
+            
+            const solution = prompt('请输入解决方案：');
+            if (!solution) return;
+            
+            issueRecords = JSON.parse(localStorage.getItem('issueRecords')) || [];
+            const updatedIssues = issueRecords.map(issue => {
+                if (issue.id === issueId) {
+                    return { ...issue, solution: solution, status: 'resolved' };
+                }
+                return issue;
+            });
+            localStorage.setItem('issueRecords', JSON.stringify(updatedIssues));
+            
+            // 更新服务记录
+            serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
+            const updatedServices = serviceRecords.map(service => {
+                if (service.id === 'SERV' + issueId.substring(5)) {
+                    return { ...service, status: 'completed' };
+                }
+                return service;
+            });
+            localStorage.setItem('serviceRecords', JSON.stringify(updatedServices));
+            
+            // 更新问题件记录
+            loadIssueRecords();
+            
+            // 更新服务记录
+            loadServiceRecords();
+            
+        }
+
+        // 加载问题件记录
+        function loadIssueRecords() {
+            issueRecords = JSON.parse(localStorage.getItem('issueRecords')) || [];
+            const tableBody = document.getElementById('issue-table').querySelector('tbody');
+            
+            tableBody.innerHTML = issueRecords.slice(-10).reverse().map(issue => `
+                <tr>
+                    <td>${issue.waybillNumber}</td>
+                    <td>${issue.issueTypeName}</td>
+                    <td>${issue.description}</td>
+                    <td>${issue.reporter}</td>
+                    <td>${new Date(issue.issueTime).toLocaleString()}</td>
+                    <td>
+                        <span class="status-badge ${issue.status === 'resolved' ? 'status-completed' : 'status-pending'}">
+                            ${issue.status === 'resolved' ? '已解决' : '待处理'}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-primary" onclick="resolveIssueById('${issue.id}')">处理</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 根据ID处理问题
+        function resolveIssueById(issueId) {
+            const solution = prompt('请输入解决方案：');
+            if (!solution) return;
+            
+            issueRecords = JSON.parse(localStorage.getItem('issueRecords')) || [];
+            const updatedIssues = issueRecords.map(issue => {
+                if (issue.id === issueId) {
+                    return { ...issue, solution: solution, status: 'resolved' };
+                }
+                return issue;
+            });
+            localStorage.setItem('issueRecords', JSON.stringify(updatedIssues));
+            
+            // 更新服务记录
+            serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
+            const updatedServices = serviceRecords.map(service => {
+                if (service.waybillNumber === issueRecords.find(issue => issue.id === issueId)?.waybillNumber) {
+                    return { ...service, status: 'completed' };
+                }
+                return service;
+            });
+            localStorage.setItem('serviceRecords', JSON.stringify(updatedServices));
+            
+            // 更新问题件记录
+            loadIssueRecords();
+            
+            // 更新服务记录
+            loadServiceRecords();
+            
+        }
+
+        // 确认退货/拒收
+        function confirmReturn() {
+            const waybillNumber = document.getElementById('return-waybill').value.trim();
+            const returnType = document.getElementById('return-type').value;
+            const returnReason = document.getElementById('return-reason').value;
+            const description = document.getElementById('return-description').value.trim();
+            const returnTime = document.getElementById('return-time').value;
+            
+            if (!waybillNumber || !returnTime) {
+                alert('请填写完整信息');
+                return;
+            }
+            
+            const returnRecord = {
+                id: 'RETURN' + Date.now(),
+                waybillNumber: waybillNumber,
+                returnType: returnType,
+                returnTypeName: returnType === 'return' ? '退货' : '拒收',
+                returnReason: returnReason,
+                reasonName: {
+                    quality: '质量问题',
+                    wrong_item: '发错货',
+                    no_need: '不需要了',
+                    other: '其他原因'
+                }[returnReason],
+                description: description,
+                returnTime: new Date(returnTime).toISOString(),
+                status: 'registered'
+            };
+            
+            returnRecords = JSON.parse(localStorage.getItem('returnRecords')) || [];
+            returnRecords.push(returnRecord);
+            localStorage.setItem('returnRecords', JSON.stringify(returnRecords));
+            
+            // 添加到服务记录
+            const serviceRecord = {
+                id: 'SERV' + Date.now(),
+                serviceType: 'return_reject',
+                serviceTypeName: '退货/拒收件',
+                waybillNumber: waybillNumber,
+                customerInfo: 'N/A',
+                serviceTime: new Date(returnTime).toISOString(),
+                status: 'completed',
+                operator: '当前用户'
+            };
+            
+            serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
+            serviceRecords.push(serviceRecord);
+            localStorage.setItem('serviceRecords', JSON.stringify(serviceRecords));
+            
+            // 重置表单
+            document.getElementById('return-waybill').value = '';
+            document.getElementById('return-description').value = '';
+            document.getElementById('return-time').value = '';
+            
+            // 更新统计数据
+            loadStats();
+            
+            // 更新退货/拒收记录
+            loadReturnRecords();
+            
+            // 更新服务记录
+            loadServiceRecords();
+            
+        }
+
+        // 加载退货/拒收记录
+        function loadReturnRecords() {
+            returnRecords = JSON.parse(localStorage.getItem('returnRecords')) || [];
+            const tableBody = document.getElementById('return-table').querySelector('tbody');
+            
+            tableBody.innerHTML = returnRecords.slice(-10).reverse().map(record => `
+                <tr>
+                    <td>${record.waybillNumber}</td>
+                    <td>${record.returnTypeName}</td>
+                    <td>${record.reasonName}</td>
+                    <td>${record.description}</td>
+                    <td>${new Date(record.returnTime).toLocaleString()}</td>
+                    <td>
+                        <span class="status-badge status-completed">已登记</span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 加载服务记录
+        function loadServiceRecords() {
+            serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
+            const tableBody = document.getElementById('service-table').querySelector('tbody');
+            
+            tableBody.innerHTML = serviceRecords.slice(-10).reverse().map(record => `
+                <tr>
+                    <td>${record.id}</td>
+                    <td>${record.serviceTypeName}</td>
+                    <td>${record.waybillNumber}</td>
+                    <td>${record.customerInfo}</td>
+                    <td>${new Date(record.serviceTime).toLocaleString()}</td>
+                    <td>
+                        <span class="status-badge ${record.status === 'completed' ? 'status-completed' : 'status-pending'}">
+                            ${record.status === 'completed' ? '已完成' : '待处理'}
+                        </span>
+                    </td>
+                    <td>${record.operator}</td>
+                </tr>
+            `).join('');
+        }
+    </script>
+</body>
+</html>

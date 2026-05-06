@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>运输员 - 装车</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #f9ca24;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #f9ca24;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 装车容器 */
+        .car-loading-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .loading-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .loading-header h2 {
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .truck-info {
+            padding: 1rem;
+            background: #f0f0f0;
+            border-radius: 5px;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .truck-info .info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .truck-info .label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .truck-info .value {
+            font-weight: bold;
+            color: #333;
+        }
+
+        /* 装车扫描区域 */
+        .loading-scan {
+            margin-bottom: 2rem;
+            padding: 2rem;
+            background: #f0f0f0;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .loading-scan h3 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .scan-area {
+            border: 2px dashed #ddd;
+            padding: 2rem;
+            margin-bottom: 1rem;
+            background: white;
+            border-radius: 5px;
+        }
+
+        .scan-icon {
+            font-size: 3rem;
+            color: #f9ca24;
+            margin-bottom: 1rem;
+        }
+
+        .scan-area p {
+            color: #666;
+            margin-bottom: 1rem;
+        }
+
+        .manual-input {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+
+        .manual-input input {
+            padding: 1rem;
+            font-size: 1.2rem;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            flex: 1;
+            max-width: 500px;
+        }
+
+        .manual-input button {
+            padding: 1rem 2rem;
+            background: #f9ca24;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            font-size: 1.2rem;
+        }
+
+        .manual-input button:hover {
+            background: #e1b12c;
+        }
+
+        /* 扫描结果 */
+        .scan-result {
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background: #e8f5e8;
+            border-radius: 5px;
+            border-left: 5px solid #4caf50;
+        }
+
+        .scan-result.error {
+            background: #ffebee;
+            border-left-color: #f44336;
+        }
+
+        /* 装车包裹列表 */
+        .loading-items {
+            margin-bottom: 2rem;
+        }
+
+        .loading-items h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .items-table th,
+        .items-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .items-table th {
+            background: #f9ca24;
+            color: white;
+            font-weight: bold;
+        }
+
+        .items-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        .items-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .package-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .package-status.loaded {
+            background: #55efc4;
+            color: #00b894;
+        }
+
+        .package-status.pending {
+            background: #ffeaa7;
+            color: #fdcb6e;
+        }
+
+        /* 装车操作 */
+        .loading-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background: #f9ca24;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #e1b12c;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-success {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #45a049;
+        }
+
+        /* 统计信息 */
+        .loading-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-item {
+            padding: 1.5rem;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-item .number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #f9ca24;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-item .label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .car-loading-container {
+                padding: 1rem;
+            }
+
+            .loading-header {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .truck-info {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+
+            .manual-input {
+                flex-direction: column;
+            }
+
+            .loading-stats {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+
+            .loading-actions {
+                flex-direction: column;
+            }
+
+            .items-table th,
+            .items-table td {
+                padding: 0.5rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运输员</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>运输员功能</h3>
+                    <ul>
+                        <li><a href="transporter-index.html">首页</a></li>
+                        <li><a href="transporter-loading.html" class="active">扫描装车</a></li>
+                        <li><a href="transporter-departure.html">发车管理</a></li>
+                        <li><a href="transporter-schedule.html">我的排班</a></li>
+                        <li><a href="transporter-route.html">发车路线</a></li>
+                        <li><a href="transporter-performance.html">我的绩效</a></li>
+                        <li><a href="transporter-clock.html">打卡记录</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <div class="car-loading-container">
+                    <div class="loading-header">
+                        <h2>🚚 扫描装车</h2>
+                        <div class="truck-info">
+                            <div class="info-item">
+                                <span class="label">车牌号</span>
+                                <span class="value">京A12345</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">车型</span>
+                                <span class="value">解放J6P</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">司机</span>
+                                <span class="value" id="current-driver"></span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">任务</span>
+                                <span class="value">北京-上海</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 装车统计 -->
+                    <div class="loading-stats">
+                        <div class="stat-item">
+                            <div class="number" id="total-packages">0</div>
+                            <div class="label">总包裹数</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="number" id="loaded-packages">0</div>
+                            <div class="label">已装车</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="number" id="pending-packages">0</div>
+                            <div class="label">待装车</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="number" id="loading-rate">0%</div>
+                            <div class="label">装车进度</div>
+                        </div>
+                    </div>
+
+                    <!-- 装车扫描区域 -->
+                    <div class="loading-scan">
+                        <h3>扫描包裹</h3>
+                        <div class="scan-area">
+                            <div class="scan-icon">📱</div>
+                            <p>将包裹条码对准扫描设备</p>
+                            <p style="font-size: 0.9rem; color: #999;">支持二维码和条形码扫描</p>
+                        </div>
+                        <div class="manual-input">
+                            <input type="text" id="package-input" placeholder="请输入运单号" maxlength="20">
+                            <button id="scan-btn" class="btn btn-primary">扫描</button>
+                        </div>
+                        <div id="scan-result" class="scan-result hidden">
+                            <!-- 扫描结果将通过JS生成 -->
+                        </div>
+                    </div>
+
+                    <!-- 装车包裹列表 -->
+                    <div class="loading-items">
+                        <h3>装车包裹列表</h3>
+                        <table class="items-table">
+                            <thead>
+                                <tr>
+                                    <th>运单号</th>
+                                    <th>订单号</th>
+                                    <th>目的地</th>
+                                    <th>包裹信息</th>
+                                    <th>扫描时间</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="package-list">
+                                <!-- 包裹列表将通过JS生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 装车操作 -->
+                    <div class="loading-actions">
+                        <button id="reset-btn" class="btn btn-secondary">重置</button>
+                        <button id="verify-btn" class="btn btn-primary">核对清单</button>
+                        <button id="complete-btn" class="btn btn-success">完成装车</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 运输员装车功能逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('transporter');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 绑定扫描按钮事件
+            document.getElementById('scan-btn').addEventListener('click', () => {
+                scanPackage();
+            });
+
+            // 回车键扫描
+            document.getElementById('package-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    scanPackage();
+                }
+            });
+
+            // 绑定操作按钮事件
+            document.getElementById('reset-btn').addEventListener('click', () => {
+                resetLoading();
+            });
+
+            document.getElementById('verify-btn').addEventListener('click', () => {
+                verifyLoading();
+            });
+
+            document.getElementById('complete-btn').addEventListener('click', () => {
+                completeLoading();
+            });
+
+            // 初始化装车数据
+            initLoadingData();
+            
+            // 加载装车列表
+            loadPackageList();
+            
+            // 更新统计信息
+            updateLoadingStats();
+        });
+
+        // 初始化装车数据
+        function initLoadingData() {
+            const today = new Date().toISOString().split('T')[0];
+            const loadingKey = `transporterLoading_${today}`;
+            
+            if (!localStorage.getItem(loadingKey)) {
+                // 生成模拟装车数据
+                const mockPackages = [
+                    {
+                        waybillNumber: 'WB12345678901234',
+                        orderId: 'HLBJ167373120012345678',
+                        destination: '上海',
+                        packageInfo: '电子设备，3kg',
+                        status: 'pending',
+                        scanTime: null
+                    },
+                    {
+                        waybillNumber: 'WB23456789012345',
+                        orderId: 'HLSZ167381760023456789',
+                        destination: '广州',
+                        packageInfo: '服装，2kg',
+                        status: 'pending',
+                        scanTime: null
+                    },
+                    {
+                        waybillNumber: 'WB34567890123456',
+                        orderId: 'HLGZ167390400034567890',
+                        destination: '深圳',
+                        packageInfo: '书籍，5kg',
+                        status: 'pending',
+                        scanTime: null
+                    },
+                    {
+                        waybillNumber: 'WB45678901234567',
+                        orderId: 'HLSH167399040045678901',
+                        destination: '杭州',
+                        packageInfo: '食品，1kg',
+                        status: 'pending',
+                        scanTime: null
+                    },
+                    {
+                        waybillNumber: 'WB56789012345678',
+                        orderId: 'HLHZ167407680056789012',
+                        destination: '南京',
+                        packageInfo: '日用品，4kg',
+                        status: 'pending',
+                        scanTime: null
+                    }
+                ];
+                
+                localStorage.setItem(loadingKey, JSON.stringify(mockPackages));
+            }
+        }
+
+        // 扫描包裹
+        function scanPackage() {
+            const packageInput = document.getElementById('package-input');
+            const waybillNumber = packageInput.value.trim();
+            const resultDiv = document.getElementById('scan-result');
+            
+            if (!waybillNumber) {
+                showError('请输入运单号');
+                return;
+            }
+            
+            // 验证运单号格式
+            if (!waybillNumber.startsWith('WB')) {
+                showError('运单号格式错误，应以WB开头');
+                return;
+            }
+            
+            const today = new Date().toISOString().split('T')[0];
+            const loadingKey = `transporterLoading_${today}`;
+            let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
+            
+            // 查找包裹
+            const packageIndex = packages.findIndex(pkg => pkg.waybillNumber === waybillNumber);
+            
+            if (packageIndex === -1) {
+                showError('该运单号不在装车清单中');
+                return;
+            }
+            
+            const pkg = packages[packageIndex];
+            
+            if (pkg.status === 'loaded') {
+                showError('该包裹已装车');
+                return;
+            }
+            
+            // 更新包裹状态
+            packages[packageIndex].status = 'loaded';
+            packages[packageIndex].scanTime = new Date().toLocaleString('zh-CN');
+            
+            localStorage.setItem(loadingKey, JSON.stringify(packages));
+            
+            // 显示扫描成功结果
+            showScanResult(pkg, true);
+            
+            // 清空输入框
+            packageInput.value = '';
+            
+            // 更新列表和统计
+            loadPackageList();
+            updateLoadingStats();
+        }
+
+        // 显示扫描结果
+        function showScanResult(pkg, success = true) {
+            const resultDiv = document.getElementById('scan-result');
+            resultDiv.className = `scan-result ${success ? '' : 'error'}`;
+            
+            if (success) {
+                resultDiv.innerHTML = `
+                    <h4>扫描成功</h4>
+                    <p>运单号: ${pkg.waybillNumber}</p>
+                    <p>目的地: ${pkg.destination}</p>
+                    <p>状态: 已装车</p>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <h4>扫描失败</h4>
+                    <p>${pkg.errorMessage}</p>
+                `;
+            }
+            
+            resultDiv.classList.remove('hidden');
+            
+            // 3秒后隐藏结果
+            setTimeout(() => {
+                resultDiv.classList.add('hidden');
+            }, 3000);
+        }
+
+        // 显示错误信息
+        function showError(message) {
+            showScanResult({ errorMessage: message }, false);
+        }
+
+        // 加载包裹列表
+        function loadPackageList() {
+            const today = new Date().toISOString().split('T')[0];
+            const loadingKey = `transporterLoading_${today}`;
+            let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
+            
+            const packageList = document.getElementById('package-list');
+            
+            if (packages.length > 0) {
+                packageList.innerHTML = packages.map(pkg => `
+                    <tr>
+                        <td>${pkg.waybillNumber}</td>
+                        <td>${pkg.orderId}</td>
+                        <td>${pkg.destination}</td>
+                        <td>${pkg.packageInfo}</td>
+                        <td>${pkg.scanTime || '-'}</td>
+                        <td>
+                            <span class="package-status ${pkg.status}">
+                                ${pkg.status === 'loaded' ? '已装车' : '待装车'}
+                            </span>
+                        </td>
+                    </tr>
+                `).join('');
+            } else {
+                packageList.innerHTML = '<tr><td colspan="6" style="text-align: center;">暂无包裹</td></tr>';
+            }
+        }
+
+        // 更新装车统计
+        function updateLoadingStats() {
+            const today = new Date().toISOString().split('T')[0];
+            const loadingKey = `transporterLoading_${today}`;
+            let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
+            
+            const totalPackages = packages.length;
+            const loadedPackages = packages.filter(pkg => pkg.status === 'loaded').length;
+            const pendingPackages = packages.filter(pkg => pkg.status === 'pending').length;
+            const loadingRate = totalPackages > 0 ? Math.round((loadedPackages / totalPackages) * 100) : 0;
+            
+            // 更新统计显示
+            document.getElementById('total-packages').textContent = totalPackages;
+            document.getElementById('loaded-packages').textContent = loadedPackages;
+            document.getElementById('pending-packages').textContent = pendingPackages;
+            document.getElementById('loading-rate').textContent = `${loadingRate}%`;
+        }
+
+        // 重置装车
+        function resetLoading() {
+            if (confirm('确定要重置装车状态吗？所有已扫描的包裹将恢复为待装车状态。')) {
+                const today = new Date().toISOString().split('T')[0];
+                const loadingKey = `transporterLoading_${today}`;
+                let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
+                
+                // 重置所有包裹状态
+                packages = packages.map(pkg => ({
+                    ...pkg,
+                    status: 'pending',
+                    scanTime: null
+                }));
+                
+                localStorage.setItem(loadingKey, JSON.stringify(packages));
+                
+                // 更新列表和统计
+                loadPackageList();
+                updateLoadingStats();
+                
+                alert('重置成功！');
+            }
+        }
+
+        // 核对清单
+        function verifyLoading() {
+            const today = new Date().toISOString().split('T')[0];
+            const loadingKey = `transporterLoading_${today}`;
+            let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
+            
+            const loadedPackages = packages.filter(pkg => pkg.status === 'loaded');
+            const pendingPackages = packages.filter(pkg => pkg.status === 'pending');
+            
+            let message = `装车核对结果：\n`;
+            message += `总包裹数：${packages.length}\n`;
+            message += `已装车：${loadedPackages.length}\n`;
+            message += `待装车：${pendingPackages.length}\n\n`;
+            
+            if (pendingPackages.length > 0) {
+                message += `未装车的包裹：\n`;
+                pendingPackages.forEach(pkg => {
+                    message += `${pkg.waybillNumber} (${pkg.destination})\n`;
+                });
+            } else {
+                message += `所有包裹已装车，核对无误！`;
+            }
+            
+            alert(message);
+        }
+
+        // 完成装车
+        function completeLoading() {
+            const today = new Date().toISOString().split('T')[0];
+            const loadingKey = `transporterLoading_${today}`;
+            let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
+            
+            const pendingPackages = packages.filter(pkg => pkg.status === 'pending');
+            
+            if (pendingPackages.length > 0) {
+                if (!confirm(`还有${pendingPackages.length}个包裹未装车，确定要完成装车吗？`)) {
+                    return;
+                }
+            }
+            
+            // 更新装车统计
+            const loadedPackages = packages.filter(pkg => pkg.status === 'loaded').length;
+            updateTransportStats('loaded', loadedPackages);
+            
+            // 跳转到发车页面
+            window.location.href = 'transporter-departure.html';
+        }
+
+        // 更新运输统计
+        function updateTransportStats(type, value) {
+            const today = new Date().toISOString().split('T')[0];
+            const statsKey = `transporterStats_${today}`;
+            
+            let stats = { loaded: 0, departed: 0, mileage: 0 };
+            const existingStats = localStorage.getItem(statsKey);
+            if (existingStats) {
+                stats = JSON.parse(existingStats);
+            }
+            
+            if (type === 'loaded') {
+                stats.loaded = value;
+            } else if (type === 'departed') {
+                stats.departed += value;
+            } else if (type === 'mileage') {
+                stats.mileage += value;
+            }
+            
+            localStorage.setItem(statsKey, JSON.stringify(stats));
+        }
+    </script>
+</body>
+</html>

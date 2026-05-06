@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分拣员 - 工作安排</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 工作安排容器 */
+        .schedule-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .schedule-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .schedule-header h2 {
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+
+        .schedule-header p {
+            color: #666;
+        }
+
+        /* 日期导航 */
+        .date-navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding: 1rem;
+            background: #f0f0f0;
+            border-radius: 10px;
+        }
+
+        .date-navigation button {
+            padding: 0.75rem 1.5rem;
+            background: #4ecdc4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            font-size: 1rem;
+        }
+
+        .date-navigation button:hover {
+            background: #45b7aa;
+        }
+
+        .date-navigation .current-date {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        /* 今日任务 */
+        .today-tasks {
+            margin-bottom: 2rem;
+        }
+
+        .today-tasks h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .task-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+
+        .task-card {
+            padding: 1.5rem;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border-left: 5px solid #4ecdc4;
+        }
+
+        .task-card.urgent {
+            border-left-color: #ff6b6b;
+        }
+
+        .task-card.normal {
+            border-left-color: #4caf50;
+        }
+
+        .task-card.low {
+            border-left-color: #ff9800;
+        }
+
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .task-title {
+            font-weight: bold;
+            color: #333;
+            font-size: 1.1rem;
+        }
+
+        .task-priority {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .task-priority.high {
+            background: #ff9ff3;
+            color: #990099;
+        }
+
+        .task-priority.medium {
+            background: #74b9ff;
+            color: #0984e3;
+        }
+
+        .task-priority.low {
+            background: #55efc4;
+            color: #00b894;
+        }
+
+        .task-info {
+            margin-bottom: 1rem;
+        }
+
+        .task-info .info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .task-info .label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .task-info .value {
+            color: #333;
+            font-weight: 500;
+        }
+
+        .task-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            text-align: right;
+        }
+
+        .task-status.pending {
+            background: #ff9ff3;
+            color: #990099;
+        }
+
+        .task-status.in-progress {
+            background: #74b9ff;
+            color: #0984e3;
+        }
+
+        .task-status.completed {
+            background: #55efc4;
+            color: #00b894;
+        }
+
+        /* 周排班表 */
+        .week-schedule {
+            margin-bottom: 2rem;
+        }
+
+        .week-schedule h3 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .week-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .week-table th,
+        .week-table td {
+            padding: 1rem;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+        }
+
+        .week-table th {
+            background: #4ecdc4;
+            color: white;
+            font-weight: bold;
+        }
+
+        .week-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        .week-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .shift-time {
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .shift-location {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .shift-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .shift-status.working {
+            background: #55efc4;
+            color: #00b894;
+        }
+
+        .shift-status.off {
+            background: #dfe6e9;
+            color: #636e72;
+        }
+
+        /* 月度排班概览 */
+        .month-overview {
+            margin-bottom: 2rem;
+        }
+
+        .month-overview h3 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .month-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 0.5rem;
+        }
+
+        .month-day {
+            padding: 1rem;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .month-day:hover {
+            transform: translateY(-5px);
+        }
+
+        .month-day.today {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        .month-day.working {
+            background: #e1f5fe;
+            border: 2px solid #0288d1;
+        }
+
+        .month-day.off {
+            background: #f5f5f5;
+            color: #9e9e9e;
+        }
+
+        .day-number {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .day-shift {
+            font-size: 0.8rem;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .schedule-container {
+                padding: 1rem;
+            }
+
+            .date-navigation {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .task-list {
+                grid-template-columns: 1fr;
+            }
+
+            .week-table th,
+            .week-table td {
+                padding: 0.5rem;
+                font-size: 0.8rem;
+            }
+
+            .month-grid {
+                grid-template-columns: repeat(7, 1fr);
+                gap: 0.25rem;
+            }
+
+            .month-day {
+                padding: 0.5rem;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 分拣员</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>分拣员功能</h3>
+                    <ul>
+                        <li><a href="sorter-index.html">首页</a></li>
+                        <li><a href="sorter-scan.html">包裹扫描</a></li>
+                        <li><a href="sorter-sorting.html">分拣任务</a></li>
+                        <li><a href="sorter-performance.html">绩效评估</a></li>
+                        <li><a href="sorter-schedule.html" class="active">工作安排</a></li>
+                        <li><a href="sorter-clock.html">打卡记录</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <div class="schedule-container">
+                    <div class="schedule-header">
+                        <h2>工作安排</h2>
+                        <p>查看您的每日任务和排班信息</p>
+                    </div>
+
+                    <!-- 日期导航 -->
+                    <div class="date-navigation">
+                        <button id="prev-day" class="btn btn-primary">上一天</button>
+                        <span class="current-date" id="current-date-display"></span>
+                        <button id="next-day" class="btn btn-primary">下一天</button>
+                    </div>
+
+                    <!-- 今日任务 -->
+                    <div class="today-tasks">
+                        <h3>📋 今日任务</h3>
+                        <div class="task-list" id="today-tasks">
+                            <!-- 今日任务将通过JS生成 -->
+                        </div>
+                    </div>
+
+                    <!-- 周排班表 -->
+                    <div class="week-schedule">
+                        <h3>📅 本周排班</h3>
+                        <table class="week-table">
+                            <thead>
+                                <tr>
+                                    <th>日期</th>
+                                    <th>星期</th>
+                                    <th>班次</th>
+                                    <th>工作时间</th>
+                                    <th>工作地点</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="week-schedule">
+                                <!-- 周排班将通过JS生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 月度排班概览 -->
+                    <div class="month-overview">
+                        <h3>📊 本月概览</h3>
+                        <div class="month-grid" id="month-overview">
+                            <!-- 月度概览将通过JS生成 -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script src="sorter-mock-data.js"></script>
+    <script>
+        // 全局变量
+        let currentDate = new Date();
+
+        // 分拣员工作安排功能逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('sorter');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 初始化当前日期
+            currentDate = new Date();
+
+            // 绑定日期导航事件
+            document.getElementById('prev-day').addEventListener('click', () => {
+                currentDate.setDate(currentDate.getDate() - 1);
+                updateScheduleView();
+            });
+
+            document.getElementById('next-day').addEventListener('click', () => {
+                currentDate.setDate(currentDate.getDate() + 1);
+                updateScheduleView();
+            });
+
+            // 初始化工作安排数据
+            initScheduleData();
+            updateScheduleView();
+        });
+
+        // 初始化工作安排数据
+        function initScheduleData() {
+            const user = getCurrentUser();
+            const currentDate = new Date();
+            const currentYear = currentDate.getFullYear();
+            const currentMonth = currentDate.getMonth();
+
+            // 检查是否已有任务数据
+            const tasksKey = `sorterTasks_${currentYear}_${currentMonth + 1}`;
+            if (!localStorage.getItem(tasksKey)) {
+                // 生成模拟任务数据
+                const mockTasks = [];
+                const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+                
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const date = new Date(currentYear, currentMonth, day);
+                    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                    
+                    // 工作日生成1-3个任务
+                    if (!isWeekend) {
+                        const taskCount = Math.floor(Math.random() * 3) + 1;
+                        for (let i = 0; i < taskCount; i++) {
+                            mockTasks.push({
+                                id: `${day}_${i}`,
+                                date: date.toISOString().split('T')[0],
+                                title: `分拣任务 ${day}-${i + 1}`,
+                                priority: Math.random() > 0.7 ? 'high' : Math.random() > 0.5 ? 'medium' : 'low',
+                                startTime: `0${Math.floor(Math.random() * 8) + 8}:00`.slice(-5),
+                                endTime: `1${Math.floor(Math.random() * 2) + 7}:00`,
+                                location: ['上海分拣中心A区', '上海分拣中心B区', '上海分拣中心C区'][Math.floor(Math.random() * 3)],
+                                status: 'pending'
+                            });
+                        }
+                    }
+                }
+                
+                localStorage.setItem(tasksKey, JSON.stringify(mockTasks));
+            }
+
+            // 检查是否已有排班数据
+            const scheduleKey = `sorterSchedule_${currentYear}_${currentMonth + 1}`;
+            if (!localStorage.getItem(scheduleKey)) {
+                // 生成模拟排班数据
+                const mockSchedule = [];
+                const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+                
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const date = new Date(currentYear, currentMonth, day);
+                    const dayOfWeek = date.getDay();
+                    let shift = 'off';
+                    let status = 'off';
+                    
+                    // 周一到周五安排工作
+                    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+                        shift = Math.random() > 0.5 ? '早班' : '晚班';
+                        status = 'working';
+                    }
+                    
+                    mockSchedule.push({
+                        date: date.toISOString().split('T')[0],
+                        day: day,
+                        dayOfWeek: dayOfWeek,
+                        shift: shift,
+                        status: status
+                    });
+                }
+                
+                localStorage.setItem(scheduleKey, JSON.stringify(mockSchedule));
+            }
+        }
+
+        // 更新工作安排视图
+        function updateScheduleView() {
+            // 更新当前日期显示
+            updateCurrentDateDisplay();
+
+            // 加载今日任务
+            loadTodayTasks();
+
+            // 加载周排班
+            loadWeekSchedule();
+
+            // 加载月度概览
+            loadMonthOverview();
+        }
+
+        // 更新当前日期显示
+        function updateCurrentDateDisplay() {
+            const dateOptions = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
+            document.getElementById('current-date-display').textContent = currentDate.toLocaleDateString('zh-CN', dateOptions);
+        }
+
+        // 加载今日任务
+        function loadTodayTasks() {
+            const user = getCurrentUser();
+            const currentYear = currentDate.getFullYear();
+            const currentMonth = currentDate.getMonth() + 1;
+            const today = currentDate.toISOString().split('T')[0];
+            
+            const tasksKey = `sorterTasks_${currentYear}_${currentMonth}`;
+            const tasks = JSON.parse(localStorage.getItem(tasksKey) || '[]');
+            
+            const todayTasks = tasks.filter(task => task.date === today);
+            const taskList = document.getElementById('today-tasks');
+            
+            if (todayTasks.length > 0) {
+                taskList.innerHTML = todayTasks.map(task => `
+                    <div class="task-card ${task.priority === 'high' ? 'urgent' : task.priority === 'medium' ? 'normal' : 'low'}">
+                        <div class="task-header">
+                            <div class="task-title">${task.title}</div>
+                            <div class="task-priority ${task.priority}">
+                                ${task.priority === 'high' ? '高' : task.priority === 'medium' ? '中' : '低'}优先级
+                            </div>
+                        </div>
+                        <div class="task-info">
+                            <div class="info-item">
+                                <span class="label">时间:</span>
+                                <span class="value">${task.startTime} - ${task.endTime}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="label">地点:</span>
+                                <span class="value">${task.location}</span>
+                            </div>
+                        </div>
+                        <div class="task-status">
+                            ${task.status === 'pending' ? '待开始' : task.status === 'in-progress' ? '进行中' : '已完成'}
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                taskList.innerHTML = '<p style="text-align: center; grid-column: 1 / -1; padding: 2rem; color: #666;">今日暂无任务</p>';
+            }
+        }
+
+        // 加载周排班
+        function loadWeekSchedule() {
+            const currentYear = currentDate.getFullYear();
+            const currentMonth = currentDate.getMonth() + 1;
+            const today = currentDate.getDate();
+            const firstDayOfWeek = new Date(currentDate);
+            firstDayOfWeek.setDate(today - currentDate.getDay());
+            
+            const scheduleKey = `sorterSchedule_${currentYear}_${currentMonth}`;
+            const schedule = JSON.parse(localStorage.getItem(scheduleKey) || '[]');
+            
+            const weekDays = [];
+            for (let i = 0; i < 7; i++) {
+                const dayDate = new Date(firstDayOfWeek);
+                dayDate.setDate(firstDayOfWeek.getDate() + i);
+                weekDays.push(dayDate);
+            }
+            
+            const weekSchedule = document.getElementById('week-schedule');
+            const weekDayNames = ['日', '一', '二', '三', '四', '五', '六'];
+            const shiftTimeMap = {
+                '早班': '08:00 - 16:00',
+                '晚班': '16:00 - 00:00',
+                'off': '-'
+            };
+            const locationMap = {
+                '早班': '上海分拣中心A区',
+                '晚班': '上海分拣中心B区',
+                'off': '-'
+            };
+            
+            weekSchedule.innerHTML = weekDays.map(day => {
+                const daySchedule = schedule.find(item => {
+                    const itemDate = new Date(item.date);
+                    return itemDate.getDate() === day.getDate() && 
+                           itemDate.getMonth() + 1 === day.getMonth() + 1 && 
+                           itemDate.getFullYear() === day.getFullYear();
+                });
+                
+                const dateStr = `${day.getMonth() + 1}/${day.getDate()}`;
+                const dayOfWeek = weekDayNames[day.getDay()];
+                const shift = daySchedule ? daySchedule.shift : 'off';
+                const status = daySchedule ? daySchedule.status : 'off';
+                const shiftTime = shiftTimeMap[shift];
+                const location = locationMap[shift];
+                
+                return `
+                    <tr ${day.toDateString() === currentDate.toDateString() ? 'style="background: #e8f5e8; font-weight: bold;"' : ''}>
+                        <td>${dateStr}</td>
+                        <td>${dayOfWeek}</td>
+                        <td>${shift}</td>
+                        <td>${shiftTime}</td>
+                        <td>${location}</td>
+                        <td><span class="shift-status ${status}">${status === 'working' ? '上班' : '休息'}</span></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // 加载月度概览
+        function loadMonthOverview() {
+            const currentYear = currentDate.getFullYear();
+            const currentMonth = currentDate.getMonth();
+            const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
+            const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0);
+            const daysInMonth = lastDayOfMonth.getDate();
+            const startDayOfWeek = firstDayOfMonth.getDay();
+            
+            const scheduleKey = `sorterSchedule_${currentYear}_${currentMonth + 1}`;
+            const schedule = JSON.parse(localStorage.getItem(scheduleKey) || '[]');
+            
+            const monthOverview = document.getElementById('month-overview');
+            const weekDayNames = ['日', '一', '二', '三', '四', '五', '六'];
+            
+            // 添加空的日期格子
+            let html = '';
+            for (let i = 0; i < startDayOfWeek; i++) {
+                html += '<div class="month-day"></div>';
+            }
+            
+            // 添加月份的每一天
+            for (let day = 1; day <= daysInMonth; day++) {
+                const date = new Date(currentYear, currentMonth, day);
+                const dayOfWeek = date.getDay();
+                const daySchedule = schedule.find(item => {
+                    const itemDate = new Date(item.date);
+                    return itemDate.getDate() === day && 
+                           itemDate.getMonth() === currentMonth && 
+                           itemDate.getFullYear() === currentYear;
+                });
+                
+                const isToday = date.toDateString() === new Date().toDateString();
+                const shift = daySchedule ? daySchedule.shift : 'off';
+                const status = daySchedule ? daySchedule.status : 'off';
+                
+                html += `
+                    <div class="month-day ${isToday ? 'today' : ''} ${status === 'working' ? 'working' : 'off'}">
+                        <div class="day-number">${day}</div>
+                        <div class="day-shift">${shift !== 'off' ? shift : '休息'}</div>
+                    </div>
+                `;
+            }
+            
+            monthOverview.innerHTML = html;
+        }
+    </script>
+</body>
+</html>

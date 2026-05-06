@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分拣员 - 分拣任务</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 分拣区域 */
+        .sorting-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .sorting-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .sorting-header h2 {
+            color: #333;
+        }
+
+        .sorting-stats {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: #f0f0f0;
+            border-radius: 5px;
+        }
+
+        .stat-item .number {
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #4ecdc4;
+        }
+
+        /* 分拣列表 */
+        .sorting-list {
+            margin-bottom: 2rem;
+        }
+
+        .sorting-list h3 {
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .sorting-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .sorting-table th,
+        .sorting-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .sorting-table th {
+            background: #4ecdc4;
+            color: white;
+            font-weight: bold;
+        }
+
+        .sorting-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        .sorting-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* 分拣状态 */
+        .sorting-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .sorting-status.pending {
+            background: #ff9ff3;
+            color: #990099;
+        }
+
+        .sorting-status.sorted {
+            background: #55efc4;
+            color: #00b894;
+        }
+
+        /* 操作按钮 */
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .btn-primary {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #45b7aa;
+        }
+
+        .btn-success {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #45a049;
+        }
+
+        /* 批量操作 */
+        .batch-actions {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        /* 模态框样式 */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            width: 100%;
+            max-width: 500px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-header h3 {
+            color: #333;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 1rem;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .sorting-container {
+                padding: 1rem;
+            }
+
+            .sorting-header {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .sorting-stats {
+                flex-wrap: wrap;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 分拣员</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>分拣员功能</h3>
+                    <ul>
+                        <li><a href="sorter-index.html">首页</a></li>
+                        <li><a href="sorter-scan.html">包裹扫描</a></li>
+                        <li><a href="sorter-sorting.html" class="active">分拣任务</a></li>
+                        <li><a href="sorter-performance.html">绩效评估</a></li>
+                        <li><a href="sorter-schedule.html">工作安排</a></li>
+                        <li><a href="sorter-clock.html">打卡记录</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <div class="sorting-container">
+                    <div class="sorting-header">
+                        <h2>包裹分拣</h2>
+                        <div class="sorting-stats">
+                            <div class="stat-item">
+                                <span class="number" id="pending-count">0</span>
+                                <span>待分拣</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="number" id="sorted-count">0</span>
+                                <span>已分拣</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="number" id="total-count">0</span>
+                                <span>总数</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="batch-actions">
+                        <button id="refresh-btn" class="btn btn-primary">刷新列表</button>
+                        <button id="clear-finished-btn" class="btn btn-secondary">清空已完成</button>
+                    </div>
+
+                    <div class="sorting-list">
+                        <h3>待分拣包裹列表</h3>
+                        <table class="sorting-table">
+                            <thead>
+                                <tr>
+                                    <th>运单号</th>
+                                    <th>订单号</th>
+                                    <th>目的地</th>
+                                    <th>包裹信息</th>
+                                    <th>状态</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sorting-items">
+                                <!-- 分拣项目将通过JS生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 分拣详情模态框 -->
+    <div id="sorting-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>分拣详情</h3>
+                <button id="close-modal" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="waybill-info">运单号</label>
+                    <input type="text" id="waybill-info" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="destination">目的地</label>
+                    <input type="text" id="destination" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="sorting-location">分拣位置</label>
+                    <select id="sorting-location">
+                        <option value="">请选择分拣位置</option>
+                        <option value="A区">A区 - 北京方向</option>
+                        <option value="B区">B区 - 上海方向</option>
+                        <option value="C区">C区 - 广州方向</option>
+                        <option value="D区">D区 - 深圳方向</option>
+                        <option value="E区">E区 - 杭州方向</option>
+                        <option value="F区">F区 - 南京方向</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="sorting-remark">分拣备注</label>
+                    <textarea id="sorting-remark" placeholder="请输入分拣备注"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-sorting" class="btn btn-secondary">取消</button>
+                <button id="confirm-sorting" class="btn btn-success">确认分拣</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script src="sorter-mock-data.js"></script>
+    <script>
+        // 分拣员分拣功能逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('sorter');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 绑定按钮事件
+            document.getElementById('refresh-btn').addEventListener('click', () => {
+                loadSortingItems();
+            });
+
+            document.getElementById('clear-finished-btn').addEventListener('click', () => {
+                clearFinishedItems();
+            });
+
+            // 模态框事件
+            document.getElementById('close-modal').addEventListener('click', () => {
+                closeSortingModal();
+            });
+
+            document.getElementById('cancel-sorting').addEventListener('click', () => {
+                closeSortingModal();
+            });
+
+            document.getElementById('confirm-sorting').addEventListener('click', () => {
+                confirmSorting();
+            });
+
+            // 点击模态框外部关闭
+            window.addEventListener('click', (e) => {
+                const modal = document.getElementById('sorting-modal');
+                if (e.target === modal) {
+                    closeSortingModal();
+                }
+            });
+
+            // 初始化数据
+            initSortingData();
+            loadSortingItems();
+        });
+
+        // 初始化分拣数据
+        function initSortingData() {
+            const today = new Date().toISOString().split('T')[0];
+            const sortingKey = `sorterSortingItems_${today}`;
+            
+            const existingItems = localStorage.getItem(sortingKey);
+            if (!existingItems) {
+                // 生成模拟数据
+                const mockItems = [
+                    {
+                        id: 1,
+                        waybillNumber: 'WB12345678901234',
+                        orderId: 'HLBJ167373120012345678',
+                        destination: '上海',
+                        packageInfo: '电子设备，3kg',
+                        status: 'pending'
+                    },
+                    {
+                        id: 2,
+                        waybillNumber: 'WB23456789012345',
+                        orderId: 'HLSZ167381760023456789',
+                        destination: '广州',
+                        packageInfo: '服装，2kg',
+                        status: 'pending'
+                    },
+                    {
+                        id: 3,
+                        waybillNumber: 'WB34567890123456',
+                        orderId: 'HLGZ167390400034567890',
+                        destination: '深圳',
+                        packageInfo: '书籍，5kg',
+                        status: 'pending'
+                    }
+                ];
+                
+                localStorage.setItem(sortingKey, JSON.stringify(mockItems));
+            }
+        }
+
+        // 加载分拣项目
+        function loadSortingItems() {
+            const today = new Date().toISOString().split('T')[0];
+            const sortingKey = `sorterSortingItems_${today}`;
+            
+            let items = [];
+            const existingItems = localStorage.getItem(sortingKey);
+            if (existingItems) {
+                items = JSON.parse(existingItems);
+            }
+
+            const tableBody = document.getElementById('sorting-items');
+            const pendingCount = items.filter(item => item.status === 'pending').length;
+            const sortedCount = items.filter(item => item.status === 'sorted').length;
+            
+            // 更新统计数字
+            document.getElementById('pending-count').textContent = pendingCount;
+            document.getElementById('sorted-count').textContent = sortedCount;
+            document.getElementById('total-count').textContent = items.length;
+
+            if (items.length > 0) {
+                tableBody.innerHTML = items.map(item => `
+                    <tr>
+                        <td>${item.waybillNumber}</td>
+                        <td>${item.orderId}</td>
+                        <td>${item.destination}</td>
+                        <td>${item.packageInfo}</td>
+                        <td>
+                            <span class="sorting-status ${item.status}">
+                                ${item.status === 'pending' ? '待分拣' : '已分拣'}
+                            </span>
+                        </td>
+                        <td>
+                            ${item.status === 'pending' ? `
+                                <button class="btn btn-success" onclick="openSortingModal(${item.id})">分拣</button>
+                            ` : `
+                                <button class="btn btn-primary" onclick="viewSortingRecord(${item.id})">查看</button>
+                            `}
+                        </td>
+                    </tr>
+                `).join('');
+            } else {
+                tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">暂无待分拣包裹</td></tr>';
+            }
+        }
+
+        // 打开分拣模态框
+        let currentSortingItem = null;
+        
+        function openSortingModal(itemId) {
+            const today = new Date().toISOString().split('T')[0];
+            const sortingKey = `sorterSortingItems_${today}`;
+            
+            let items = [];
+            const existingItems = localStorage.getItem(sortingKey);
+            if (existingItems) {
+                items = JSON.parse(existingItems);
+            }
+
+            currentSortingItem = items.find(item => item.id === itemId);
+            if (currentSortingItem) {
+                // 填充模态框数据
+                document.getElementById('waybill-info').value = currentSortingItem.waybillNumber;
+                document.getElementById('destination').value = currentSortingItem.destination;
+                document.getElementById('sorting-remark').value = '';
+                
+                // 根据目的地自动选择分拣位置
+                const locationMap = {
+                    '北京': 'A区',
+                    '上海': 'B区',
+                    '广州': 'C区',
+                    '深圳': 'D区',
+                    '杭州': 'E区',
+                    '南京': 'F区'
+                };
+                
+                if (locationMap[currentSortingItem.destination]) {
+                    document.getElementById('sorting-location').value = locationMap[currentSortingItem.destination];
+                }
+                
+                // 显示模态框
+                document.getElementById('sorting-modal').classList.remove('hidden');
+            }
+        }
+
+        // 关闭分拣模态框
+        function closeSortingModal() {
+            document.getElementById('sorting-modal').classList.add('hidden');
+            currentSortingItem = null;
+        }
+
+        // 确认分拣
+        function confirmSorting() {
+            if (!currentSortingItem) return;
+
+            const sortingLocation = document.getElementById('sorting-location').value;
+            const sortingRemark = document.getElementById('sorting-remark').value;
+
+            if (!sortingLocation) {
+                alert('请选择分拣位置');
+                return;
+            }
+
+            const today = new Date().toISOString().split('T')[0];
+            const sortingKey = `sorterSortingItems_${today}`;
+            
+            let items = [];
+            const existingItems = localStorage.getItem(sortingKey);
+            if (existingItems) {
+                items = JSON.parse(existingItems);
+            }
+
+            // 更新分拣状态
+            const itemIndex = items.findIndex(item => item.id === currentSortingItem.id);
+            if (itemIndex !== -1) {
+                items[itemIndex].status = 'sorted';
+                items[itemIndex].sortingLocation = sortingLocation;
+                items[itemIndex].sortingRemark = sortingRemark;
+                items[itemIndex].sortingTime = new Date().toLocaleString('zh-CN');
+                
+                localStorage.setItem(sortingKey, JSON.stringify(items));
+                
+                // 更新分拣统计
+                updateSortingStats();
+                
+                // 更新列表
+                loadSortingItems();
+                
+                // 关闭模态框
+                closeSortingModal();
+                
+                alert('分拣完成！');
+            }
+        }
+
+        // 更新分拣统计
+        function updateSortingStats() {
+            const today = new Date().toISOString().split('T')[0];
+            const statsKey = `sorterStats_${today}`;
+            
+            let stats = { scanned: 0, sorted: 0, exceptions: 0 };
+            const existingStats = localStorage.getItem(statsKey);
+            if (existingStats) {
+                stats = JSON.parse(existingStats);
+            }
+
+            stats.sorted += 1;
+            localStorage.setItem(statsKey, JSON.stringify(stats));
+        }
+
+        // 查看分拣记录
+        function viewSortingRecord(itemId) {
+            const today = new Date().toISOString().split('T')[0];
+            const sortingKey = `sorterSortingItems_${today}`;
+            
+            let items = [];
+            const existingItems = localStorage.getItem(sortingKey);
+            if (existingItems) {
+                items = JSON.parse(existingItems);
+            }
+
+            const item = items.find(item => item.id === itemId);
+            if (item) {
+                let recordInfo = `运单号: ${item.waybillNumber}\n`;
+                recordInfo += `订单号: ${item.orderId}\n`;
+                recordInfo += `目的地: ${item.destination}\n`;
+                recordInfo += `分拣位置: ${item.sortingLocation}\n`;
+                recordInfo += `分拣时间: ${item.sortingTime}\n`;
+                if (item.sortingRemark) {
+                    recordInfo += `备注: ${item.sortingRemark}\n`;
+                }
+                
+                alert(recordInfo);
+            }
+        }
+
+        // 清空已完成
+        function clearFinishedItems() {
+            const today = new Date().toISOString().split('T')[0];
+            const sortingKey = `sorterSortingItems_${today}`;
+            
+            let items = [];
+            const existingItems = localStorage.getItem(sortingKey);
+            if (existingItems) {
+                items = JSON.parse(existingItems);
+            }
+
+            const pendingItems = items.filter(item => item.status === 'pending');
+            localStorage.setItem(sortingKey, JSON.stringify(pendingItems));
+            
+            loadSortingItems();
+            alert('已清空所有已完成分拣的包裹');
+        }
+    </script>
+</body>
+</html>

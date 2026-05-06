@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TMS运输管理系统 - 登录</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        /* 登录界面样式 */
+        .login-box {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 700px;
+        }
+
+        .login-box h2 {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: #333;
+        }
+
+        .role-selection {
+            margin-bottom: 2rem;
+        }
+
+        .role-selection h3 {
+            text-align: center;
+            margin-bottom: 1rem;
+            color: #666;
+        }
+
+        .role-buttons {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .role-btn {
+            padding: 0.75rem 1.5rem;
+            border: 2px solid #e0e0e0;
+            background: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .role-btn:hover,
+        .role-btn.active {
+            border-color: #667eea;
+            background-color: #667eea;
+            color: white;
+        }
+
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .login-form input {
+            padding: 1rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .login-form button {
+            padding: 1rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.3s ease;
+        }
+
+        .login-form button:hover {
+            background: #5a6fd8;
+        }
+    </style>
+</head>
+<body>
+    <!-- 登录界面 -->
+    <div id="login-container" class="container">
+        <div class="login-box">
+            <h2>TMS 运输管理系统</h2>
+            <div class="role-selection">
+                <h3>选择角色</h3>
+                <div class="role-buttons">
+                    <button class="btn role-btn active" data-role="client">用户</button>
+                    <button class="btn role-btn" data-role="branch">网点</button>
+                    <button class="btn role-btn" data-role="sorter">分拣员</button>
+                    <button class="btn role-btn" data-role="transporter">运输员</button>
+                    <button class="btn role-btn" data-role="deliveryman">派送员</button>
+                    <button class="btn role-btn" data-role="admin">管理员</button>
+                </div>
+            </div>
+            <div class="login-form">
+                <input type="text" id="username" placeholder="用户名" value="admin" required>
+                <input type="password" id="password" placeholder="密码" value="123456" required>
+                <button id="login-btn" class="btn btn-primary">登录</button>
+            </div>
+            <div style="text-align: center; margin-top: 1.5rem;">
+                <a href="tms-architecture.html" style="color: #667eea; text-decoration: none; font-size: 0.9rem;">系统架构介绍</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 登录系统逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 角色选择事件
+            document.querySelectorAll('.role-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                });
+            });
+
+            // 登录事件
+            document.getElementById('login-btn').addEventListener('click', () => {
+                login();
+            });
+
+            // 回车键登录
+            document.getElementById('password').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    login();
+                }
+            });
+        });
+    </script>
+</body>
+</html>

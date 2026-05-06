@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>订单提取 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .card h3 {
+            margin-bottom: 1rem;
+            color: #333;
+            font-size: 1.2rem;
+        }
+
+        /* 统计卡片 */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #666;
+        }
+
+        /* 筛选器 */
+        .filter-container {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .filter-item label {
+            font-weight: 500;
+            color: #666;
+        }
+
+        .filter-item select,
+        .filter-item input {
+            padding: 0.5rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 0.9rem;
+        }
+
+        /* 订单列表 */
+        .order-list {
+            margin-top: 1rem;
+        }
+
+        .order-item {
+            padding: 1.5rem;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            margin-bottom: 1rem;
+            background: white;
+            transition: box-shadow 0.3s ease;
+        }
+
+        .order-item:hover {
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .order-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .order-title {
+            font-weight: 600;
+            color: #333;
+            font-size: 1.1rem;
+        }
+
+        .order-meta {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .order-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .status-uncollected {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+
+        .status-collected {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .order-amount {
+            font-weight: 600;
+            color: #ff6b6b;
+            font-size: 1.1rem;
+        }
+
+        .order-details {
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+
+        .detail-row {
+            display: flex;
+            margin-bottom: 0.5rem;
+        }
+
+        .detail-label {
+            width: 100px;
+            font-weight: 500;
+            color: #666;
+        }
+
+        .detail-value {
+            flex: 1;
+            color: #333;
+        }
+
+        .order-actions {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-end;
+        }
+
+        /* 搜索栏 */
+        .search-container {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .order-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.5rem;
+            }
+
+            .order-meta {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .detail-row {
+                flex-direction: column;
+                gap: 0.25rem;
+            }
+
+            .detail-label {
+                width: 100%;
+            }
+
+            .filter-container {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .search-container {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 派送员</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>派送员功能</h3>
+                    <ul>
+                        <li><a href="deliveryman-index.html">首页</a></li>
+                        <li><a href="deliveryman-tasks.html">我的任务</a></li>
+                        <li><a href="deliveryman-collection.html" class="active">订单提取</a></li>
+                        <li><a href="deliveryman-clock.html">打卡记录</a></li>
+                        <li><a href="deliveryman-performance.html">我的绩效</a></li>
+                        <li><a href="deliveryman-contacts.html">联系记录</a></li>
+                        <li><a href="deliveryman-exception.html">异常上报</a></li>
+                        <li><a href="deliveryman-areas.html">派送区域</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>订单提取</h2>
+                <p>今天是：<span id="current-date"></span></p>
+                
+                <!-- 统计卡片 -->
+                <div class="stats">
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #4ecdc4;" id="totalOrders">0</div>
+                        <div>待提取订单</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #ff6b6b;" id="totalAmount">¥0</div>
+                        <div>待提取金额</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #45b7d1;" id="collectedOrders">0</div>
+                        <div>已提取订单</div>
+                    </div>
+                    <div class="stat-card">
+                        <div style="font-size: 2rem; color: #96ceb4;" id="collectedAmount">¥0</div>
+                        <div>已提取金额</div>
+                    </div>
+                </div>
+
+                <!-- 搜索和筛选 -->
+                <div class="card">
+                    <h3>订单搜索</h3>
+                    <div class="search-container">
+                        <input type="text" id="order-search" class="search-input" placeholder="搜索订单号、客户姓名或手机号...">
+                        <button class="btn btn-primary" onclick="searchOrders()">搜索</button>
+                    </div>
+                    
+                    <div class="filter-container">
+                        <div class="filter-item">
+                            <label for="status-filter">状态：</label>
+                            <select id="status-filter">
+                                <option value="all">全部状态</option>
+                                <option value="uncollected">待提取</option>
+                                <option value="collected">已提取</option>
+                            </select>
+                        </div>
+                        <div class="filter-item">
+                            <label for="date-filter">日期：</label>
+                            <select id="date-filter">
+                                <option value="today">今天</option>
+                                <option value="week">本周</option>
+                                <option value="month">本月</option>
+                                <option value="all">全部</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 订单列表 -->
+                <div class="card">
+                    <h3>订单列表</h3>
+                    <div class="order-list" id="orderList">
+                        <!-- 订单列表将通过JavaScript生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 派送员订单提取页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('deliveryman');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 初始化数据
+            initializeCollectionData();
+            
+            // 加载订单列表
+            loadOrders();
+
+            // 绑定筛选器事件
+            document.getElementById('status-filter').addEventListener('change', loadOrders);
+            document.getElementById('date-filter').addEventListener('change', loadOrders);
+
+            // 绑定回车键搜索
+            document.getElementById('order-search').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    searchOrders();
+                }
+            });
+        });
+
+        // 初始化订单提取数据
+        function initializeCollectionData() {
+            // 初始化订单数据
+            if (!localStorage.getItem('deliverymanCollections')) {
+                const collections = [];
+                const today = new Date();
+                
+                // 生成过去7天到今天的订单
+                for (let i = 0; i < 10; i++) {
+                    const orderDate = new Date(today);
+                    orderDate.setDate(today.getDate() - (9 - i));
+                    const dateStr = orderDate.toISOString().split('T')[0];
+                    
+                    collections.push({
+                        id: `order-${i + 1}`,
+                        orderNumber: `HL${Math.floor(Math.random() * 10000000000)}`,
+                        customer: `客户${i + 1}`,
+                        phone: `1380013800${i + 1}`,
+                        address: `北京市朝阳区某某街道${i + 1}号`,
+                        amount: Math.floor(Math.random() * 1000) + 100,
+                        orderTime: `${dateStr} ${10 + i}:00`,
+                        status: i < 6 ? 'uncollected' : 'collected',
+                        collectedTime: i >= 6 ? `${dateStr} ${14 + i}:00` : null,
+                        collector: i >= 6 ? '测试用户' : null,
+                        paymentMethod: ['现金', '微信', '支付宝'][i % 3],
+                        notes: i % 2 === 0 ? '需要收据' : '无需收据'
+                    });
+                }
+                
+                localStorage.setItem('deliverymanCollections', JSON.stringify(collections));
+            }
+        }
+
+        // 加载订单列表
+        function loadOrders() {
+            const collections = JSON.parse(localStorage.getItem('deliverymanCollections')) || [];
+            const statusFilter = document.getElementById('status-filter').value;
+            const dateFilter = document.getElementById('date-filter').value;
+            
+            // 筛选订单
+            let filteredOrders = collections.filter(order => {
+                // 状态筛选
+                if (statusFilter !== 'all' && order.status !== statusFilter) {
+                    return false;
+                }
+                
+                // 日期筛选
+                const orderDate = new Date(order.orderTime);
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                
+                if (dateFilter === 'today') {
+                    const orderDateOnly = new Date(orderDate);
+                    orderDateOnly.setHours(0, 0, 0, 0);
+                    return orderDateOnly.getTime() === today.getTime();
+                } else if (dateFilter === 'week') {
+                    const weekStart = new Date(today);
+                    weekStart.setDate(today.getDate() - today.getDay());
+                    weekStart.setHours(0, 0, 0, 0);
+                    const weekEnd = new Date(weekStart);
+                    weekEnd.setDate(weekStart.getDate() + 7);
+                    return orderDate >= weekStart && orderDate < weekEnd;
+                } else if (dateFilter === 'month') {
+                    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+                    return orderDate >= monthStart && orderDate < monthEnd;
+                }
+                
+                return true;
+            });
+            
+            // 按时间倒序排序
+            filteredOrders.sort((a, b) => new Date(b.orderTime) - new Date(a.orderTime));
+            
+            // 渲染订单列表
+            renderOrderList(filteredOrders);
+            
+            // 更新统计数据
+            updateStats(collections);
+        }
+
+        // 搜索订单
+        function searchOrders() {
+            const searchTerm = document.getElementById('order-search').value.toLowerCase();
+            const collections = JSON.parse(localStorage.getItem('deliverymanCollections')) || [];
+            
+            const filteredOrders = collections.filter(order => {
+                return order.orderNumber.toLowerCase().includes(searchTerm) ||
+                       order.customer.toLowerCase().includes(searchTerm) ||
+                       order.phone.includes(searchTerm) ||
+                       order.address.toLowerCase().includes(searchTerm);
+            });
+            
+            // 按时间倒序排序
+            filteredOrders.sort((a, b) => new Date(b.orderTime) - new Date(a.orderTime));
+            
+            // 渲染订单列表
+            renderOrderList(filteredOrders);
+        }
+
+        // 渲染订单列表
+        function renderOrderList(orders) {
+            const orderList = document.getElementById('orderList');
+            
+            if (orders.length === 0) {
+                orderList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">暂无订单</p>';
+                return;
+            }
+            
+            orderList.innerHTML = orders.map(order => `
+                <div class="order-item">
+                    <div class="order-header">
+                        <div class="order-title">订单号：${order.orderNumber}</div>
+                        <div class="order-meta">
+                            <div class="order-status status-${order.status}">
+                                ${order.status === 'uncollected' ? '待提取' : '已提取'}
+                            </div>
+                            <div class="order-amount">¥${order.amount.toFixed(2)}</div>
+                        </div>
+                    </div>
+                    <div class="order-details">
+                        <div class="detail-row">
+                            <div class="detail-label">客户：</div>
+                            <div class="detail-value">${order.customer} (${order.phone})</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">地址：</div>
+                            <div class="detail-value">${order.address}</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">下单时间：</div>
+                            <div class="detail-value">${order.orderTime}</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">支付方式：</div>
+                            <div class="detail-value">${order.paymentMethod}</div>
+                        </div>
+                        ${order.collectedTime ? `
+                            <div class="detail-row">
+                                <div class="detail-label">提取时间：</div>
+                                <div class="detail-value">${order.collectedTime}</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">提取人：</div>
+                                <div class="detail-value">${order.collector}</div>
+                            </div>
+                        ` : ''}
+                        ${order.notes ? `
+                            <div class="detail-row">
+                                <div class="detail-label">备注：</div>
+                                <div class="detail-value">${order.notes}</div>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="order-actions">
+                        ${order.status === 'uncollected' ? `
+                            <button class="btn btn-primary" onclick="collectOrder('${order.id}')">确认提取</button>
+                        ` : ''}
+                        <button class="btn btn-secondary" onclick="viewOrderDetail('${order.id}')">查看详情</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 更新统计数据
+        function updateStats(orders) {
+            const uncollectedOrders = orders.filter(order => order.status === 'uncollected');
+            const collectedOrders = orders.filter(order => order.status === 'collected');
+            
+            const uncollectedAmount = uncollectedOrders.reduce((sum, order) => sum + order.amount, 0);
+            const collectedAmount = collectedOrders.reduce((sum, order) => sum + order.amount, 0);
+            
+            document.getElementById('totalOrders').textContent = uncollectedOrders.length;
+            document.getElementById('totalAmount').textContent = `¥${uncollectedAmount.toFixed(2)}`;
+            document.getElementById('collectedOrders').textContent = collectedOrders.length;
+            document.getElementById('collectedAmount').textContent = `¥${collectedAmount.toFixed(2)}`;
+        }
+
+        // 确认提取订单
+        function collectOrder(orderId) {
+            const collections = JSON.parse(localStorage.getItem('deliverymanCollections')) || [];
+            const orderIndex = collections.findIndex(order => order.id === orderId);
+            
+            if (orderIndex !== -1) {
+                const user = getCurrentUser();
+                const now = new Date();
+                
+                collections[orderIndex].status = 'collected';
+                collections[orderIndex].collectedTime = now.toLocaleString('zh-CN');
+                collections[orderIndex].collector = user ? user.username : '未知用户';
+                
+                localStorage.setItem('deliverymanCollections', JSON.stringify(collections));
+                loadOrders();
+            }
+        }
+
+        // 查看订单详情
+        function viewOrderDetail(orderId) {
+            const collections = JSON.parse(localStorage.getItem('deliverymanCollections')) || [];
+            const order = collections.find(order => order.id === orderId);
+            
+            if (order) {
+                let detailMessage = `订单详情：\n\n`;
+                detailMessage += `订单号：${order.orderNumber}\n`;
+                detailMessage += `客户：${order.customer}\n`;
+                detailMessage += `电话：${order.phone}\n`;
+                detailMessage += `地址：${order.address}\n`;
+                detailMessage += `金额：¥${order.amount.toFixed(2)}\n`;
+                detailMessage += `下单时间：${order.orderTime}\n`;
+                detailMessage += `支付方式：${order.paymentMethod}\n`;
+                if (order.status === 'collected') {
+                    detailMessage += `提取时间：${order.collectedTime}\n`;
+                    detailMessage += `提取人：${order.collector}\n`;
+                }
+                if (order.notes) {
+                    detailMessage += `备注：${order.notes}\n`;
+                }
+                
+                alert(detailMessage);
+            }
+        }
+    </script>
+</body>
+</html>

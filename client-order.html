@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>订单查询 - TMS运输管理系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4ecdc4;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        .view h2 {
+            margin-bottom: 2rem;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 1rem;
+        }
+
+        /* 搜索框样式 */
+        .search-box {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .search-box input {
+            flex: 1;
+            padding: 1rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        .search-box button {
+            padding: 1rem 2rem;
+            background: #4ecdc4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .search-box button:hover {
+            background: #45b7aa;
+        }
+
+        /* 订单列表样式 */
+        .order-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .order-item {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Tab切换样式 */
+        .tab-group {
+            display: flex;
+            margin-bottom: 1.5rem;
+            border-radius: 5px;
+            overflow: hidden;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 0.75rem 1.5rem;
+            background: #f0f0f0;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn:hover {
+            background: #e0e0e0;
+        }
+
+        .tab-btn.active {
+            background: #4ecdc4;
+            color: white;
+        }
+
+        /* 状态标签样式 */
+        .status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        /* 标准状态流转 */
+        .status.draft {
+            background: #9e9e9e;
+            color: white;
+        }
+
+        .status.unpaid {
+            background: #ff9800;
+            color: white;
+        }
+
+        .status.confirming {
+            background: #ffeb3b;
+            color: #333;
+        }
+
+        .status.packing {
+            background: #2196f3;
+            color: white;
+        }
+
+        .status.shipping {
+            background: #03a9f4;
+            color: white;
+        }
+
+        .status.delivering {
+            background: #00bcd4;
+            color: white;
+        }
+
+        .status.pending_receipt {
+            background: #4fc3f7;
+            color: white;
+        }
+
+        .status.delivered {
+            background: #81c784;
+            color: white;
+        }
+
+        .status.completed {
+            background: #4caf50;
+            color: white;
+        }
+
+        /* 异常或分支状态 */
+        .status.cancelled {
+            background: #f44336;
+            color: white;
+        }
+
+        .status.returning {
+            background: #e91e63;
+            color: white;
+        }
+
+        .status.voided {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .status.delayed {
+            background: #ff5722;
+            color: white;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav li {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .search-box {
+                flex-direction: column;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .logo {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 客户端</div>
+            <div class="user-info">
+                <span id="current-role"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav id="client-nav" class="nav">
+                    <h3>客户端功能</h3>
+                    <ul>
+                        <li><a href="client-index.html">首页</a></li>
+                        <li><a href="client-send.html">我要寄件</a></li>
+                        <li><a href="client-order.html" class="active">订单查询</a></li>
+                        <li><a href="client-tracking.html">货物跟踪</a></li>
+                        <li><a href="client-branch.html">附近网点</a></li>
+                        <li><a href="client-profile.html">个人中心</a></li>
+                        <li><a href="client-points.html">我的积分</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <div class="view">
+                    <h2>订单查询</h2>
+                    <div class="search-box">
+                        <input type="text" id="order-search" placeholder="输入订单号查询">
+                        <button id="search-btn" class="btn btn-primary">查询</button>
+                    </div>
+                    
+                    <!-- Tab切换按钮组 -->
+                    <div class="tab-group">
+                        <button class="tab-btn btn btn-secondary active" data-tab="shipping">发货订单</button>
+                        <button class="tab-btn btn btn-secondary" data-tab="receiving">收货订单</button>
+                    </div>
+                    
+                    <div class="order-list" id="order-list">
+                        <!-- 订单数据将通过JS生成 -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 订单查询页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('client');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 绑定搜索事件
+            document.getElementById('search-btn').addEventListener('click', () => {
+                searchOrders();
+            });
+
+            // 回车键搜索
+            document.getElementById('order-search').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    searchOrders();
+                }
+            });
+
+            // 共享订单数据
+            let allOrders = [];
+            let currentTab = 'shipping'; // 当前选中的tab，默认为发货订单
+            
+            // 初始化页面
+            initPage();
+            
+            // 绑定tab切换事件
+            const tabBtns = document.querySelectorAll('.tab-btn');
+            tabBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    // 更新tab状态
+                    tabBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    
+                    // 更新当前选中的tab
+                    currentTab = btn.dataset.tab;
+                    
+                    // 重新渲染订单列表，应用当前tab筛选
+                    renderOrdersByTab();
+                });
+            });
+
+            function initPage() {
+                checkLoginStatus('client');
+                loadAllOrders();
+            }
+
+            function loadAllOrders() {
+                // 优先从localStorage获取用户自己创建的订单
+                const userOrders = JSON.parse(localStorage.getItem('tmsOrders')) || [];
+                
+                // 为默认订单生成订单号的辅助函数
+                const generateOrderIdForDefault = (order) => {
+                    // 使用common.js中的全局函数
+                    return generateOrderId(order.origin, order.customer);
+                };
+                
+                // 添加默认模拟订单
+                const defaultOrders = [
+                    // 待提交订单
+                    {
+                        id: 'HLBJ167373120012345678',
+                        customer: '张三',
+                        status: 'draft',
+                        origin: '北京',
+                        destination: '上海',
+                        date: '2024-01-15',
+                        createTime: '2024-01-15 10:30:00',
+                        orderType: 'shipping',
+                        shipperName: '张三',
+                        shipperPhone: '13800138001',
+                        shipperAddress: '北京市朝阳区建国路88号',
+                        consignee: '李四',
+                        consigneePhone: '13900139001',
+                        consigneeAddress: '上海市浦东新区陆家嘴环路1000号',
+                        cargoName: '电子设备',
+                        cargoQuantity: 5,
+                        cargoWeight: 15.5,
+                        freight: 120.00,
+                        paymentMethod: '货到付款',
+                        waybillNumber: '',
+                        remark: '请妥善包装，易碎品'
+                    },
+                    // 待付款订单
+                    {
+                        id: 'HLSH167381760023456789',
+                        customer: '李四',
+                        status: 'unpaid',
+                        origin: '上海',
+                        destination: '广州',
+                        date: '2024-01-16',
+                        createTime: '2024-01-16 09:15:00',
+                        orderType: 'shipping',
+                        shipperName: '李四',
+                        shipperPhone: '13900139001',
+                        shipperAddress: '上海市浦东新区陆家嘴环路1000号',
+                        consignee: '王五',
+                        consigneePhone: '13700137001',
+                        consigneeAddress: '广州市天河区天河路385号',
+                        cargoName: '服装',
+                        cargoQuantity: 20,
+                        cargoWeight: 30.2,
+                        freight: 80.00,
+                        paymentMethod: '在线支付',
+                        waybillNumber: '',
+                        remark: '尽快发货'
+                    },
+                    // 待确认订单
+                    {
+                        id: 'HLGZ167390400034567890',
+                        customer: '王五',
+                        status: 'confirming',
+                        origin: '广州',
+                        destination: '深圳',
+                        date: '2024-01-14',
+                        createTime: '2024-01-14 14:45:00',
+                        orderType: 'shipping',
+                        shipperName: '王五',
+                        shipperPhone: '13700137001',
+                        shipperAddress: '广州市天河区天河路385号',
+                        consignee: '赵六',
+                        consigneePhone: '13600136001',
+                        consigneeAddress: '深圳市南山区科技园南区高新南一道',
+                        cargoName: '办公用品',
+                        cargoQuantity: 10,
+                        cargoWeight: 25.0,
+                        freight: 50.00,
+                        paymentMethod: '在线支付',
+                        waybillNumber: '',
+                        remark: '',
+                        paymentDate: '2024-01-14 15:00:00'
+                    },
+                    // 待发货订单
+                    {
+                        id: 'HLSZ167399040045678901',
+                        customer: '赵六',
+                        status: 'packing',
+                        origin: '深圳',
+                        destination: '杭州',
+                        date: '2024-01-17',
+                        createTime: '2024-01-17 11:20:00',
+                        orderType: 'shipping',
+                        shipperName: '赵六',
+                        shipperPhone: '13600136001',
+                        shipperAddress: '深圳市南山区科技园南区高新南一道',
+                        consignee: '孙七',
+                        consigneePhone: '13500135001',
+                        consigneeAddress: '杭州市西湖区文三路478号',
+                        cargoName: '家具',
+                        cargoQuantity: 3,
+                        cargoWeight: 120.5,
+                        freight: 200.00,
+                        paymentMethod: '货到付款',
+                        waybillNumber: generateWaybillNumber('HLSZ167399040045678901'),
+                        remark: '需要搬运服务',
+                        paymentDate: '2024-01-17 11:30:00',
+                        confirmDate: '2024-01-17 11:40:00'
+                    },
+                    // 运输中订单
+                    {
+                        id: 'HLHZ167407680056789012',
+                        customer: '孙七',
+                        status: 'shipping',
+                        origin: '杭州',
+                        destination: '南京',
+                        date: '2024-01-16',
+                        createTime: '2024-01-16 16:00:00',
+                        orderType: 'receiving',
+                        shipperName: '吴九',
+                        shipperPhone: '13400134001',
+                        shipperAddress: '杭州市西湖区文三路478号',
+                        consignee: '孙七',
+                        consigneePhone: '13500135001',
+                        consigneeAddress: '南京市秦淮区中山南路49号',
+                        cargoName: '食品',
+                        cargoQuantity: 50,
+                        cargoWeight: 45.8,
+                        freight: 100.00,
+                        paymentMethod: '在线支付',
+                        waybillNumber: generateWaybillNumber('HLHZ167407680056789012'),
+                        remark: '冷藏运输',
+                        paymentDate: '2024-01-16 16:10:00',
+                        confirmDate: '2024-01-16 16:20:00',
+                        shipDate: '2024-01-17 08:00:00'
+                    },
+                    // 派送中订单
+                    {
+                        id: 'HLNJ167416320067890123',
+                        customer: '周八',
+                        status: 'delivering',
+                        origin: '南京',
+                        destination: '北京',
+                        date: '2024-01-13',
+                        createTime: '2024-01-13 10:00:00',
+                        orderType: 'receiving',
+                        shipperName: '周八',
+                        shipperPhone: '13300133001',
+                        shipperAddress: '南京市秦淮区中山南路49号',
+                        consignee: '吴九',
+                        consigneePhone: '13400134001',
+                        consigneeAddress: '北京市朝阳区建国路88号',
+                        cargoName: '书籍',
+                        cargoQuantity: 30,
+                        cargoWeight: 55.0,
+                        freight: 150.00,
+                        paymentMethod: '在线支付',
+                        waybillNumber: generateWaybillNumber('HLNJ167416320067890123'),
+                        remark: '',
+                        paymentDate: '2024-01-13 10:10:00',
+                        confirmDate: '2024-01-13 10:20:00',
+                        shipDate: '2024-01-13 14:00:00',
+                        deliverDate: '2024-01-15 09:00:00'
+                    },
+                    // 待签收订单
+                    {
+                        id: 'HLBJ167424960078901234',
+                        customer: '吴九',
+                        status: 'pending_receipt',
+                        origin: '北京',
+                        destination: '杭州',
+                        date: '2024-01-14',
+                        createTime: '2024-01-14 08:30:00',
+                        orderType: 'receiving',
+                        shipperName: '郑十',
+                        shipperPhone: '13200132001',
+                        shipperAddress: '北京市朝阳区建国路88号',
+                        consignee: '吴九',
+                        consigneePhone: '13400134001',
+                        consigneeAddress: '杭州市西湖区文三路478号',
+                        cargoName: '文档资料',
+                        cargoQuantity: 2,
+                        cargoWeight: 3.0,
+                        freight: 30.00,
+                        paymentMethod: '在线支付',
+                        waybillNumber: generateWaybillNumber('HLBJ167424960078901234'),
+                        remark: '加急件',
+                        paymentDate: '2024-01-14 08:40:00',
+                        confirmDate: '2024-01-14 08:50:00',
+                        shipDate: '2024-01-14 10:00:00',
+                        deliverDate: '2024-01-15 10:00:00',
+                        arriveDate: '2024-01-15 11:00:00'
+                    },
+                    // 已送达订单
+                    {
+                        id: 'HLGZ167433600089012345',
+                        customer: '钱一',
+                        status: 'delivered',
+                        origin: '广州',
+                        destination: '深圳',
+                        date: '2024-01-13',
+                        createTime: '2024-01-13 14:00:00',
+                        orderType: 'shipping',
+                        shipperName: '钱一',
+                        shipperPhone: '13100131001',
+                        shipperAddress: '广州市天河区天河路385号',
+                        consignee: '孙二',
+                        consigneePhone: '13000130001',
+                        consigneeAddress: '深圳市南山区科技园南区高新南一道',
+                        cargoName: '日用品',
+                        cargoQuantity: 10,
+                        cargoWeight: 8.5,
+                        freight: 20.00,
+                        paymentMethod: '在线支付',
+                        waybillNumber: generateWaybillNumber('HLGZ167433600089012345'),
+                        remark: '',
+                        paymentDate: '2024-01-13 14:10:00',
+                        confirmDate: '2024-01-13 14:20:00',
+                        shipDate: '2024-01-13 16:00:00',
+                        deliverDate: '2024-01-14 09:00:00',
+                        arriveDate: '2024-01-14 10:30:00',
+                        deliveryDate: '2024-01-14 11:00:00'
+                    },
+                    // 已完成订单
+                    {
+                        id: 'HLSZ167442240090123456',
+                        customer: '孙二',
+                        status: 'completed',
+                        origin: '深圳',
+                        destination: '广州',
+                        date: '2024-01-12',
+                        createTime: '2024-01-12 10:00:00',
+                        orderType: 'shipping',
+                        shipperName: '孙二',
+                        shipperPhone: '13000130001',
+                        shipperAddress: '深圳市南山区科技园南区高新南一道',
+                        consignee: '周八',
+                        consigneePhone: '13300133001',
+                        consigneeAddress: '广州市天河区天河路385号',
+                        cargoName: '电子产品',
+                        cargoQuantity: 3,
+                        cargoWeight: 5.0,
+                        freight: 40.00,
+                        paymentMethod: '在线支付',
+                        waybillNumber: generateWaybillNumber('HLSZ167442240090123456'),
+                        remark: '',
+                        paymentDate: '2024-01-12 10:10:00',
+                        confirmDate: '2024-01-12 10:20:00',
+                        shipDate: '2024-01-12 14:00:00',
+                        deliverDate: '2024-01-13 09:00:00',
+                        arriveDate: '2024-01-13 10:30:00',
+                        deliveryDate: '2024-01-13 11:00:00',
+                        completeDate: '2024-01-13 17:00:00'
+                    },
+                    // 已取消订单
+                    {
+                        id: 'HLBJ167450880001234567',
+                        customer: '张三',
+                        status: 'cancelled',
+                        origin: '北京',
+                        destination: '广州',
+                        date: '2024-01-14',
+                        createTime: '2024-01-14 14:00:00',
+                        orderType: 'shipping',
+                        shipperName: '张三',
+                        shipperPhone: '13800138001',
+                        shipperAddress: '北京市朝阳区建国路88号',
+                        consignee: '李四',
+                        consigneePhone: '13900139001',
+                        consigneeAddress: '广州市天河区天河路385号',
+                        cargoName: '样品',
+                        cargoQuantity: 1,
+                        cargoWeight: 2.0,
+                        freight: 50.00,
+                        paymentMethod: '在线支付',
+                        waybillNumber: generateWaybillNumber('HLBJ17052464000007235829'),
+                        remark: '',
+                        paymentDate: '2024-01-14 14:10:00',
+                        confirmDate: '2024-01-14 14:20:00',
+                        cancelDate: '2024-01-14 15:00:00',
+                        cancelReason: '客户取消订单'
+                    },
+                    // 退货中订单
+                    {
+                        id: 'HLSH17051400000005603782',
+                        customer: '李四',
+                        status: 'returning',
+                        origin: '上海',
+                        destination: '北京',
+                        date: '2024-01-13',
+                        createTime: '2024-01-13 10:00:00',
+                        orderType: 'receiving',
+                        shipperName: '王五',
+                        shipperPhone: '13700137001',
+                        shipperAddress: '上海市浦东新区陆家嘴环路1000号',
+                        consignee: '李四',
+                        consigneePhone: '13900139001',
+                        consigneeAddress: '北京市朝阳区建国路88号',
+                        cargoName: '服装',
+                        cargoQuantity: 2,
+                        cargoWeight: 1.5,
+                        freight: 30.00,
+                        paymentMethod: '在线支付',
+                        waybillNumber: generateWaybillNumber('HLSH17051400000005603782'),
+                        remark: '',
+                        paymentDate: '2024-01-13 10:10:00',
+                        confirmDate: '2024-01-13 10:20:00',
+                        shipDate: '2024-01-13 14:00:00',
+                        deliverDate: '2024-01-14 09:00:00',
+                        arriveDate: '2024-01-14 10:30:00',
+                        deliveryDate: '2024-01-14 11:00:00',
+                        returnRequestDate: '2024-01-15 09:00:00',
+                        returnReason: '尺寸不符'
+                    },
+                    // 异常滞留订单
+                    {
+                        id: 'HLSZ17052360000009412378',
+                        customer: '王五',
+                        status: 'delayed',
+                        origin: '深圳',
+                        destination: '杭州',
+                        date: '2024-01-14',
+                        createTime: '2024-01-14 09:00:00',
+                        orderType: 'shipping',
+                        shipperName: '王五',
+                        shipperPhone: '13700137001',
+                        shipperAddress: '深圳市南山区科技园南区高新南一道',
+                        consignee: '赵六',
+                        consigneePhone: '13600136001',
+                        consigneeAddress: '杭州市西湖区文三路478号',
+                        cargoName: '机械零件',
+                        cargoQuantity: 1,
+                        cargoWeight: 20.0,
+                        freight: 80.00,
+                        paymentMethod: '货到付款',
+                        waybillNumber: generateWaybillNumber('HLSZ17052360000009412378'),
+                        remark: '',
+                        paymentDate: '2024-01-14 09:10:00',
+                        confirmDate: '2024-01-14 09:20:00',
+                        shipDate: '2024-01-14 10:00:00',
+                        delayDate: '2024-01-15 08:00:00',
+                        delayReason: '天气原因导致运输延迟'
+                    }
+                ];
+                
+                // 合并订单数据并去重
+                allOrders = [...userOrders, ...defaultOrders].filter((order, index, self) =>
+                    index === self.findIndex((o) => o.id === order.id)
+                );
+                
+                // 确保所有订单都有orderType字段
+                allOrders.forEach(order => {
+                    if (!order.orderType) {
+                        // 默认将没有orderType的订单设置为发货订单
+                        order.orderType = 'shipping';
+                    }
+                });
+                
+                // 按创建时间倒序排列
+                allOrders.sort((a, b) => new Date(b.createTime) - new Date(a.createTime));
+                
+                // 初始根据当前tab渲染订单
+                renderOrdersByTab();
+            }
+            
+            // 根据当前tab渲染订单
+            function renderOrdersByTab() {
+                // 根据当前tab筛选订单
+                let filteredOrders = allOrders.filter(order => {
+                    // 应用当前tab筛选
+                    if (order.orderType !== currentTab) {
+                        return false;
+                    }
+                    
+                    // 应用搜索关键词筛选（如果有）
+                    const keyword = document.getElementById('order-search').value.toLowerCase();
+                    if (keyword) {
+                        return order.id.toLowerCase().includes(keyword) || 
+                               (order.consignee && order.consignee.toLowerCase().includes(keyword)) ||
+                               (order.customer && order.customer.toLowerCase().includes(keyword)) ||
+                               order.origin.toLowerCase().includes(keyword) ||
+                               order.destination.toLowerCase().includes(keyword);
+                    }
+                    
+                    return true;
+                });
+                
+                renderOrders(filteredOrders);
+            }
+
+            function searchOrders() {
+                // 直接调用renderOrdersByTab，它会同时处理tab筛选和搜索关键词筛选
+                renderOrdersByTab();
+            }
+
+            function renderOrders(orders) {
+                const container = document.getElementById('order-list');
+                
+                if (orders.length === 0) {
+                    container.innerHTML = '<div style="text-align: center; padding: 2rem; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);">未找到匹配的订单</div>';
+                    return;
+                }
+
+                container.innerHTML = orders.map(order => `
+                    <div class="order-item">
+                        <h4>订单号: ${order.id}</h4>
+                        <p>收货人: ${order.consignee || order.customer}</p>
+                        ${order.phone ? `<p>联系电话: ${order.phone}</p>` : ''}
+                        <p>状态: <span class="status ${order.status}">${getStatusText(order.status)}</span></p>
+                        <p>起点: ${order.origin} -> 终点: ${order.destination}</p>
+                        ${order.cargoName ? `<p>货物: ${order.cargoName} (${order.cargoQuantity}件，${order.cargoWeight}kg)</p>` : ''}
+                        <p>创建时间: ${order.createTime || order.date}</p>
+                        ${order.remark ? `<p>备注: ${order.remark}</p>` : ''}
+                        ${order.deliveryDate ? `<p>送达时间: ${order.deliveryDate}</p>` : ''}
+                        <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+                                <button class="view-detail-btn btn btn-primary" onclick="viewOrderDetail('${order.id}')">查看详情</button>
+                                ${['draft', 'unpaid', 'confirming', 'packing'].includes(order.status) ? `<button class="cancel-btn btn btn-danger" onclick="cancelOrder('${order.id}')">取消订单</button>` : ''}
+                                ${order.orderType === 'receiving' && order.status === 'pending_receipt' ? `<button class="confirm-receipt-btn btn btn-success" onclick="confirmReceipt('${order.id}')">确认收货</button>` : ''}
+                                ${order.orderType === 'receiving' && order.status === 'pending_receipt' ? `<button class="return-btn btn btn-warning" onclick="returnOrder('${order.id}')">拒绝接收</button>` : ''}
+                            </div>
+                    </div>
+                `).join('');
+            }
+
+            function getStatusText(status) {
+                const statusMap = {
+                    // 标准状态流转
+                    'draft': '待提交',
+                    'unpaid': '待付款',
+                    'confirming': '待确认',
+                    'packing': '待发货',
+                    'shipping': '运输中',
+                    'delivering': '派送中',
+                    'pending_receipt': '待签收',
+                    'delivered': '已送达',
+                    'completed': '已完成',
+                    // 异常或分支状态
+                    'cancelled': '已取消',
+                    'returning': '退货中',
+                    'voided': '已作废',
+                    'delayed': '异常滞留'
+                };
+                return statusMap[status] || status;
+            }
+
+            // 订单详情模态框相关
+            let currentOrder = null;
+
+            // 查看订单详情
+            window.viewOrderDetail = function(orderId) {
+                currentOrder = allOrders.find(order => order.id === orderId);
+                if (!currentOrder) return;
+
+                // 创建并显示订单详情模态框
+                const modal = document.createElement('div');
+                modal.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.5);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 1000;
+                `;
+
+                modal.innerHTML = `
+                    <div style="background: white; padding: 2rem; border-radius: 10px; max-width: 700px; width: 95%; max-height: 80vh; overflow-y: auto;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h3>订单详情</h3>
+                            <button id="close-modal" class="btn btn-secondary" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">&times;</button>
+                        </div>
+                        
+                        <!-- 基本信息 -->
+                        <div style="margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid #eee;">
+                            <h4 style="margin-bottom: 1rem;">基本信息</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                                <p><strong>订单号:</strong> ${currentOrder.id}</p>
+                                <p><strong>运单号:</strong> ${currentOrder.waybillNumber || '暂无'}</p>
+                                <p><strong>订单类型:</strong> ${currentOrder.orderType === 'shipping' ? '发货订单' : '收货订单'}</p>
+                                <p><strong>状态:</strong> <span class="status ${currentOrder.status}">${getStatusText(currentOrder.status)}</span></p>
+                            </div>
+                            <p><strong>起点:</strong> ${currentOrder.origin}</p>
+                            <p><strong>终点:</strong> ${currentOrder.destination}</p>
+                        </div>
+                        
+                        <!-- 发货人信息 -->
+                        <div style="margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid #eee;">
+                            <h4 style="margin-bottom: 1rem;">发货人信息</h4>
+                            <p><strong>姓名:</strong> ${currentOrder.shipperName || currentOrder.customer}</p>
+                            <p><strong>电话:</strong> ${currentOrder.shipperPhone || '未知'}</p>
+                            <p><strong>地址:</strong> ${currentOrder.shipperAddress || '未知'}</p>
+                        </div>
+                        
+                        <!-- 收货人信息 -->
+                        <div style="margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid #eee;">
+                            <h4 style="margin-bottom: 1rem;">收货人信息</h4>
+                            <p><strong>姓名:</strong> ${currentOrder.consignee || '未知'}</p>
+                            <p><strong>电话:</strong> ${currentOrder.consigneePhone || '未知'}</p>
+                            <p><strong>地址:</strong> ${currentOrder.consigneeAddress || '未知'}</p>
+                        </div>
+                        
+                        <!-- 货物信息 -->
+                        <div style="margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid #eee;">
+                            <h4 style="margin-bottom: 1rem;">货物信息</h4>
+                            <p><strong>名称:</strong> ${currentOrder.cargoName || '未知'}</p>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <p><strong>数量:</strong> ${currentOrder.cargoQuantity || '未知'} 件</p>
+                                <p><strong>重量:</strong> ${currentOrder.cargoWeight || '未知'} kg</p>
+                            </div>
+                        </div>
+                        
+                        <!-- 费用信息 -->
+                        <div style="margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid #eee;">
+                            <h4 style="margin-bottom: 1rem;">费用信息</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <p><strong>运费:</strong> ${currentOrder.freight !== undefined ? `¥${currentOrder.freight.toFixed(2)}` : '未知'}</p>
+                                <p><strong>付款方式:</strong> ${currentOrder.paymentMethod || '未知'}</p>
+                            </div>
+                        </div>
+                        
+                        <!-- 时间信息 -->
+                        <div style="margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid #eee;">
+                            <h4 style="margin-bottom: 1rem;">时间信息</h4>
+                            <p><strong>创建时间:</strong> ${currentOrder.createTime || currentOrder.date}</p>
+                            ${currentOrder.paymentDate ? `<p><strong>付款时间:</strong> ${currentOrder.paymentDate}</p>` : ''}
+                            ${currentOrder.confirmDate ? `<p><strong>确认时间:</strong> ${currentOrder.confirmDate}</p>` : ''}
+                            ${currentOrder.shipDate ? `<p><strong>发货时间:</strong> ${currentOrder.shipDate}</p>` : ''}
+                            ${currentOrder.deliverDate ? `<p><strong>派送时间:</strong> ${currentOrder.deliverDate}</p>` : ''}
+                            ${currentOrder.arriveDate ? `<p><strong>到达时间:</strong> ${currentOrder.arriveDate}</p>` : ''}
+                            ${currentOrder.deliveryDate ? `<p><strong>签收时间:</strong> ${currentOrder.deliveryDate}</p>` : ''}
+                            ${currentOrder.completeDate ? `<p><strong>完成时间:</strong> ${currentOrder.completeDate}</p>` : ''}
+                            ${currentOrder.cancelDate ? `<p><strong>取消时间:</strong> ${currentOrder.cancelDate}</p>` : ''}
+                            ${currentOrder.returnRequestDate ? `<p><strong>退货请求时间:</strong> ${currentOrder.returnRequestDate}</p>` : ''}
+                            ${currentOrder.returnDate ? `<p><strong>退货时间:</strong> ${currentOrder.returnDate}</p>` : ''}
+                            ${currentOrder.delayDate ? `<p><strong>异常时间:</strong> ${currentOrder.delayDate}</p>` : ''}
+                        </div>
+                        
+                        <!-- 原因信息 -->
+                        <div style="margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid #eee;">
+                            <h4 style="margin-bottom: 1rem;">原因信息</h4>
+                            ${currentOrder.cancelReason ? `<p><strong>取消原因:</strong> ${currentOrder.cancelReason}</p>` : ''}
+                            ${currentOrder.returnReason ? `<p><strong>退货原因:</strong> ${currentOrder.returnReason}</p>` : ''}
+                            ${currentOrder.delayReason ? `<p><strong>延迟原因:</strong> ${currentOrder.delayReason}</p>` : ''}
+                        </div>
+                        
+                        <!-- 备注信息 -->
+                        <div style="margin-bottom: 2rem;">
+                            <h4 style="margin-bottom: 1rem;">备注</h4>
+                            <p>${currentOrder.remark || '无'}</p>
+                        </div>
+                        
+                        <!-- 操作按钮 -->
+                        <div style="margin-top: 2rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+                            ${['draft', 'unpaid', 'confirming', 'packing'].includes(currentOrder.status) ? `<button class="cancel-order-btn btn btn-danger" onclick="cancelOrder('${currentOrder.id}')">取消订单</button>` : ''}
+                            ${currentOrder.orderType === 'receiving' && currentOrder.status === 'pending_receipt' ? `<button class="confirm-receipt-btn btn btn-success" onclick="confirmReceipt('${currentOrder.id}')">确认收货</button>` : ''}
+                            ${currentOrder.orderType === 'receiving' && currentOrder.status === 'pending_receipt' ? `<button class="return-btn btn btn-warning" onclick="returnOrder('${currentOrder.id}')">拒绝接收</button>` : ''}
+                            <button id="cancel-btn" class="btn btn-secondary" style="margin-left: auto;">关闭</button>
+                        </div>
+                    </div>
+                `;
+
+                document.body.appendChild(modal);
+
+                // 绑定关闭事件
+                document.getElementById('close-modal').addEventListener('click', () => {
+                    document.body.removeChild(modal);
+                });
+
+                document.getElementById('cancel-btn').addEventListener('click', () => {
+                    document.body.removeChild(modal);
+                });
+
+                // 点击模态框外部关闭
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        document.body.removeChild(modal);
+                    }
+                });
+            }
+
+            // 确认收货
+            window.confirmReceipt = function(orderId) {
+                const order = allOrders.find(order => order.id === orderId);
+                if (!order) return;
+
+                if (confirm(`确认收到订单 ${order.id} 的货物吗？`)) {
+                    // 更新订单状态
+                    order.status = 'delivered';
+                    order.deliveryDate = new Date().toLocaleString();
+
+                    // 更新localStorage
+                    updateOrdersInStorage();
+
+                    // 重新渲染订单列表，应用当前tab筛选
+                    renderOrdersByTab();
+
+                }
+            }
+
+            // 拒绝接收
+            window.returnOrder = function(orderId) {
+                const order = allOrders.find(order => order.id === orderId);
+                if (!order) return;
+
+                if (confirm(`确定要拒绝接收订单 ${order.id} 吗？`)) {
+                    // 更新订单状态
+                    order.status = 'cancelled';
+                    order.cancelDate = new Date().toLocaleString();
+                    order.cancelReason = '客户拒绝接收';
+
+                    // 更新localStorage
+                    updateOrdersInStorage();
+
+                    // 重新渲染订单列表，应用当前tab筛选
+                    renderOrdersByTab();
+
+                }
+            }
+
+            // 取消订单
+            window.cancelOrder = function(orderId) {
+                const order = allOrders.find(order => order.id === orderId);
+                if (!order) return;
+
+                if (confirm(`确定要取消订单 ${order.id} 吗？`)) {
+                    // 更新订单状态
+                    order.status = 'cancelled';
+                    order.cancelDate = new Date().toLocaleString();
+
+                    // 更新localStorage
+                    updateOrdersInStorage();
+
+                    // 关闭可能打开的模态框
+                    const modal = document.querySelector('[style*="position: fixed; top: 0;"]');
+                    if (modal) {
+                        document.body.removeChild(modal);
+                    }
+
+                    // 重新渲染订单列表，应用当前tab筛选
+                    renderOrdersByTab();
+
+                }
+            }
+
+            // 更新localStorage中的订单数据
+            function updateOrdersInStorage() {
+                // 获取用户自己创建的订单
+                const userOrders = allOrders.filter(order => order.cargoName); // 用户创建的订单有cargoName字段
+                localStorage.setItem('tmsOrders', JSON.stringify(userOrders));
+            }
+        });
+    </script>
+</body>
+</html>

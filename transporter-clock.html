@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>运输员打卡 - TMS系统</title>
+
+    <style>
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* 顶部导航 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #f9ca24;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-info button {
+            padding: 0.5rem 1rem;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .user-info button:hover {
+            background: #ee5a5a;
+        }
+
+        /* 主内容区域 */
+        .main-content {
+            display: flex;
+            min-height: calc(100vh - 70px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            width: 250px;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            padding: 1rem;
+        }
+
+        .nav h3 {
+            margin-bottom: 1rem;
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .nav ul {
+            list-style: none;
+        }
+
+        .nav li {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav a {
+            display: block;
+            padding: 0.75rem 1rem;
+            color: #333;
+            text-decoration: none;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #f9ca24;
+            color: white;
+        }
+
+        /* 内容区域样式 */
+        .content {
+            flex: 1;
+            padding: 2rem;
+            background: #f5f7fa;
+            overflow-y: auto;
+        }
+
+        /* 卡片样式 */
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        /* 打卡区域 */
+        .clock-section {
+            text-align: center;
+            padding: 30px;
+        }
+
+        .current-time {
+            font-size: 3rem;
+            font-weight: bold;
+            color: #f9ca24;
+            margin-bottom: 20px;
+        }
+
+        .current-date {
+            font-size: 1.2rem;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .clock-button {
+            padding: 20px 40px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background-color: #f9ca24;
+            color: white;
+        }
+
+        .clock-button:hover {
+            background-color: #f0c01a;
+            transform: scale(1.05);
+        }
+
+        .clock-button.clocked-in {
+            background-color: #ff6b6b;
+        }
+
+        .clock-button.clocked-in:hover {
+            background-color: #ee5a5a;
+        }
+
+        /* 统计卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #f9ca24;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        /* 打卡记录 */
+        .records-section {
+            margin-top: 30px;
+        }
+
+        .record-tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .record-tab {
+            padding: 15px 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            border: none;
+            background: none;
+            color: #666;
+            font-weight: 500;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .record-tab.active {
+            color: #f9ca24;
+        }
+
+        .record-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: #f9ca24;
+        }
+
+        /* 表格样式 */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .data-table th, .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-table th {
+            background-color: #f5f5f5;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .data-table tr:hover {
+            background-color: #f9f9f9;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+            }
+
+            .nav ul {
+                display: flex;
+                overflow-x: auto;
+                gap: 0.5rem;
+            }
+
+            .nav a {
+                white-space: nowrap;
+            }
+
+            .content {
+                padding: 1rem;
+            }
+
+            .current-time {
+                font-size: 2rem;
+            }
+
+            .clock-button {
+                padding: 15px 30px;
+                font-size: 1rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 主界面 -->
+    <div id="main-container">
+        <!-- 顶部导航 -->
+        <header class="header">
+            <div class="logo">TMS运输管理系统 - 运输员</div>
+            <div class="user-info">
+                <span id="current-username"></span>
+                <button id="logout-btn" class="btn btn-danger">退出登录</button>
+            </div>
+        </header>
+
+        <!-- 内容区域 -->
+        <main class="main-content">
+            <!-- 侧边栏导航 -->
+            <aside class="sidebar">
+                <nav class="nav">
+                    <h3>运输员功能</h3>
+                    <ul>
+                        <li><a href="transporter-index.html">首页</a></li>
+                        <li><a href="transporter-loading.html">扫描装车</a></li>
+                        <li><a href="transporter-departure.html">发车管理</a></li>
+                        <li><a href="transporter-schedule.html">我的排班</a></li>
+                        <li><a href="transporter-route.html">发车路线</a></li>
+                        <li><a href="transporter-performance.html">我的绩效</a></li>
+                        <li><a href="transporter-clock.html" class="active">打卡记录</a></li>
+                    </ul>
+                </nav>
+            </aside>
+
+            <!-- 主内容 -->
+            <section class="content">
+                <h2>打卡管理</h2>
+                <p>今天是：<span id="current-date"></span></p>
+
+                <!-- 打卡区域 -->
+                <div class="card">
+                    <div class="clock-section">
+                        <div class="current-time" id="currentTime">00:00:00</div>
+                        <div class="current-date" id="currentDate"></div>
+                        <button class="clock-button" id="clockButton">打卡上班</button>
+                    </div>
+                </div>
+
+                <!-- 统计卡片 -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-number" id="todayHours">0</div>
+                        <div class="stat-label">今日工时</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="weekHours">0</div>
+                        <div class="stat-label">本周工时</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="monthHours">0</div>
+                        <div class="stat-label">本月工时</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="monthDays">0</div>
+                        <div class="stat-label">本月出勤</div>
+                    </div>
+                </div>
+
+                <!-- 打卡记录 -->
+                <div class="card records-section">
+                    <h3>打卡记录</h3>
+                    <div class="record-tabs">
+                        <button class="record-tab active" data-tab="daily">今日记录</button>
+                        <button class="record-tab" data-tab="weekly">本周记录</button>
+                        <button class="record-tab" data-tab="monthly">本月记录</button>
+                    </div>
+                    
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>日期</th>
+                                    <th>上班时间</th>
+                                    <th>下班时间</th>
+                                    <th>工时(小时)</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="clockRecordsTable">
+                                <!-- 打卡记录将通过JavaScript生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="common.js"></script>
+    <script>
+        // 打卡管理页面逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            // 检查用户登录状态
+            checkLoginStatus('transporter');
+
+            // 绑定退出登录事件
+            document.getElementById('logout-btn').addEventListener('click', () => {
+                logout();
+            });
+
+            // 显示当前用户名
+            displayCurrentUser();
+
+            // 显示当前日期
+            const today = new Date();
+            document.getElementById('current-date').textContent = today.toLocaleDateString('zh-CN');
+
+            // 初始化数据
+            initializeClockData();
+            
+            // 更新当前时间
+            updateCurrentTime();
+            setInterval(updateCurrentTime, 1000);
+            
+            // 检查当前打卡状态
+            checkClockStatus();
+            
+            // 加载统计数据
+            loadStats();
+            
+            // 加载打卡记录
+            loadClockRecords();
+            
+            // 绑定打卡按钮事件
+            bindClockEvents();
+            
+            // 绑定标签页事件
+            bindTabEvents();
+        });
+
+        // 初始化打卡数据
+        function initializeClockData() {
+            if (!localStorage.getItem('clockRecords')) {
+                const currentYear = new Date().getFullYear();
+                const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+                const currentDate = new Date().getDate();
+                
+                const clockRecords = {};
+                
+                // 添加最近几天的打卡记录
+                for (let i = 0; i < 7; i++) {
+                    const date = new Date();
+                    date.setDate(currentDate - i);
+                    const dateString = `${currentYear}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                    
+                    clockRecords[dateString] = [
+                        {
+                            id: `cr-${String(i + 1).padStart(3, '0')}`,
+                            date: dateString,
+                            clockInTime: `${String(8 + Math.floor(i % 2)).padStart(2, '0')}:${String(15 * i).padStart(2, '0')}:00`,
+                            clockOutTime: `${String(18 + Math.floor(i % 2)).padStart(2, '0')}:${String(30 * i).padStart(2, '0')}:00`,
+                            hours: 10 + (i % 2) * 0.25,
+                            status: i === 0 ? 'normal' : i % 3 === 0 ? 'late' : 'normal'
+                        }
+                    ];
+                }
+                
+                localStorage.setItem('clockRecords', JSON.stringify(clockRecords));
+            }
+        }
+
+        // 更新当前时间
+        function updateCurrentTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('zh-CN');
+            const dateString = now.toLocaleDateString('zh-CN', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                weekday: 'long'
+            });
+            
+            document.getElementById('currentTime').textContent = timeString;
+            document.getElementById('currentDate').textContent = dateString;
+        }
+
+        // 检查打卡状态
+        function checkClockStatus() {
+            const today = new Date().toISOString().split('T')[0];
+            const currentStatus = localStorage.getItem(`clockStatus_${today}`);
+            const clockButton = document.getElementById('clockButton');
+            
+            if (currentStatus === 'clocked-in') {
+                clockButton.textContent = '打卡下班';
+                clockButton.classList.add('clocked-in');
+            } else {
+                clockButton.textContent = '打卡上班';
+                clockButton.classList.remove('clocked-in');
+            }
+        }
+
+        // 绑定打卡事件
+        function bindClockEvents() {
+            const clockButton = document.getElementById('clockButton');
+            
+            clockButton.addEventListener('click', function() {
+                const today = new Date().toISOString().split('T')[0];
+                const now = new Date();
+                const currentTime = now.toLocaleTimeString('zh-CN');
+                const currentStatus = localStorage.getItem(`clockStatus_${today}`);
+                
+                if (currentStatus === 'clocked-in') {
+                    // 打卡下班
+                    clockOut(today, currentTime);
+                } else {
+                    // 打卡上班
+                    clockIn(today, currentTime);
+                }
+            });
+        }
+
+        // 打卡上班
+        function clockIn(date, time) {
+            localStorage.setItem(`clockStatus_${date}`, 'clocked-in');
+            localStorage.setItem(`clockInTime_${date}`, time);
+            
+            // 更新按钮状态
+            const clockButton = document.getElementById('clockButton');
+            clockButton.textContent = '打卡下班';
+            clockButton.classList.add('clocked-in');
+            
+            // 保存打卡记录
+            saveClockRecord(date, time, null);
+            
+            alert('打卡上班成功！时间：' + time);
+        }
+
+        // 打卡下班
+        function clockOut(date, time) {
+            const clockInTime = localStorage.getItem(`clockInTime_${date}`);
+            
+            if (!clockInTime) {
+                alert('请先打卡上班！');
+                return;
+            }
+            
+            // 计算工时
+            const hours = calculateHours(clockInTime, time);
+            
+            localStorage.removeItem(`clockStatus_${date}`);
+            localStorage.removeItem(`clockInTime_${date}`);
+            
+            // 更新按钮状态
+            const clockButton = document.getElementById('clockButton');
+            clockButton.textContent = '打卡上班';
+            clockButton.classList.remove('clocked-in');
+            
+            // 保存打卡记录
+            saveClockRecord(date, clockInTime, time, hours);
+            
+            alert('打卡下班成功！今日工时：' + hours + '小时');
+            
+            // 更新统计数据
+            loadStats();
+            loadClockRecords();
+        }
+
+        // 计算工时
+        function calculateHours(clockInTime, clockOutTime) {
+            const [inH, inM, inS] = clockInTime.split(':').map(Number);
+            const [outH, outM, outS] = clockOutTime.split(':').map(Number);
+            
+            const inTotalSeconds = inH * 3600 + inM * 60 + inS;
+            const outTotalSeconds = outH * 3600 + outM * 60 + outS;
+            
+            const diffSeconds = outTotalSeconds - inTotalSeconds;
+            return (diffSeconds / 3600).toFixed(2);
+        }
+
+        // 保存打卡记录
+        function saveClockRecord(date, clockInTime, clockOutTime, hours = null) {
+            const records = JSON.parse(localStorage.getItem('clockRecords')) || {};
+            
+            if (!records[date]) {
+                records[date] = [];
+            }
+            
+            const record = {
+                id: 'cr-' + Date.now(),
+                date: date,
+                clockInTime: clockInTime,
+                clockOutTime: clockOutTime,
+                hours: hours || 0,
+                status: clockOutTime ? 'completed' : 'in_progress'
+            };
+            
+            // 查找是否已有当天记录
+            const existingIndex = records[date].findIndex(r => r.status === 'in_progress');
+            if (existingIndex !== -1) {
+                // 更新现有记录
+                records[date][existingIndex] = record;
+            } else {
+                // 添加新记录
+                records[date].push(record);
+            }
+            
+            localStorage.setItem('clockRecords', JSON.stringify(records));
+        }
+
+        // 加载统计数据
+        function loadStats() {
+            const records = JSON.parse(localStorage.getItem('clockRecords')) || {};
+            const today = new Date().toISOString().split('T')[0];
+            const currentMonth = new Date().getMonth() + 1;
+            const currentYear = new Date().getFullYear();
+            
+            let todayHours = 0;
+            let weekHours = 0;
+            let monthHours = 0;
+            let monthDays = 0;
+            
+            const weekStart = new Date();
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            
+            Object.keys(records).forEach(date => {
+                const dateObj = new Date(date);
+                const dateRecords = records[date];
+                
+                if (date === today) {
+                    todayHours = dateRecords.reduce((total, record) => total + parseFloat(record.hours), 0);
+                }
+                
+                if (dateObj >= weekStart) {
+                    weekHours += dateRecords.reduce((total, record) => total + parseFloat(record.hours), 0);
+                }
+                
+                if (dateObj.getMonth() + 1 === currentMonth && dateObj.getFullYear() === currentYear) {
+                    monthHours += dateRecords.reduce((total, record) => total + parseFloat(record.hours), 0);
+                    monthDays++;
+                }
+            });
+            
+            document.getElementById('todayHours').textContent = todayHours.toFixed(2);
+            document.getElementById('weekHours').textContent = weekHours.toFixed(2);
+            document.getElementById('monthHours').textContent = monthHours.toFixed(2);
+            document.getElementById('monthDays').textContent = monthDays;
+        }
+
+        // 加载打卡记录
+        function loadClockRecords() {
+            const records = JSON.parse(localStorage.getItem('clockRecords')) || {};
+            const tableBody = document.getElementById('clockRecordsTable');
+            const today = new Date().toISOString().split('T')[0];
+            
+            // 获取今日记录
+            const todayRecords = records[today] || [];
+            
+            tableBody.innerHTML = todayRecords.map(record => `
+                <tr>
+                    <td>${record.date}</td>
+                    <td>${record.clockInTime}</td>
+                    <td>${record.clockOutTime || '-'}</td>
+                    <td>${record.hours}</td>
+                    <td>
+                        <span style="padding: 5px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 500;
+                            background-color: ${record.status === 'completed' ? '#e8f5e9' : '#fff3e0'};
+                            color: ${record.status === 'completed' ? '#388e3c' : '#f57c00'};">
+                            ${record.status === 'completed' ? '已完成' : '进行中'}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+            
+            if (todayRecords.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #666; padding: 20px;">今日暂无打卡记录</td></tr>';
+            }
+        }
+
+        // 绑定标签页事件
+        function bindTabEvents() {
+            const tabs = document.querySelectorAll('.record-tab');
+            
+            tabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    // 移除所有标签页的激活状态
+                    tabs.forEach(t => t.classList.remove('active'));
+                    
+                    // 添加当前标签页的激活状态
+                    this.classList.add('active');
+                    
+                    // 根据标签页类型加载不同的记录
+                    const tabType = this.getAttribute('data-tab');
+                    loadRecordsByType(tabType);
+                });
+            });
+        }
+
+        // 根据类型加载记录
+        function loadRecordsByType(type) {
+            const records = JSON.parse(localStorage.getItem('clockRecords')) || {};
+            const tableBody = document.getElementById('clockRecordsTable');
+            const today = new Date().toISOString().split('T')[0];
+            const currentMonth = new Date().getMonth() + 1;
+            const currentYear = new Date().getFullYear();
+            const weekStart = new Date();
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            
+            let filteredRecords = [];
+            
+            Object.keys(records).forEach(date => {
+                const dateObj = new Date(date);
+                const dateRecords = records[date];
+                
+                switch(type) {
+                    case 'daily':
+                        if (date === today) {
+                            filteredRecords = filteredRecords.concat(dateRecords);
+                        }
+                        break;
+                    case 'weekly':
+                        if (dateObj >= weekStart) {
+                            filteredRecords = filteredRecords.concat(dateRecords);
+                        }
+                        break;
+                    case 'monthly':
+                        if (dateObj.getMonth() + 1 === currentMonth && dateObj.getFullYear() === currentYear) {
+                            filteredRecords = filteredRecords.concat(dateRecords);
+                        }
+                        break;
+                }
+            });
+            
+            tableBody.innerHTML = filteredRecords.map(record => `
+                <tr>
+                    <td>${record.date}</td>
+                    <td>${record.clockInTime}</td>
+                    <td>${record.clockOutTime || '-'}</td>
+                    <td>${record.hours}</td>
+                    <td>
+                        <span style="padding: 5px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 500;
+                            background-color: ${record.status === 'completed' ? '#e8f5e9' : '#fff3e0'};
+                            color: ${record.status === 'completed' ? '#388e3c' : '#f57c00'};">
+                            ${record.status === 'completed' ? '已完成' : '进行中'}
+                        </span>
+                    </td>
+                </tr>
+            `).join('');
+            
+            if (filteredRecords.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #666; padding: 20px;">暂无打卡记录</td></tr>';
+            }
+        }
+    </script>
+</body>
+</html>
