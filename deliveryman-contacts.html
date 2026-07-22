@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>联系记录 - TMS运输管理系统</title>
 
@@ -382,6 +384,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -417,7 +420,7 @@
             <section class="content">
                 <h2>联系记录</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 联系类型切换 -->
                 <div class="contact-type-switch">
                     <button class="type-btn active" data-type="all">全部记录</button>
@@ -505,7 +508,7 @@
 
             // 初始化数据
             initializeContactData();
-            
+
             // 加载联系记录
             loadContactRecords();
 
@@ -514,7 +517,7 @@
 
             // 绑定联系类型切换事件
             document.querySelectorAll('.type-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
                     loadContactRecords();
@@ -522,7 +525,7 @@
             });
 
             // 绑定表单提交事件
-            document.getElementById('contact-form').addEventListener('submit', function(e) {
+            document.getElementById('contact-form').addEventListener('submit', function (e) {
                 e.preventDefault();
                 saveContactRecord();
             });
@@ -534,7 +537,7 @@
             if (!localStorage.getItem('deliverymanContacts')) {
                 const contacts = [];
                 const today = new Date();
-                
+
                 // 生成最近的联系记录
                 for (let i = 1; i <= 10; i++) {
                     const contactDate = new Date(today);
@@ -544,10 +547,10 @@
                         hour: '2-digit',
                         minute: '2-digit'
                     });
-                    
+
                     const types = ['customer', 'service', 'dispatch'];
                     const type = types[i % 3];
-                    
+
                     contacts.push({
                         id: `contact-${i}`,
                         type: type,
@@ -558,7 +561,7 @@
                         createdAt: contactDate.toISOString()
                     });
                 }
-                
+
                 localStorage.setItem('deliverymanContacts', JSON.stringify(contacts));
             }
 
@@ -590,7 +593,7 @@
                         notes: '紧急联系'
                     }
                 ];
-                
+
                 localStorage.setItem('deliverymanFrequentContacts', JSON.stringify(frequentContacts));
             }
         }
@@ -599,23 +602,23 @@
         function loadContactRecords() {
             const contacts = JSON.parse(localStorage.getItem('deliverymanContacts')) || [];
             const typeFilter = document.querySelector('.type-btn.active').getAttribute('data-type');
-            
+
             // 筛选记录
             let filteredContacts = contacts;
             if (typeFilter !== 'all') {
                 filteredContacts = contacts.filter(contact => contact.type === typeFilter);
             }
-            
+
             // 按时间倒序排序
             filteredContacts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-            
+
             const contactList = document.getElementById('contactList');
-            
+
             if (filteredContacts.length === 0) {
                 contactList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">暂无联系记录</p>';
                 return;
             }
-            
+
             contactList.innerHTML = filteredContacts.map(contact => `
                 <div class="contact-item">
                     <div class="contact-header">
@@ -645,12 +648,12 @@
         function loadFrequentContacts() {
             const frequentContacts = JSON.parse(localStorage.getItem('deliverymanFrequentContacts')) || [];
             const contactGrid = document.getElementById('frequentContacts');
-            
+
             if (frequentContacts.length === 0) {
                 contactGrid.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">暂无常用联系人</p>';
                 return;
             }
-            
+
             contactGrid.innerHTML = frequentContacts.map(contact => `
                 <div class="contact-card">
                     <div class="contact-name">${contact.name}</div>
@@ -671,12 +674,12 @@
             const phone = form.contactPhone.value;
             const time = form.contactTime.value;
             const description = form.description.value;
-            
+
             if (!type || !name || !phone || !time || !description) {
                 alert('请填写完整的联系记录信息');
                 return;
             }
-            
+
             const contacts = JSON.parse(localStorage.getItem('deliverymanContacts')) || [];
             const newRecord = {
                 id: `contact-${Date.now()}`,
@@ -687,16 +690,16 @@
                 description: description,
                 createdAt: new Date().toISOString()
             };
-            
+
             contacts.unshift(newRecord);
             localStorage.setItem('deliverymanContacts', JSON.stringify(contacts));
-            
+
             // 重置表单
             resetForm();
-            
+
             // 重新加载联系记录
             loadContactRecords();
-            
+
             alert('联系记录保存成功！');
         }
 
@@ -715,7 +718,7 @@
         function addContactFromFrequent(contactId) {
             const frequentContacts = JSON.parse(localStorage.getItem('deliverymanFrequentContacts')) || [];
             const contact = frequentContacts.find(c => c.id === contactId);
-            
+
             if (contact) {
                 document.getElementById('contact-type').value = contact.type;
                 document.getElementById('contact-name').value = contact.name;
@@ -737,4 +740,5 @@
         }
     </script>
 </body>
+
 </html>

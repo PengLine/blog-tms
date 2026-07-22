@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>用户管理 - TMS运输管理系统</title>
 
@@ -108,19 +110,19 @@
             position: relative;
         }
 
-        .has-submenu > a {
+        .has-submenu>a {
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .has-submenu > a::after {
+        .has-submenu>a::after {
             content: '▼';
             font-size: 0.7rem;
             transition: transform 0.3s ease;
         }
 
-        .has-submenu.active > a::after {
+        .has-submenu.active>a::after {
             transform: rotate(180deg);
         }
 
@@ -401,6 +403,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -428,16 +431,31 @@
                         <li class="has-submenu">
                             <a href="tms-operation.html">运营管理</a>
                             <ul class="submenu">
-                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
-                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
-                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
-                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
-                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
-                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
-                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
-                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#delivery-address"
+                                        onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate"
+                                        onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a>
+                                </li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a>
+                                </li>
+                                <li><a href="#inbound-scan"
+                                        onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a>
+                                </li>
+                                <li><a href="#outbound-scan"
+                                        onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a>
+                                </li>
+                                <li><a href="#delivery-scan"
+                                        onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a>
+                                </li>
+                                <li><a href="#miss-sort"
+                                        onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a>
+                                </li>
+                                <li><a href="#forklift"
+                                        onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a>
+                                </li>
                                 <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
-                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                                <li><a href="#evaluation-index"
+                                        onclick="switchTab('evaluation'); return false;">考核指标</a></li>
                             </ul>
                         </li>
                         <li><a href="tms-timing.html">时效管理</a></li>
@@ -464,7 +482,7 @@
             <section class="content">
                 <div class="view">
                     <h2>用户与权限管理</h2>
-                    
+
                     <!-- 标签页导航 -->
                     <div class="tabs">
                         <div class="tab active" data-tab="users">用户管理</div>
@@ -586,7 +604,8 @@
                 </div>
                 <div class="form-group">
                     <label>权限列表：</label>
-                    <div id="permission-list" style="max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 5px; padding: 1rem;">
+                    <div id="permission-list"
+                        style="max-height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 5px; padding: 1rem;">
                         <!-- 权限复选框将通过JS生成 -->
                     </div>
                 </div>
@@ -617,7 +636,8 @@
                 </div>
                 <div class="form-group">
                     <label for="permission-description">权限描述：</label>
-                    <textarea id="permission-description" name="permissionDescription" placeholder="描述权限的具体功能..."></textarea>
+                    <textarea id="permission-description" name="permissionDescription"
+                        placeholder="描述权限的具体功能..."></textarea>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="action-btn" onclick="closePermissionModal()">取消</button>
@@ -648,7 +668,8 @@
                 </div>
                 <div class="form-group">
                     <label for="department-description">部门描述：</label>
-                    <textarea id="department-description" name="departmentDescription" placeholder="描述部门的职责和功能..."></textarea>
+                    <textarea id="department-description" name="departmentDescription"
+                        placeholder="描述部门的职责和功能..."></textarea>
                 </div>
                 <div class="form-actions">
                     <button type="button" class="action-btn" onclick="closeDepartmentModal()">取消</button>
@@ -672,7 +693,7 @@
 
             // 绑定标签页切换事件
             document.querySelectorAll('.tab').forEach(tab => {
-                tab.addEventListener('click', function() {
+                tab.addEventListener('click', function () {
                     const tabId = this.dataset.tab;
                     switchTab(tabId);
                 });
@@ -694,22 +715,22 @@
             loadDepartments();
 
             // 绑定表单提交事件
-            document.getElementById('user-form').addEventListener('submit', function(e) {
+            document.getElementById('user-form').addEventListener('submit', function (e) {
                 e.preventDefault();
                 saveUser();
             });
 
-            document.getElementById('role-form').addEventListener('submit', function(e) {
+            document.getElementById('role-form').addEventListener('submit', function (e) {
                 e.preventDefault();
                 saveRole();
             });
 
-            document.getElementById('permission-form').addEventListener('submit', function(e) {
+            document.getElementById('permission-form').addEventListener('submit', function (e) {
                 e.preventDefault();
                 savePermission();
             });
 
-            document.getElementById('department-form').addEventListener('submit', function(e) {
+            document.getElementById('department-form').addEventListener('submit', function (e) {
                 e.preventDefault();
                 saveDepartment();
             });
@@ -822,10 +843,10 @@
                 </thead>
                 <tbody>
                     ${users.map(user => {
-                        const role = roles.find(r => r.id === user.roleId);
-                        const department = departments.find(d => d.id === user.departmentId);
-                        const area = areas.find(a => a.id === user.areaId);
-                        return `
+                const role = roles.find(r => r.id === user.roleId);
+                const department = departments.find(d => d.id === user.departmentId);
+                const area = areas.find(a => a.id === user.areaId);
+                return `
                             <tr>
                                 <td>${user.id}</td>
                                 <td>${user.name}</td>
@@ -840,7 +861,7 @@
                                 </td>
                             </tr>
                         `;
-                    }).join('')}
+            }).join('')}
                 </tbody>
             `;
         }
@@ -868,8 +889,8 @@
                 </thead>
                 <tbody>
                     ${roles.map(role => {
-                        const permissionCount = role.permissions ? role.permissions.length : 0;
-                        return `
+                const permissionCount = role.permissions ? role.permissions.length : 0;
+                return `
                             <tr>
                                 <td>${role.id}</td>
                                 <td>${role.name}</td>
@@ -880,7 +901,7 @@
                                 </td>
                             </tr>
                         `;
-                    }).join('')}
+            }).join('')}
                 </tbody>
             `;
         }
@@ -943,8 +964,8 @@
                 </thead>
                 <tbody>
                     ${departments.map(dept => {
-                        const parentDept = departments.find(d => d.id === dept.parentId);
-                        return `
+                const parentDept = departments.find(d => d.id === dept.parentId);
+                return `
                             <tr>
                                 <td>${dept.id}</td>
                                 <td>${dept.name}</td>
@@ -955,7 +976,7 @@
                                 </td>
                             </tr>
                         `;
-                    }).join('')}
+            }).join('')}
                 </tbody>
             `;
         }
@@ -966,16 +987,16 @@
             document.getElementById('user-modal-title').textContent = '添加用户';
             document.getElementById('user-form').reset();
             document.getElementById('user-id').value = '';
-            
+
             // 加载部门选项
             loadDepartmentOptions();
-            
+
             // 加载角色选项
             loadRoleOptions();
-            
+
             // 加载区域选项
             loadAreaOptions();
-            
+
             modal.classList.remove('hidden');
         }
 
@@ -984,7 +1005,7 @@
             const modal = document.getElementById('user-modal');
             const users = JSON.parse(localStorage.getItem('tmsUsers')) || [];
             const user = users.find(u => u.id === userId);
-            
+
             if (user) {
                 document.getElementById('user-modal-title').textContent = '编辑用户';
                 document.getElementById('user-id').value = user.id;
@@ -994,16 +1015,16 @@
                 document.getElementById('user-role').value = user.roleId;
                 document.getElementById('user-status').value = user.status;
                 document.getElementById('user-area').value = user.areaId || '';
-                
+
                 // 加载部门选项
                 loadDepartmentOptions();
-                
+
                 // 加载角色选项
                 loadRoleOptions();
-                
+
                 // 加载区域选项
                 loadAreaOptions();
-                
+
                 modal.classList.remove('hidden');
             }
         }
@@ -1089,10 +1110,10 @@
             document.getElementById('role-modal-title').textContent = '添加角色';
             document.getElementById('role-form').reset();
             document.getElementById('role-id').value = '';
-            
+
             // 加载权限选项
             loadPermissionCheckboxes();
-            
+
             modal.classList.remove('hidden');
         }
 
@@ -1101,16 +1122,16 @@
             const modal = document.getElementById('role-modal');
             const roles = JSON.parse(localStorage.getItem('tmsRoles')) || [];
             const role = roles.find(r => r.id === roleId);
-            
+
             if (role) {
                 document.getElementById('role-modal-title').textContent = '编辑角色';
                 document.getElementById('role-id').value = role.id;
                 document.getElementById('role-name').value = role.name;
                 document.getElementById('role-description').value = role.description;
-                
+
                 // 加载权限选项
                 loadPermissionCheckboxes(role.permissions);
-                
+
                 modal.classList.remove('hidden');
             }
         }
@@ -1125,7 +1146,7 @@
             const roleId = document.getElementById('role-id').value;
             const roleName = document.getElementById('role-name').value;
             const roleDescription = document.getElementById('role-description').value;
-            
+
             // 获取选中的权限
             const selectedPermissions = [];
             document.querySelectorAll('#permission-list input[type="checkbox"]:checked').forEach(checkbox => {
@@ -1203,7 +1224,7 @@
             const modal = document.getElementById('permission-modal');
             const permissions = JSON.parse(localStorage.getItem('tmsPermissions')) || [];
             const permission = permissions.find(p => p.id === permissionId);
-            
+
             if (permission) {
                 document.getElementById('permission-modal-title').textContent = '编辑权限';
                 document.getElementById('permission-id').value = permission.id;
@@ -1289,10 +1310,10 @@
             document.getElementById('department-modal-title').textContent = '添加部门';
             document.getElementById('department-form').reset();
             document.getElementById('department-id').value = '';
-            
+
             // 加载上级部门选项
             loadParentDepartmentOptions();
-            
+
             modal.classList.remove('hidden');
         }
 
@@ -1301,17 +1322,17 @@
             const modal = document.getElementById('department-modal');
             const departments = JSON.parse(localStorage.getItem('tmsDepartments')) || [];
             const dept = departments.find(d => d.id === deptId);
-            
+
             if (dept) {
                 document.getElementById('department-modal-title').textContent = '编辑部门';
                 document.getElementById('department-id').value = dept.id;
                 document.getElementById('department-name').value = dept.name;
                 document.getElementById('department-parent').value = dept.parentId;
                 document.getElementById('department-description').value = dept.description;
-                
+
                 // 加载上级部门选项
                 loadParentDepartmentOptions();
-                
+
                 modal.classList.remove('hidden');
             }
         }
@@ -1389,7 +1410,7 @@
         function loadDepartmentOptions() {
             const select = document.getElementById('user-department');
             const departments = JSON.parse(localStorage.getItem('tmsDepartments')) || [];
-            
+
             select.innerHTML = '<option value="">请选择部门</option>';
             departments.forEach(dept => {
                 const option = document.createElement('option');
@@ -1403,7 +1424,7 @@
         function loadRoleOptions() {
             const select = document.getElementById('user-role');
             const roles = JSON.parse(localStorage.getItem('tmsRoles')) || [];
-            
+
             select.innerHTML = '<option value="">请选择角色</option>';
             roles.forEach(role => {
                 const option = document.createElement('option');
@@ -1417,7 +1438,7 @@
         function loadPermissionCheckboxes(selectedPermissions = []) {
             const container = document.getElementById('permission-list');
             const permissions = JSON.parse(localStorage.getItem('tmsPermissions')) || [];
-            
+
             container.innerHTML = '';
             permissions.forEach(permission => {
                 const checkbox = document.createElement('div');
@@ -1433,7 +1454,7 @@
         function loadParentDepartmentOptions() {
             const select = document.getElementById('department-parent');
             const departments = JSON.parse(localStorage.getItem('tmsDepartments')) || [];
-            
+
             select.innerHTML = '<option value="">无</option>';
             departments.forEach(dept => {
                 const option = document.createElement('option');
@@ -1447,7 +1468,7 @@
         function loadAreaOptions() {
             const select = document.getElementById('user-area');
             const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
-            
+
             select.innerHTML = '<option value="">请选择区域</option>';
             areas.forEach(area => {
                 const option = document.createElement('option');
@@ -1467,4 +1488,5 @@
         }
     </script>
 </body>
+
 </html>

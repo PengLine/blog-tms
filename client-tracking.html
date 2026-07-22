@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>货物跟踪 - TMS运输管理系统</title>
 
@@ -291,6 +293,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -382,7 +385,7 @@
             checkLoginStatus('client');
             // 显示当前用户名
             displayCurrentUser();
-            
+
             // 设置输入框默认值
             document.getElementById('waybill-search').value = exampleWaybill;
             // 渲染示例跟踪结果
@@ -396,8 +399,8 @@
                 }
 
                 // 模拟跟踪数据
-            const mockTrackingData = {
-                [exampleWaybill]: [
+                const mockTrackingData = {
+                    [exampleWaybill]: [
                         { time: '2024-01-16 10:00', location: '上海网点', status: '货物已发出', type: 'shipping', completed: true, description: '上海网点已揽收货物' },
                         { time: '2024-01-16 12:00', location: '上海分拣中心', status: '开始分拣', type: 'sorting', completed: true, description: '货物到达上海分拣中心，开始分拣' },
                         { time: '2024-01-16 13:30', location: '上海分拣中心', status: '分拣完成', type: 'sorting', completed: true, description: '货物分拣完成，准备发往杭州中转站' },
@@ -429,7 +432,7 @@
 
             function renderTrackingResult(waybillNumber, trackingData) {
                 const container = document.getElementById('tracking-result');
-                
+
                 if (trackingData.length === 0) {
                     container.innerHTML = `
                         <h4>运单号: ${waybillNumber}</h4>
@@ -474,4 +477,5 @@
         });
     </script>
 </body>
+
 </html>

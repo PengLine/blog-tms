@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>订单提取 - TMS运输管理系统</title>
 
@@ -318,6 +320,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -353,7 +356,7 @@
             <section class="content">
                 <h2>订单提取</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 统计卡片 -->
                 <div class="stats">
                     <div class="stat-card">
@@ -381,7 +384,7 @@
                         <input type="text" id="order-search" class="search-input" placeholder="搜索订单号、客户姓名或手机号...">
                         <button class="btn btn-primary" onclick="searchOrders()">搜索</button>
                     </div>
-                    
+
                     <div class="filter-container">
                         <div class="filter-item">
                             <label for="status-filter">状态：</label>
@@ -435,7 +438,7 @@
 
             // 初始化数据
             initializeCollectionData();
-            
+
             // 加载订单列表
             loadOrders();
 
@@ -457,13 +460,13 @@
             if (!localStorage.getItem('deliverymanCollections')) {
                 const collections = [];
                 const today = new Date();
-                
+
                 // 生成过去7天到今天的订单
                 for (let i = 0; i < 10; i++) {
                     const orderDate = new Date(today);
                     orderDate.setDate(today.getDate() - (9 - i));
                     const dateStr = orderDate.toISOString().split('T')[0];
-                    
+
                     collections.push({
                         id: `order-${i + 1}`,
                         orderNumber: `HL${Math.floor(Math.random() * 10000000000)}`,
@@ -479,7 +482,7 @@
                         notes: i % 2 === 0 ? '需要收据' : '无需收据'
                     });
                 }
-                
+
                 localStorage.setItem('deliverymanCollections', JSON.stringify(collections));
             }
         }
@@ -489,19 +492,19 @@
             const collections = JSON.parse(localStorage.getItem('deliverymanCollections')) || [];
             const statusFilter = document.getElementById('status-filter').value;
             const dateFilter = document.getElementById('date-filter').value;
-            
+
             // 筛选订单
             let filteredOrders = collections.filter(order => {
                 // 状态筛选
                 if (statusFilter !== 'all' && order.status !== statusFilter) {
                     return false;
                 }
-                
+
                 // 日期筛选
                 const orderDate = new Date(order.orderTime);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-                
+
                 if (dateFilter === 'today') {
                     const orderDateOnly = new Date(orderDate);
                     orderDateOnly.setHours(0, 0, 0, 0);
@@ -518,16 +521,16 @@
                     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
                     return orderDate >= monthStart && orderDate < monthEnd;
                 }
-                
+
                 return true;
             });
-            
+
             // 按时间倒序排序
             filteredOrders.sort((a, b) => new Date(b.orderTime) - new Date(a.orderTime));
-            
+
             // 渲染订单列表
             renderOrderList(filteredOrders);
-            
+
             // 更新统计数据
             updateStats(collections);
         }
@@ -536,17 +539,17 @@
         function searchOrders() {
             const searchTerm = document.getElementById('order-search').value.toLowerCase();
             const collections = JSON.parse(localStorage.getItem('deliverymanCollections')) || [];
-            
+
             const filteredOrders = collections.filter(order => {
                 return order.orderNumber.toLowerCase().includes(searchTerm) ||
-                       order.customer.toLowerCase().includes(searchTerm) ||
-                       order.phone.includes(searchTerm) ||
-                       order.address.toLowerCase().includes(searchTerm);
+                    order.customer.toLowerCase().includes(searchTerm) ||
+                    order.phone.includes(searchTerm) ||
+                    order.address.toLowerCase().includes(searchTerm);
             });
-            
+
             // 按时间倒序排序
             filteredOrders.sort((a, b) => new Date(b.orderTime) - new Date(a.orderTime));
-            
+
             // 渲染订单列表
             renderOrderList(filteredOrders);
         }
@@ -554,12 +557,12 @@
         // 渲染订单列表
         function renderOrderList(orders) {
             const orderList = document.getElementById('orderList');
-            
+
             if (orders.length === 0) {
                 orderList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">暂无订单</p>';
                 return;
             }
-            
+
             orderList.innerHTML = orders.map(order => `
                 <div class="order-item">
                     <div class="order-header">
@@ -619,10 +622,10 @@
         function updateStats(orders) {
             const uncollectedOrders = orders.filter(order => order.status === 'uncollected');
             const collectedOrders = orders.filter(order => order.status === 'collected');
-            
+
             const uncollectedAmount = uncollectedOrders.reduce((sum, order) => sum + order.amount, 0);
             const collectedAmount = collectedOrders.reduce((sum, order) => sum + order.amount, 0);
-            
+
             document.getElementById('totalOrders').textContent = uncollectedOrders.length;
             document.getElementById('totalAmount').textContent = `¥${uncollectedAmount.toFixed(2)}`;
             document.getElementById('collectedOrders').textContent = collectedOrders.length;
@@ -633,15 +636,15 @@
         function collectOrder(orderId) {
             const collections = JSON.parse(localStorage.getItem('deliverymanCollections')) || [];
             const orderIndex = collections.findIndex(order => order.id === orderId);
-            
+
             if (orderIndex !== -1) {
                 const user = getCurrentUser();
                 const now = new Date();
-                
+
                 collections[orderIndex].status = 'collected';
                 collections[orderIndex].collectedTime = now.toLocaleString('zh-CN');
                 collections[orderIndex].collector = user ? user.username : '未知用户';
-                
+
                 localStorage.setItem('deliverymanCollections', JSON.stringify(collections));
                 loadOrders();
             }
@@ -651,7 +654,7 @@
         function viewOrderDetail(orderId) {
             const collections = JSON.parse(localStorage.getItem('deliverymanCollections')) || [];
             const order = collections.find(order => order.id === orderId);
-            
+
             if (order) {
                 let detailMessage = `订单详情：\n\n`;
                 detailMessage += `订单号：${order.orderNumber}\n`;
@@ -668,10 +671,11 @@
                 if (order.notes) {
                     detailMessage += `备注：${order.notes}\n`;
                 }
-                
+
                 alert(detailMessage);
             }
         }
     </script>
 </body>
+
 </html>

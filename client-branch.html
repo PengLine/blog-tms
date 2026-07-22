@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>网点搜索 - TMS运输管理系统</title>
     <!-- Leaflet地图库 -->
@@ -290,6 +292,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -343,11 +346,13 @@
                                 <label>服务类型</label>
                                 <div class="service-types">
                                     <div class="service-type">
-                                        <input type="checkbox" id="service-arrival" name="service[]" value="arrival" checked>
+                                        <input type="checkbox" id="service-arrival" name="service[]" value="arrival"
+                                            checked>
                                         <label for="service-arrival">可到货</label>
                                     </div>
                                     <div class="service-type">
-                                        <input type="checkbox" id="service-delivery" name="service[]" value="delivery" checked>
+                                        <input type="checkbox" id="service-delivery" name="service[]" value="delivery"
+                                            checked>
                                         <label for="service-delivery">可派送</label>
                                     </div>
                                 </div>
@@ -493,7 +498,7 @@
             // 初始化地图
             initMap();
         });
-    
+
 
         function searchBranches() {
             // 获取表单数据
@@ -508,7 +513,7 @@
             }
 
             if (services.length > 0) {
-                filteredBranches = filteredBranches.filter(branch => 
+                filteredBranches = filteredBranches.filter(branch =>
                     services.some(service => branch.services.includes(service))
                 );
             }
@@ -518,7 +523,7 @@
 
         function renderBranches(branches) {
             const container = document.getElementById('branch-list');
-            
+
             if (branches.length === 0) {
                 container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 3rem; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);">未找到匹配的网点</div>';
                 return;
@@ -682,10 +687,10 @@
             const R = 6371; // 地球半径，单位公里
             const dLat = (latlng2[0] - latlng1[0]) * Math.PI / 180;
             const dLon = (latlng2[1] - latlng1[1]) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
                 Math.cos(latlng1[0] * Math.PI / 180) * Math.cos(latlng2[0] * Math.PI / 180) *
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             const distance = R * c;
             return distance;
         }
@@ -695,8 +700,8 @@
             if (!userLatlng || !map) return;
 
             // 获取当前显示的网点
-            const currentBranches = document.getElementById('search-city').value ? 
-                mockBranches.filter(branch => branch.city === document.getElementById('search-city').value) : 
+            const currentBranches = document.getElementById('search-city').value ?
+                mockBranches.filter(branch => branch.city === document.getElementById('search-city').value) :
                 mockBranches;
 
             if (currentBranches.length === 0) return;
@@ -704,7 +709,7 @@
             // 计算最近的网点
             nearestBranch = currentBranches.reduce((nearest, branch) => {
                 if (!branch.latlng) return nearest;
-                
+
                 const distance = calculateDistance(userLatlng, branch.latlng);
                 if (!nearest || distance < nearest.distance) {
                     return { branch, distance };
@@ -748,11 +753,11 @@
         }
 
         // 在地图上定位特定网点
-        window.locateBranch = function(branchId) {
+        window.locateBranch = function (branchId) {
             const branch = mockBranches.find(b => b.id === branchId);
             if (branch && branch.latlng && map) {
                 map.setView(branch.latlng, 15);
-                
+
                 // 找到对应的标记并打开弹窗
                 markers.forEach(marker => {
                     if (marker.getLatLng().equals(branch.latlng)) {
@@ -762,7 +767,8 @@
             }
         };
 
-        
+
     </script>
 </body>
+
 </html>

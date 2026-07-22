@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>运输员排班 - TMS运输管理系统</title>
 
@@ -199,7 +201,8 @@
             border-collapse: collapse;
         }
 
-        .calendar th, .calendar td {
+        .calendar th,
+        .calendar td {
             padding: 15px;
             text-align: center;
             border: 1px solid #eee;
@@ -334,6 +337,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -368,7 +372,7 @@
             <section class="content">
                 <h2>工作排班</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 统计卡片 -->
                 <div class="stats">
                     <div class="stat-card">
@@ -436,10 +440,10 @@
 
             // 初始化数据
             initializeTransportSchedules();
-            
+
             // 加载日程数据
             loadSchedules();
-            
+
             // 绑定视图切换事件
             bindViewEvents();
         });
@@ -449,13 +453,13 @@
             // 强制重新初始化数据，确保有新数据
             const currentYear = new Date().getFullYear();
             const schedules = {};
-            
+
             // 添加今天及未来几天的任务
             for (let i = 0; i < 14; i++) {
                 const date = new Date();
                 date.setDate(date.getDate() + i);
                 const dateString = `${currentYear}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                
+
                 schedules[dateString] = [
                     {
                         id: `ts-${String(i + 1).padStart(3, '0')}`,
@@ -470,20 +474,20 @@
                     }
                 ];
             }
-            
+
             localStorage.setItem('transportSchedules', JSON.stringify(schedules));
         }
 
         // 加载日程数据
         function loadSchedules() {
             const schedules = JSON.parse(localStorage.getItem('transportSchedules')) || {};
-            
+
             // 计算统计数据
             calculateStats(schedules);
-            
+
             // 加载今日任务
             loadTodayTasks(schedules);
-            
+
             // 生成周视图日历
             generateWeekCalendar(schedules);
         }
@@ -494,31 +498,31 @@
             const weekStart = new Date();
             weekStart.setDate(weekStart.getDate() - weekStart.getDay());
             const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-            
+
             let todayCount = 0;
             let weekCount = 0;
             let monthCount = 0;
             let pendingCount = 0;
-            
+
             Object.keys(schedules).forEach(date => {
                 const dateObj = new Date(date);
                 const tasks = schedules[date];
-                
+
                 if (date === today) {
                     todayCount += tasks.length;
                 }
-                
+
                 if (dateObj >= weekStart) {
                     weekCount += tasks.length;
                 }
-                
+
                 if (dateObj >= monthStart) {
                     monthCount += tasks.length;
                 }
-                
+
                 pendingCount += tasks.filter(task => task.status === 'pending').length;
             });
-            
+
             document.getElementById('todayTasks').textContent = todayCount;
             document.getElementById('weekTasks').textContent = weekCount;
             document.getElementById('monthTasks').textContent = monthCount;
@@ -529,14 +533,14 @@
         function loadTodayTasks(schedules) {
             const today = new Date().toISOString().split('T')[0];
             const todayTasks = schedules[today] || [];
-            
+
             const taskList = document.getElementById('todayTaskList');
-            
+
             if (todayTasks.length === 0) {
                 taskList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">今日暂无任务</p>';
                 return;
             }
-            
+
             taskList.innerHTML = todayTasks.map(task => `
                 <div class="task-item">
                     <div class="task-header">
@@ -577,17 +581,17 @@
         function startTask(taskId) {
             const schedules = JSON.parse(localStorage.getItem('transportSchedules')) || {};
             let taskFound = false;
-            
+
             Object.keys(schedules).forEach(date => {
                 const tasks = schedules[date];
                 const taskIndex = tasks.findIndex(task => task.id === taskId);
-                
+
                 if (taskIndex !== -1) {
                     tasks[taskIndex].status = 'in_progress';
                     taskFound = true;
                 }
             });
-            
+
             if (taskFound) {
                 localStorage.setItem('transportSchedules', JSON.stringify(schedules));
                 loadSchedules();
@@ -599,17 +603,17 @@
         function completeTask(taskId) {
             const schedules = JSON.parse(localStorage.getItem('transportSchedules')) || {};
             let taskFound = false;
-            
+
             Object.keys(schedules).forEach(date => {
                 const tasks = schedules[date];
                 const taskIndex = tasks.findIndex(task => task.id === taskId);
-                
+
                 if (taskIndex !== -1) {
                     tasks[taskIndex].status = 'completed';
                     taskFound = true;
                 }
             });
-            
+
             if (taskFound) {
                 localStorage.setItem('transportSchedules', JSON.stringify(schedules));
                 loadSchedules();
@@ -622,7 +626,7 @@
             const today = new Date();
             const weekStart = new Date(today);
             weekStart.setDate(today.getDate() - weekStart.getDay());
-            
+
             const calendarHTML = `
                 <table class="calendar">
                     <thead>
@@ -638,14 +642,14 @@
                     </thead>
                     <tbody>
                         <tr>
-                            ${Array.from({length: 7}, (_, i) => {
-                                const date = new Date(weekStart);
-                                date.setDate(weekStart.getDate() + i);
-                                const dateStr = date.toISOString().split('T')[0];
-                                const tasks = schedules[dateStr] || [];
-                                const isToday = dateStr === today.toISOString().split('T')[0];
-                                
-                                return `
+                            ${Array.from({ length: 7 }, (_, i) => {
+                const date = new Date(weekStart);
+                date.setDate(weekStart.getDate() + i);
+                const dateStr = date.toISOString().split('T')[0];
+                const tasks = schedules[dateStr] || [];
+                const isToday = dateStr === today.toISOString().split('T')[0];
+
+                return `
                                     <td class="${isToday ? 'today' : ''} ${tasks.length > 0 ? 'task-day' : ''}">
                                         <div>${date.getDate()}</div>
                                         ${tasks.slice(0, 2).map(task => `
@@ -654,29 +658,29 @@
                                         ${tasks.length > 2 ? `<div class="task-item">+${tasks.length - 2} 个任务</div>` : ''}
                                     </td>
                                 `;
-                            }).join('')}
+            }).join('')}
                         </tr>
                     </tbody>
                 </table>
             `;
-            
+
             document.getElementById('calendarView').innerHTML = calendarHTML;
         }
 
         // 绑定视图切换事件
         function bindViewEvents() {
             const viewButtons = document.querySelectorAll('.view-btn');
-            
+
             viewButtons.forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     // 移除所有激活状态
                     viewButtons.forEach(b => b.classList.remove('active'));
                     // 添加当前按钮激活状态
                     this.classList.add('active');
-                    
+
                     const viewType = this.getAttribute('data-view');
                     // 根据视图类型切换显示内容
-                    switch(viewType) {
+                    switch (viewType) {
                         case 'day':
                             generateDayView();
                             break;
@@ -698,12 +702,12 @@
             const dateStr = today.toISOString().split('T')[0];
             const schedules = JSON.parse(localStorage.getItem('transportSchedules')) || {};
             const todayTasks = schedules[dateStr] || [];
-            
+
             const dayViewHTML = `
                 <div class="day-view">
                     <h4>${dateStr} 任务详情</h4>
-                    ${todayTasks.length > 0 ? 
-                        todayTasks.map(task => `
+                    ${todayTasks.length > 0 ?
+                    todayTasks.map(task => `
                             <div class="task-item">
                                 <div class="task-header">
                                     <div class="task-title">${task.title}</div>
@@ -718,12 +722,12 @@
                                     <p><strong>描述:</strong> ${task.description}</p>
                                 </div>
                             </div>
-                        `).join('') 
-                        : '<p>今日暂无任务</p>'
-                    }
+                        `).join('')
+                    : '<p>今日暂无任务</p>'
+                }
                 </div>
             `;
-            
+
             document.getElementById('calendarView').innerHTML = dayViewHTML;
         }
 
@@ -735,7 +739,7 @@
             const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
             const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
             const schedules = JSON.parse(localStorage.getItem('transportSchedules')) || {};
-            
+
             let calendarHTML = `
                 <table class="calendar">
                     <thead>
@@ -752,22 +756,22 @@
                     <tbody>
                         <tr>
             `;
-            
+
             // 添加上个月的空白单元格
             for (let i = 0; i < firstDayOfMonth; i++) {
                 calendarHTML += '<td></td>';
             }
-            
+
             // 添加当前月的日期
             for (let day = 1; day <= daysInMonth; day++) {
                 if ((day + firstDayOfMonth - 1) % 7 === 0 && day !== 1) {
                     calendarHTML += '</tr><tr>';
                 }
-                
+
                 const dateString = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 const tasks = schedules[dateString] || [];
                 const isToday = dateString === today.toISOString().split('T')[0];
-                
+
                 calendarHTML += `
                     <td class="${isToday ? 'today' : ''} ${tasks.length > 0 ? 'task-day' : ''}">
                         <div>${day}</div>
@@ -778,21 +782,22 @@
                     </td>
                 `;
             }
-            
+
             // 添加下个月的空白单元格
             const remainingCells = 42 - (firstDayOfMonth + daysInMonth);
             for (let i = 0; i < remainingCells; i++) {
                 calendarHTML += '<td></td>';
             }
-            
+
             calendarHTML += `
                         </tr>
                     </tbody>
                 </table>
             `;
-            
+
             document.getElementById('calendarView').innerHTML = calendarHTML;
         }
     </script>
 </body>
+
 </html>

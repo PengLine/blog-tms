@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>库存与资产 - TMS运输管理系统</title>
 
@@ -331,6 +333,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -366,7 +369,7 @@
             <section class="content">
                 <div class="view">
                     <h2>库存与资产管理</h2>
-                    
+
                     <!-- 统计概览 -->
                     <div class="stats-container">
                         <div class="stat-card">
@@ -460,11 +463,11 @@
                 tabs.forEach(tab => {
                     tab.addEventListener('click', () => {
                         const tabId = tab.getAttribute('data-tab');
-                        
+
                         // 更新标签状态
                         tabs.forEach(t => t.classList.remove('active'));
                         tab.classList.add('active');
-                        
+
                         // 更新内容状态
                         const contents = document.querySelectorAll('.tab-content');
                         contents.forEach(content => content.classList.add('hidden'));
@@ -493,7 +496,7 @@
             // 渲染库存表格
             function renderInventory(inventory) {
                 const container = document.getElementById('inventory-table');
-                
+
                 if (inventory.length === 0) {
                     container.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #666;">暂无库存数据</td></tr>';
                     return;
@@ -546,7 +549,7 @@
             // 渲染暂存件表格
             function renderTempStorage(tempStorage) {
                 const container = document.getElementById('temp-storage-table');
-                
+
                 if (tempStorage.length === 0) {
                     container.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #666;">暂无暂存件数据</td></tr>';
                     return;
@@ -600,7 +603,7 @@
             // 渲染物料表格
             function renderMaterials(materials) {
                 const container = document.getElementById('materials-table');
-                
+
                 if (materials.length === 0) {
                     container.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 2rem; color: #666;">暂无物料数据</td></tr>';
                     return;
@@ -650,25 +653,25 @@
             }
 
             // 添加库存函数
-            window.addInventory = function() {
+            window.addInventory = function () {
                 alert('添加新库存');
                 // 这里可以添加实际的添加逻辑
             };
 
             // 编辑库存函数
-            window.editInventory = function(inventoryId) {
+            window.editInventory = function (inventoryId) {
                 alert(`编辑库存 ${inventoryId}`);
                 // 这里可以添加实际的编辑逻辑
             };
 
             // 调整库存函数
-            window.adjustInventory = function(inventoryId) {
+            window.adjustInventory = function (inventoryId) {
                 alert(`调整库存 ${inventoryId}`);
                 // 这里可以添加实际的调整逻辑
             };
 
             // 删除库存函数
-            window.deleteInventory = function(inventoryId) {
+            window.deleteInventory = function (inventoryId) {
                 if (confirm(`确定要删除库存 ${inventoryId} 吗？`)) {
                     alert(`删除库存 ${inventoryId}`);
                     // 这里可以添加实际的删除逻辑
@@ -676,19 +679,19 @@
             };
 
             // 添加暂存件函数
-            window.addTempStorage = function() {
+            window.addTempStorage = function () {
                 alert('添加新暂存件');
                 // 这里可以添加实际的添加逻辑
             };
 
             // 处理暂存件函数
-            window.processTempStorage = function(tempId) {
+            window.processTempStorage = function (tempId) {
                 alert(`处理暂存件 ${tempId}`);
                 // 这里可以添加实际的处理逻辑
             };
 
             // 删除暂存件函数
-            window.deleteTempStorage = function(tempId) {
+            window.deleteTempStorage = function (tempId) {
                 if (confirm(`确定要删除暂存件 ${tempId} 吗？`)) {
                     alert(`删除暂存件 ${tempId}`);
                     // 这里可以添加实际的删除逻辑
@@ -696,25 +699,25 @@
             };
 
             // 添加物料函数
-            window.addMaterial = function() {
+            window.addMaterial = function () {
                 alert('添加新物料');
                 // 这里可以添加实际的添加逻辑
             };
 
             // 编辑物料函数
-            window.editMaterial = function(materialId) {
+            window.editMaterial = function (materialId) {
                 alert(`编辑物料 ${materialId}`);
                 // 这里可以添加实际的编辑逻辑
             };
 
             // 领用物料函数
-            window.useMaterial = function(materialId) {
+            window.useMaterial = function (materialId) {
                 alert(`领用物料 ${materialId}`);
                 // 这里可以添加实际的领用逻辑
             };
 
             // 删除物料函数
-            window.deleteMaterial = function(materialId) {
+            window.deleteMaterial = function (materialId) {
                 if (confirm(`确定要删除物料 ${materialId} 吗？`)) {
                     alert(`删除物料 ${materialId}`);
                     // 这里可以添加实际的删除逻辑
@@ -723,4 +726,5 @@
         });
     </script>
 </body>
+
 </html>

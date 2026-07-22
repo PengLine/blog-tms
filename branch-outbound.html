@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>出库管理 - TMS运输管理系统</title>
 
@@ -225,7 +227,8 @@
             border-collapse: collapse;
         }
 
-        th, td {
+        th,
+        td {
             padding: 1rem;
             text-align: left;
             border-bottom: 1px solid #eee;
@@ -369,6 +372,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -404,7 +408,7 @@
             <section class="content">
                 <h2>出库管理</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 统计概览 -->
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -472,7 +476,7 @@
                             <textarea id="loading-notes" rows="3"></textarea>
                         </div>
                         <button class="btn btn-primary" onclick="confirmLoading()">确认装车</button>
-                        
+
                         <!-- 车辆列表 -->
                         <div class="loading-area" style="margin-top: 2rem;">
                             <div class="vehicle-card">
@@ -538,7 +542,8 @@
                                     </div>
                                     <div class="form-group">
                                         <label for="handover-time">交接时间</label>
-                                        <input type="datetime-local" id="handover-time" value="2023-12-01T14:00" required>
+                                        <input type="datetime-local" id="handover-time" value="2023-12-01T14:00"
+                                            required>
                                     </div>
                                 </div>
                                 <div class="form-group">
@@ -680,22 +685,22 @@
 
             // 初始化数据
             initializeData();
-            
+
             // 加载统计数据
             loadStats();
-            
+
             // 加载交接记录
             loadHandoverRecords();
-            
+
             // 加载出库记录
             loadOutboundRecords();
 
             // 绑定标签页切换事件
             document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
-                    
+
                     const tabId = this.getAttribute('data-tab');
                     document.querySelectorAll('.tab-content').forEach(content => {
                         content.classList.add('hidden');
@@ -802,21 +807,21 @@
             loadingRecords = JSON.parse(localStorage.getItem('loadingRecords')) || [];
             handoverRecords = JSON.parse(localStorage.getItem('handoverRecords')) || [];
             outboundRecords = JSON.parse(localStorage.getItem('outboundRecords')) || [];
-            
+
             const today = new Date().toDateString();
-            
+
             const todayLoading = loadingRecords.filter(record => {
                 return new Date(record.loadingTime).toDateString() === today;
             });
-            
+
             const todayHandover = handoverRecords.filter(record => {
                 return new Date(record.handoverTime).toDateString() === today;
             });
-            
+
             const todayOutbound = outboundRecords.filter(record => {
                 return new Date(record.outboundTime).toDateString() === today;
             });
-            
+
             document.getElementById('totalVehicles').textContent = todayLoading.length;
             document.getElementById('loadedPackages').textContent = todayLoading.reduce((sum, record) => sum + record.packageCount, 0);
             document.getElementById('handoveredPackages').textContent = todayHandover.length;
@@ -830,27 +835,27 @@
             const destination = document.getElementById('loading-destination').value;
             const packageCount = parseInt(document.getElementById('loading-packages').value);
             const notes = document.getElementById('loading-notes').value;
-            
+
             const vehicleMap = {
                 vehicle1: '京A12345',
                 vehicle2: '京B67890',
                 vehicle3: '京C24680',
                 vehicle4: '京D13579'
             };
-            
+
             const driverMap = {
                 driver1: '张三',
                 driver2: '李四',
                 driver3: '王五'
             };
-            
+
             const destinationMap = {
                 dest1: '北京分拨中心',
                 dest2: '上海分拨中心',
                 dest3: '广州分拨中心',
                 dest4: '深圳分拨中心'
             };
-            
+
             const loadingRecord = {
                 id: 'LOAD' + Date.now(),
                 vehicle: vehicleMap[vehicle],
@@ -861,11 +866,11 @@
                 loadingTime: new Date().toISOString(),
                 status: '已装车'
             };
-            
+
             loadingRecords = JSON.parse(localStorage.getItem('loadingRecords')) || [];
             loadingRecords.push(loadingRecord);
             localStorage.setItem('loadingRecords', JSON.stringify(loadingRecords));
-            
+
             // 添加到出库记录
             const outboundRecord = {
                 id: 'OUT' + Date.now(),
@@ -876,28 +881,28 @@
                 outboundTime: new Date().toISOString(),
                 status: '已出库'
             };
-            
+
             outboundRecords = JSON.parse(localStorage.getItem('outboundRecords')) || [];
             outboundRecords.push(outboundRecord);
             localStorage.setItem('outboundRecords', JSON.stringify(outboundRecords));
-            
+
             // 重置表单
             document.getElementById('loading-packages').value = '';
             document.getElementById('loading-notes').value = '';
-            
+
             // 更新统计数据
             loadStats();
-            
+
             // 更新出库记录
             loadOutboundRecords();
-            
+
         }
 
         // 添加包裹到车辆
         function addPackageToVehicle(vehicleId) {
             const waybillNumber = prompt('请输入运单号：');
             if (!waybillNumber) return;
-            
+
             alert(`包裹 ${waybillNumber} 已添加到车辆`);
         }
 
@@ -908,18 +913,18 @@
             const receiver = document.getElementById('handover-receiver').value.trim();
             const handoverTime = document.getElementById('handover-time').value;
             const notes = document.getElementById('handover-notes').value.trim();
-            
+
             if (!waybillNumber || !receiver || !handoverTime) {
                 alert('请填写完整信息');
                 return;
             }
-            
+
             const vehicleMap = {
                 vehicle1: '京A12345',
                 vehicle2: '京B67890',
                 vehicle3: '京C24680'
             };
-            
+
             const handoverRecord = {
                 id: 'HAND' + Date.now(),
                 waybillNumber: waybillNumber,
@@ -929,30 +934,30 @@
                 notes: notes,
                 operator: '当前用户'
             };
-            
+
             handoverRecords = JSON.parse(localStorage.getItem('handoverRecords')) || [];
             handoverRecords.push(handoverRecord);
             localStorage.setItem('handoverRecords', JSON.stringify(handoverRecords));
-            
+
             // 重置表单
             document.getElementById('handover-waybill').value = '';
             document.getElementById('handover-receiver').value = '';
             document.getElementById('handover-time').value = '';
             document.getElementById('handover-notes').value = '';
-            
+
             // 更新统计数据
             loadStats();
-            
+
             // 更新交接记录
             loadHandoverRecords();
-            
+
         }
 
         // 加载交接记录
         function loadHandoverRecords() {
             handoverRecords = JSON.parse(localStorage.getItem('handoverRecords')) || [];
             const tableBody = document.getElementById('handover-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = handoverRecords.slice(-10).reverse().map(record => `
                 <tr>
                     <td>${record.waybillNumber}</td>
@@ -968,7 +973,7 @@
         function loadOutboundRecords() {
             outboundRecords = JSON.parse(localStorage.getItem('outboundRecords')) || [];
             const tableBody = document.getElementById('outbound-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = outboundRecords.slice(-10).reverse().map(record => `
                 <tr>
                     <td>${record.id}</td>
@@ -983,4 +988,5 @@
         }
     </script>
 </body>
+
 </html>

@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>客服管理 - TMS运输管理系统</title>
 
@@ -172,19 +174,19 @@
             position: relative;
         }
 
-        .has-submenu > a {
+        .has-submenu>a {
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .has-submenu > a::after {
+        .has-submenu>a::after {
             content: '▼';
             font-size: 0.7rem;
             transition: transform 0.3s ease;
         }
 
-        .has-submenu.active > a::after {
+        .has-submenu.active>a::after {
             transform: rotate(180deg);
         }
 
@@ -255,6 +257,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -282,16 +285,31 @@
                         <li class="has-submenu">
                             <a href="tms-operation.html">运营管理</a>
                             <ul class="submenu">
-                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
-                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
-                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
-                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
-                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
-                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
-                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
-                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#delivery-address"
+                                        onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate"
+                                        onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a>
+                                </li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a>
+                                </li>
+                                <li><a href="#inbound-scan"
+                                        onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a>
+                                </li>
+                                <li><a href="#outbound-scan"
+                                        onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a>
+                                </li>
+                                <li><a href="#delivery-scan"
+                                        onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a>
+                                </li>
+                                <li><a href="#miss-sort"
+                                        onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a>
+                                </li>
+                                <li><a href="#forklift"
+                                        onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a>
+                                </li>
                                 <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
-                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                                <li><a href="#evaluation-index"
+                                        onclick="switchTab('evaluation'); return false;">考核指标</a></li>
                             </ul>
                         </li>
                         <li><a href="tms-timing.html">时效管理</a></li>
@@ -317,7 +335,7 @@
             <!-- 主内容 -->
             <section class="content">
                 <h2>客服管理</h2>
-                
+
                 <div class="stats">
                     <div class="stat-card">
                         <div style="font-size: 2rem; color: #ff6b6b;">5</div>
@@ -350,7 +368,7 @@
     <script src="common.js"></script>
     <script>
         // 子菜单切换功能
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             // 检查用户登录状态
             checkLoginStatus('admin');
 
@@ -366,10 +384,10 @@
             const submenuItems = document.querySelectorAll('.has-submenu');
             submenuItems.forEach(item => {
                 const link = item.querySelector('> a');
-                link.addEventListener('click', function(e) {
+                link.addEventListener('click', function (e) {
                     // 切换当前菜单项的active状态
                     item.classList.toggle('active');
-                    
+
                     // 阻止默认跳转行为，因为我们只是想展开/折叠子菜单
                     e.preventDefault();
                 });
@@ -488,7 +506,7 @@
             }
 
             // 处理请求
-            window.processRequest = function(id) {
+            window.processRequest = function (id) {
                 const requests = JSON.parse(localStorage.getItem('tmsServiceRequests') || '[]');
                 const request = requests.find(r => r.id === id);
                 if (request) {
@@ -502,7 +520,7 @@
             }
 
             // 完成请求
-            window.completeRequest = function(id) {
+            window.completeRequest = function (id) {
                 const solution = prompt('请输入解决方案:');
                 if (solution) {
                     const requests = JSON.parse(localStorage.getItem('tmsServiceRequests') || '[]');
@@ -518,7 +536,7 @@
             }
 
             // 查看详情
-            window.viewRequestDetail = function(id) {
+            window.viewRequestDetail = function (id) {
                 const requests = JSON.parse(localStorage.getItem('tmsServiceRequests') || '[]');
                 const request = requests.find(r => r.id === id);
                 if (request) {
@@ -548,7 +566,7 @@
                 sections.forEach(section => {
                     section.style.display = 'none';
                 });
-                
+
                 const selectedSection = document.getElementById(sectionId);
                 if (selectedSection) {
                     selectedSection.style.display = 'block';
@@ -565,4 +583,5 @@
         }
     </script>
 </body>
+
 </html>

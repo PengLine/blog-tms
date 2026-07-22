@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>我的绩效 - TMS运输管理系统</title>
 
@@ -289,6 +291,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -324,7 +327,7 @@
             <section class="content">
                 <h2>我的绩效</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 绩效概览 -->
                 <div class="performance-overview">
                     <div class="overview-card">
@@ -421,13 +424,13 @@
 
             // 初始化绩效数据
             initializePerformanceData();
-            
+
             // 加载绩效数据
             loadPerformanceData('week');
 
             // 绑定时间范围选择事件
             document.querySelectorAll('.range-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
                     const range = this.getAttribute('data-range');
@@ -478,7 +481,7 @@
                         performanceScore: 92
                     }
                 };
-                
+
                 localStorage.setItem('deliverymanPerformance', JSON.stringify(performance));
             }
         }
@@ -491,20 +494,20 @@
                 quarter: { totalTasks: 0, completedTasks: 0, onTimeTasks: 0, performanceScore: 0 },
                 year: { totalTasks: 0, completedTasks: 0, onTimeTasks: 0, performanceScore: 0 }
             };
-            
+
             const data = performance[range];
             const completionRate = data.totalTasks > 0 ? Math.round((data.completedTasks / data.totalTasks) * 100) : 0;
             const onTimeRate = data.completedTasks > 0 ? Math.round((data.onTimeTasks / data.completedTasks) * 100) : 0;
-            
+
             // 更新概览数据
             document.getElementById('totalTasks').textContent = data.completedTasks;
             document.getElementById('completionRate').textContent = `${completionRate}%`;
             document.getElementById('onTimeRate').textContent = `${onTimeRate}%`;
             document.getElementById('performanceScore').textContent = data.performanceScore;
-            
+
             // 更新绩效详情
             updatePerformanceDetails(performance);
-            
+
             // 更新图表（模拟）
             updateCharts(range, data);
         }
@@ -512,7 +515,7 @@
         // 更新绩效详情
         function updatePerformanceDetails(performance) {
             const details = document.getElementById('performanceDetails');
-            
+
             details.innerHTML = `
                 <tr>
                     <td>任务完成率</td>
@@ -588,35 +591,35 @@
                     console.error('绩效图表canvas元素不存在');
                     return;
                 }
-                
+
                 const ctx = canvas.getContext('2d');
                 if (!ctx) {
                     console.error('无法获取绩效图表上下文');
                     return;
                 }
-                
+
                 // 销毁现有图表实例（如果存在且有destroy方法）
                 if (performanceChartInstance && typeof performanceChartInstance.destroy === 'function') {
                     performanceChartInstance.destroy();
                     performanceChartInstance = null;
                 }
-                
+
                 // 生成模拟的历史数据
                 const labels = getChartLabels(range);
                 const scoreData = generateScoreData(range);
-                
+
                 // 确保Chart.js已加载
                 if (typeof Chart === 'undefined') {
                     console.error('Chart.js未加载');
                     return;
                 }
-                
+
                 // 计算绩效指标
                 const completionRate = data.totalTasks > 0 ? (data.completedTasks / data.totalTasks) * 100 : 0;
                 const onTimeRate = data.completedTasks > 0 ? (data.onTimeTasks / data.completedTasks) * 100 : 0;
                 const exceptionHandling = data.totalTasks > 0 ? (1 - data.exceptionTasks / data.totalTasks) * 100 : 0;
                 const efficiency = data.totalHours > 0 ? (data.completedTasks / data.totalHours) * 10 : 0;
-                
+
                 performanceChartInstance = new Chart(ctx, {
                     type: 'radar',
                     data: {
@@ -679,25 +682,25 @@
                     console.error('任务图表canvas元素不存在');
                     return;
                 }
-                
+
                 const ctx = canvas.getContext('2d');
                 if (!ctx) {
                     console.error('无法获取任务图表上下文');
                     return;
                 }
-                
+
                 // 销毁现有图表实例（如果存在且有destroy方法）
                 if (taskChartInstance && typeof taskChartInstance.destroy === 'function') {
                     taskChartInstance.destroy();
                     taskChartInstance = null;
                 }
-                
+
                 // 确保Chart.js已加载
                 if (typeof Chart === 'undefined') {
                     console.error('Chart.js未加载');
                     return;
                 }
-                
+
                 taskChartInstance = new Chart(ctx, {
                     type: 'bar',
                     data: {
@@ -780,7 +783,7 @@
         function generateScoreData(range) {
             const baseScore = 85;
             const variation = 10;
-            
+
             let length = 7; // 默认周
             switch (range) {
                 case 'month':
@@ -793,8 +796,8 @@
                     length = 4;
                     break;
             }
-            
-            return Array.from({ length }, () => 
+
+            return Array.from({ length }, () =>
                 Math.max(60, Math.min(100, baseScore + Math.random() * variation * 2 - variation))
             );
         }
@@ -811,4 +814,5 @@
         }
     </script>
 </body>
+
 </html>

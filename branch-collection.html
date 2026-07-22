@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>揽收管理 - TMS运输管理系统</title>
 
@@ -225,7 +227,8 @@
             border-collapse: collapse;
         }
 
-        th, td {
+        th,
+        td {
             padding: 1rem;
             text-align: left;
             border-bottom: 1px solid #eee;
@@ -326,6 +329,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -361,7 +365,7 @@
             <section class="content">
                 <h2>揽收管理</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 统计概览 -->
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -527,7 +531,7 @@
                             <input type="text" id="barcode-order" required>
                         </div>
                         <button class="btn btn-primary" onclick="generateBarcode()">生成条码</button>
-                        
+
                         <div class="barcode-container">
                             <h4>条码预览</h4>
                             <div class="barcode" id="barcode-preview">
@@ -563,19 +567,19 @@
 
             // 初始化数据
             initializeData();
-            
+
             // 加载统计数据
             loadStats();
-            
+
             // 加载任务列表
             loadTasks();
 
             // 绑定标签页切换事件
             document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
-                    
+
                     const tabId = this.getAttribute('data-tab');
                     document.querySelectorAll('.tab-content').forEach(content => {
                         content.classList.add('hidden');
@@ -585,13 +589,13 @@
             });
 
             // 订单表单提交
-            document.getElementById('order-form').addEventListener('submit', function(e) {
+            document.getElementById('order-form').addEventListener('submit', function (e) {
                 e.preventDefault();
                 submitOrder();
             });
 
             // 计算表单提交
-            document.getElementById('calculate-form').addEventListener('submit', function(e) {
+            document.getElementById('calculate-form').addEventListener('submit', function (e) {
                 e.preventDefault();
                 calculateFee();
             });
@@ -691,15 +695,15 @@
         function loadStats() {
             const orders = JSON.parse(localStorage.getItem('branchOrders')) || [];
             const today = new Date().toDateString();
-            
+
             const todayOrders = orders.filter(order => {
                 return new Date(order.createdAt).toDateString() === today;
             });
-            
+
             const pendingOrders = todayOrders.filter(order => order.status === 'pending');
             const completedOrders = todayOrders.filter(order => order.status === 'completed');
             const totalRevenue = todayOrders.reduce((sum, order) => sum + (order.totalFee || 0), 0);
-            
+
             document.getElementById('totalOrders').textContent = todayOrders.length;
             document.getElementById('pendingOrders').textContent = pendingOrders.length;
             document.getElementById('completedOrders').textContent = completedOrders.length;
@@ -723,11 +727,11 @@
                 status: 'pending',
                 createdAt: new Date().toISOString()
             };
-            
+
             const orders = JSON.parse(localStorage.getItem('branchOrders')) || [];
             orders.push(order);
             localStorage.setItem('branchOrders', JSON.stringify(orders));
-            
+
             // 添加到任务列表
             const task = {
                 id: order.id,
@@ -738,17 +742,17 @@
                 status: 'pending',
                 createdAt: order.createdAt
             };
-            
+
             const tasks = JSON.parse(localStorage.getItem('branchTasks')) || [];
             tasks.push(task);
             localStorage.setItem('branchTasks', JSON.stringify(tasks));
-            
+
             // 重置表单
             document.getElementById('order-form').reset();
-            
+
             // 更新统计数据
             loadStats();
-            
+
             // 更新任务列表
             loadTasks();
         }
@@ -757,7 +761,7 @@
         function loadTasks() {
             const tasks = JSON.parse(localStorage.getItem('branchTasks')) || [];
             const tableBody = document.getElementById('tasks-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = tasks.map(task => `
                 <tr>
                     <td>${task.id}</td>
@@ -792,13 +796,13 @@
                 return task;
             });
             localStorage.setItem('branchTasks', JSON.stringify(updatedTasks));
-            
+
             // 更新任务列表
             loadTasks();
-            
+
             // 更新统计数据
             loadStats();
-            
+
         }
 
         // 计算费用
@@ -808,16 +812,16 @@
             const volumeWeight = parseFloat(document.getElementById('volume-weight').value) || 0;
             const distance = parseFloat(document.getElementById('distance').value) || 0;
             const serviceType = document.getElementById('service-type').value;
-            
+
             // 基础费用
             let baseFee = 10;
-            
+
             // 根据重量计算费用
             const weight = Math.max(actualWeight, volumeWeight);
             if (weight > 1) {
                 baseFee += (weight - 1) * 5;
             }
-            
+
             // 根据服务类型调整费用
             switch (serviceType) {
                 case 'express':
@@ -827,21 +831,21 @@
                     baseFee *= 2;
                     break;
             }
-            
+
             // 根据距离调整费用
             if (distance > 5) {
                 baseFee += (distance - 5) * 0.5;
             }
-            
+
             // 保价费
             const insuranceFee = 0;
-            
+
             // 总费用
             const totalFee = baseFee + insuranceFee;
-            
+
             document.getElementById('insurance-fee').value = insuranceFee.toFixed(2);
             document.getElementById('total-fee').value = totalFee.toFixed(2);
-            
+
             // 更新订单费用
             const orders = JSON.parse(localStorage.getItem('branchOrders')) || [];
             const updatedOrders = orders.map(order => {
@@ -860,7 +864,7 @@
                 alert('请输入订单号');
                 return;
             }
-            
+
             const barcodePreview = document.getElementById('barcode-preview');
             barcodePreview.innerHTML = `
                 <div style="font-family: monospace; font-size: 24px; letter-spacing: 2px; margin: 1rem 0;">
@@ -883,4 +887,5 @@
         }
     </script>
 </body>
+
 </html>

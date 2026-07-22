@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>运营管理 - TMS运输管理系统</title>
 
@@ -226,7 +228,8 @@
             border-collapse: collapse;
         }
 
-        th, td {
+        th,
+        td {
             padding: 1rem;
             text-align: left;
             border-bottom: 1px solid #eee;
@@ -343,6 +346,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -378,7 +382,7 @@
             <section class="content">
                 <h2>运营管理</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 统计概览 -->
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -435,12 +439,12 @@
                             </div>
                         </div>
                         <button class="btn btn-primary" onclick="loadCollectionData()">查询数据</button>
-                        
+
                         <!-- 揽件率图表 -->
                         <div class="chart-container">
                             <canvas id="collectionChart"></canvas>
                         </div>
-                        
+
                         <div class="table-container">
                             <table id="collection-table">
                                 <thead>
@@ -484,12 +488,12 @@
                             </div>
                         </div>
                         <button class="btn btn-primary" onclick="loadSendData()">查询数据</button>
-                        
+
                         <!-- 寄件率图表 -->
                         <div class="chart-container">
                             <canvas id="sendChart"></canvas>
                         </div>
-                        
+
                         <div class="table-container">
                             <table id="send-table">
                                 <thead>
@@ -533,12 +537,12 @@
                             </div>
                         </div>
                         <button class="btn btn-primary" onclick="loadMissData()">查询数据</button>
-                        
+
                         <!-- 漏件率图表 -->
                         <div class="chart-container">
                             <canvas id="missChart"></canvas>
                         </div>
-                        
+
                         <div class="table-container">
                             <table id="miss-table">
                                 <thead>
@@ -582,12 +586,12 @@
                             </div>
                         </div>
                         <button class="btn btn-primary" onclick="loadDeliveryData()">查询数据</button>
-                        
+
                         <!-- 派送率图表 -->
                         <div class="chart-container">
                             <canvas id="deliveryChart"></canvas>
                         </div>
-                        
+
                         <div class="table-container">
                             <table id="delivery-table">
                                 <thead>
@@ -631,12 +635,12 @@
                             </div>
                         </div>
                         <button class="btn btn-primary" onclick="loadErrorData()">查询数据</button>
-                        
+
                         <!-- 错件率图表 -->
                         <div class="chart-container">
                             <canvas id="errorChart"></canvas>
                         </div>
-                        
+
                         <div class="table-container">
                             <table id="error-table">
                                 <thead>
@@ -680,12 +684,12 @@
                             </div>
                         </div>
                         <button class="btn btn-primary" onclick="loadReturnData()">查询数据</button>
-                        
+
                         <!-- 退货率图表 -->
                         <div class="chart-container">
                             <canvas id="returnChart"></canvas>
                         </div>
-                        
+
                         <div class="table-container">
                             <table id="return-table">
                                 <thead>
@@ -737,10 +741,10 @@
 
             // 初始化数据
             initializeData();
-            
+
             // 加载统计数据
             loadStats();
-            
+
             // 加载揽件率数据
             setTimeout(() => {
                 try {
@@ -749,21 +753,21 @@
                     console.error('加载揽件率数据时出错:', error);
                 }
             }, 300);
-            
+
             // 绑定标签页切换事件
             document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
-                    
+
                     const tabId = this.getAttribute('data-tab');
                     document.querySelectorAll('.tab-content').forEach(content => {
                         content.classList.add('hidden');
                     });
                     document.getElementById(tabId).classList.remove('hidden');
-                    
+
                     // 根据标签页加载对应数据
-                    switch(tabId) {
+                    switch (tabId) {
                         case 'collection-rate':
                             loadCollectionData();
                             break;
@@ -869,14 +873,14 @@
         // 加载统计数据
         function loadStats() {
             const orderRecords = JSON.parse(localStorage.getItem('orderRecords')) || [];
-            
+
             // 模拟数据
             const totalOrders = orderRecords.length;
             const completedOrders = orderRecords.filter(order => order.status === 'completed').length;
             const completionRate = Math.round((completedOrders / totalOrders) * 100);
             const totalRevenue = orderRecords.reduce((sum, order) => sum + order.amount, 0);
             const satisfactionRate = 95;
-            
+
             document.getElementById('totalOrders').textContent = totalOrders;
             document.getElementById('totalRevenue').textContent = '¥' + totalRevenue.toLocaleString();
             document.getElementById('completionRate').textContent = completionRate + '%';
@@ -887,7 +891,7 @@
         function generateRateData(period, baseRate, variance) {
             const data = [];
             const labels = [];
-            
+
             if (period === 'week') {
                 const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
                 days.forEach(day => {
@@ -912,7 +916,7 @@
                     data.push(baseRate + (Math.random() * variance * 2 - variance));
                 });
             }
-            
+
             return { labels, data };
         }
 
@@ -920,13 +924,13 @@
         function loadCollectionData() {
             const staff = document.getElementById('collection-staff').value;
             const period = document.getElementById('collection-period').value;
-            
+
             // 生成模拟数据
             const { labels, data } = generateRateData(period, 95, 5);
-            
+
             // 更新揽件率图表
             updateChart('collectionChart', collectionChartInstance, labels, data, '揽件率 (%)', '#45b7d1');
-            
+
             // 更新表格数据
             updateRateTable('collection-table', labels, data, '应揽件数', '实际揽件数', '揽件率', '未揽件原因');
         }
@@ -935,13 +939,13 @@
         function loadSendData() {
             const staff = document.getElementById('send-staff').value;
             const period = document.getElementById('send-period').value;
-            
+
             // 生成模拟数据
             const { labels, data } = generateRateData(period, 93, 6);
-            
+
             // 更新寄件率图表
             updateChart('sendChart', sendChartInstance, labels, data, '寄件率 (%)', '#ff6b6b');
-            
+
             // 更新表格数据
             updateRateTable('send-table', labels, data, '应寄件数', '实际寄件数', '寄件率', '未寄件原因');
         }
@@ -950,13 +954,13 @@
         function loadMissData() {
             const staff = document.getElementById('miss-staff').value;
             const period = document.getElementById('miss-period').value;
-            
+
             // 生成模拟数据
             const { labels, data } = generateRateData(period, 2, 1);
-            
+
             // 更新漏件率图表
             updateChart('missChart', missChartInstance, labels, data, '漏件率 (%)', '#4ecdc4');
-            
+
             // 更新表格数据
             updateRateTable('miss-table', labels, data, '总件数', '漏件数', '漏件率', '漏件原因');
         }
@@ -965,13 +969,13 @@
         function loadDeliveryData() {
             const staff = document.getElementById('delivery-staff').value;
             const period = document.getElementById('delivery-period').value;
-            
+
             // 生成模拟数据
             const { labels, data } = generateRateData(period, 94, 5);
-            
+
             // 更新派送率图表
             updateChart('deliveryChart', deliveryChartInstance, labels, data, '派送率 (%)', '#45b7d1');
-            
+
             // 更新表格数据
             updateRateTable('delivery-table', labels, data, '应派送数', '实际派送数', '派送率', '未派送原因');
         }
@@ -980,13 +984,13 @@
         function loadErrorData() {
             const staff = document.getElementById('error-staff').value;
             const period = document.getElementById('error-period').value;
-            
+
             // 生成模拟数据
             const { labels, data } = generateRateData(period, 1.5, 0.8);
-            
+
             // 更新错件率图表
             updateChart('errorChart', errorChartInstance, labels, data, '错件率 (%)', '#ff9f43');
-            
+
             // 更新表格数据
             updateRateTable('error-table', labels, data, '总件数', '错件数', '错件率', '错件原因');
         }
@@ -995,13 +999,13 @@
         function loadReturnData() {
             const staff = document.getElementById('return-staff').value;
             const period = document.getElementById('return-period').value;
-            
+
             // 生成模拟数据
             const { labels, data } = generateRateData(period, 3, 1.5);
-            
+
             // 更新退货率图表
             updateChart('returnChart', returnChartInstance, labels, data, '退货率 (%)', '#ee5a6f');
-            
+
             // 更新表格数据
             updateRateTable('return-table', labels, data, '总件数', '退货数', '退货率', '退货原因');
         }
@@ -1009,12 +1013,12 @@
         // 更新图表
         function updateChart(canvasId, chartInstance, labels, data, label, color) {
             const ctx = document.getElementById(canvasId).getContext('2d');
-            
+
             // 销毁现有图表
             if (chartInstance) {
                 chartInstance.destroy();
             }
-            
+
             // 创建新图表
             chartInstance = new Chart(ctx, {
                 type: 'line',
@@ -1046,7 +1050,7 @@
                             mode: 'index',
                             intersect: false,
                             callbacks: {
-                                label: function(context) {
+                                label: function (context) {
                                     return label + ': ' + context.parsed.y.toFixed(2) + '%';
                                 }
                             }
@@ -1058,7 +1062,7 @@
                             min: 0,
                             max: 100,
                             ticks: {
-                                callback: function(value) {
+                                callback: function (value) {
                                     return value + '%';
                                 }
                             }
@@ -1066,9 +1070,9 @@
                     }
                 }
             });
-            
+
             // 更新图表实例
-            switch(canvasId) {
+            switch (canvasId) {
                 case 'collectionChart':
                     collectionChartInstance = chartInstance;
                     break;
@@ -1094,13 +1098,13 @@
         function updateRateTable(tableId, labels, data, col1, col2, col3, col4) {
             const tableBody = document.querySelector('#' + tableId + ' tbody');
             tableBody.innerHTML = '';
-            
+
             labels.forEach((label, index) => {
                 const rate = data[index];
                 const total = Math.floor(Math.random() * 100) + 50;
                 const actual = Math.floor(total * rate / 100);
                 const reason = getRandomReason();
-                
+
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${label}</td>
@@ -1130,4 +1134,5 @@
         }
     </script>
 </body>
+
 </html>

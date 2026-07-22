@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>客户端 - TMS运输管理系统</title>
 
@@ -345,6 +347,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -379,7 +382,7 @@
             <section class="content">
                 <h2>欢迎使用TMS系统</h2>
                 <p>作为客户端用户，您可以在这里管理您的运输订单和跟踪货物状态。</p>
-                
+
                 <!-- 订单统计 -->
                 <div class="stats-grid">
                     <div class="stat-item">
@@ -430,7 +433,8 @@
                 </div>
 
                 <!-- 最近订单 -->
-                <div style="background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);">
+                <div
+                    style="background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);">
                     <h3>最近订单</h3>
                     <div style="margin-top: 1rem;" id="recent-orders">
                     </div>
@@ -443,7 +447,8 @@
                         <div class="notification-icon">📢</div>
                         <div class="notification-content">
                             <div class="notification-title">系统升级通知</div>
-                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">TMS系统将于2026年2月1日凌晨2:00-4:00进行系统升级，届时将暂停服务，请您提前安排好寄件计划。</div>
+                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">
+                                TMS系统将于2026年2月1日凌晨2:00-4:00进行系统升级，届时将暂停服务，请您提前安排好寄件计划。</div>
                             <div class="notification-time">2026-01-28 10:00</div>
                         </div>
                     </div>
@@ -451,7 +456,8 @@
                         <div class="notification-icon">🎉</div>
                         <div class="notification-content">
                             <div class="notification-title">新用户注册奖励</div>
-                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">恭喜您注册成为新用户！系统已为您赠送100积分，可用于兑换优惠券和礼品。</div>
+                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">
+                                恭喜您注册成为新用户！系统已为您赠送100积分，可用于兑换优惠券和礼品。</div>
                             <div class="notification-time">2026-01-27 15:30</div>
                         </div>
                     </div>
@@ -459,7 +465,8 @@
                         <div class="notification-icon">📢</div>
                         <div class="notification-content">
                             <div class="notification-title">春节运费优惠活动</div>
-                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">春节期间（1月28日-2月15日），寄件享8折优惠，最高减免50元。使用积分还可额外抵扣运费。</div>
+                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">
+                                春节期间（1月28日-2月15日），寄件享8折优惠，最高减免50元。使用积分还可额外抵扣运费。</div>
                             <div class="notification-time">2026-01-26 09:00</div>
                         </div>
                     </div>
@@ -467,7 +474,8 @@
                         <div class="notification-icon">🚚</div>
                         <div class="notification-content">
                             <div class="notification-title">新增快递网点</div>
-                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">系统新增50个快递网点，覆盖更多城市和地区，为您提供更便捷的服务。</div>
+                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">
+                                系统新增50个快递网点，覆盖更多城市和地区，为您提供更便捷的服务。</div>
                             <div class="notification-time">2026-01-25 14:20</div>
                         </div>
                     </div>
@@ -475,7 +483,8 @@
                         <div class="notification-icon">🎁</div>
                         <div class="notification-content">
                             <div class="notification-title">积分兑换商城上线</div>
-                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">积分兑换商城正式上线！现在可以使用积分兑换运费券、礼品卡等丰富奖品。</div>
+                            <div style="color: #666; font-size: 0.9rem; margin-top: 0.25rem;">
+                                积分兑换商城正式上线！现在可以使用积分兑换运费券、礼品卡等丰富奖品。</div>
                             <div class="notification-time">2026-01-24 11:00</div>
                         </div>
                     </div>
@@ -634,7 +643,7 @@
                     price: 175
                 }
             ];
-            
+
             localStorage.setItem('tmsOrders', JSON.stringify(mockOrders));
         }
 
@@ -657,7 +666,7 @@
         // 生成订单统计图
         function generateOrderChart(orders) {
             const ctx = document.getElementById('order-chart').getContext('2d');
-            
+
             // 按月分组订单
             const monthlyOrders = {};
             orders.forEach(order => {
@@ -715,10 +724,10 @@
             const orders = JSON.parse(localStorage.getItem('tmsOrders')) || [];
             const user = getCurrentUser();
             const userOrders = orders.filter(order => order.userId === user?.username || order.userId === 'guest');
-            
+
             // 按创建时间排序，取最近3个
             const recentOrders = userOrders.sort((a, b) => new Date(b.createTime) - new Date(a.createTime)).slice(0, 3);
-            
+
             const recentOrdersContainer = document.getElementById('recent-orders');
             recentOrdersContainer.innerHTML = '';
 
@@ -752,4 +761,5 @@
         }
     </script>
 </body>
+
 </html>

@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>分拣员 - 打卡</title>
 
@@ -411,6 +413,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -543,13 +546,13 @@
 
             // 初始化打卡数据
             initClockData();
-            
+
             // 更新打卡状态
             updateClockStatus();
-            
+
             // 更新统计信息
             updateStatistics();
-            
+
             // 加载月度打卡记录
             loadMonthlyRecords();
         });
@@ -557,11 +560,11 @@
         // 更新实时时钟
         function updateClock() {
             const now = new Date();
-            
+
             // 更新时间
             const timeOptions = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
             document.getElementById('current-time').textContent = now.toLocaleTimeString('zh-CN', timeOptions);
-            
+
             // 更新日期
             const dateOptions = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
             document.getElementById('current-date').textContent = now.toLocaleDateString('zh-CN', dateOptions);
@@ -572,7 +575,7 @@
             const user = getCurrentUser();
             const today = new Date().toISOString().split('T')[0];
             const clockKey = `sorterClock_${today}`;
-            
+
             // 检查今天是否已有打卡记录
             if (!localStorage.getItem(clockKey)) {
                 const mockRecords = [];
@@ -586,13 +589,13 @@
             const now = new Date();
             const today = now.toISOString().split('T')[0];
             const clockKey = `sorterClock_${today}`;
-            
+
             // 获取今日打卡记录
             let clockRecords = JSON.parse(localStorage.getItem(clockKey) || '[]');
-            
+
             // 检查最后一次打卡记录
             const lastRecord = clockRecords[clockRecords.length - 1];
-            
+
             if (!lastRecord || lastRecord.type === 'out') {
                 // 上班打卡
                 const clockInRecord = {
@@ -602,10 +605,10 @@
                     timestamp: now.getTime(),
                     username: user.username
                 };
-                
+
                 clockRecords.push(clockInRecord);
                 localStorage.setItem(clockKey, JSON.stringify(clockRecords));
-                
+
                 // 更新状态
                 alert('上班打卡成功！');
                 updateClockStatus();
@@ -620,13 +623,13 @@
                     timestamp: now.getTime(),
                     username: user.username
                 };
-                
+
                 clockRecords.push(clockOutRecord);
                 localStorage.setItem(clockKey, JSON.stringify(clockRecords));
-                
+
                 // 计算工作时长
                 const workDuration = calculateWorkDuration(clockRecords);
-                
+
                 // 更新状态
                 alert(`下班打卡成功！今日工作时长：${workDuration}`);
                 updateClockStatus();
@@ -639,7 +642,7 @@
         function calculateWorkDuration(records) {
             let totalMilliseconds = 0;
             let lastClockIn = null;
-            
+
             records.forEach(record => {
                 if (record.type === 'in') {
                     lastClockIn = record.timestamp;
@@ -648,16 +651,16 @@
                     lastClockIn = null;
                 }
             });
-            
+
             // 如果最后一次是上班打卡，计算到当前时间
             if (lastClockIn) {
                 totalMilliseconds += Date.now() - lastClockIn;
             }
-            
+
             // 转换为小时和分钟
             const totalHours = Math.floor(totalMilliseconds / (1000 * 60 * 60));
             const totalMinutes = Math.floor((totalMilliseconds % (1000 * 60 * 60)) / (1000 * 60));
-            
+
             return `${totalHours}小时${totalMinutes}分钟`;
         }
 
@@ -666,14 +669,14 @@
             const today = new Date().toISOString().split('T')[0];
             const clockKey = `sorterClock_${today}`;
             const clockRecords = JSON.parse(localStorage.getItem(clockKey) || '[]');
-            
+
             const statusDiv = document.getElementById('clock-status');
             const button = document.getElementById('clock-button');
             const recordDiv = document.getElementById('today-record');
-            
+
             // 检查最后一次打卡记录
             const lastRecord = clockRecords[clockRecords.length - 1];
-            
+
             if (!lastRecord || lastRecord.type === 'out') {
                 // 未打卡或已下班
                 statusDiv.innerHTML = `
@@ -696,7 +699,7 @@
                 button.className = 'clock-button off-duty';
                 button.disabled = false;
             }
-            
+
             // 更新今日打卡记录
             if (clockRecords.length > 0) {
                 recordDiv.innerHTML = clockRecords.map((record, index) => `
@@ -716,27 +719,27 @@
             const now = new Date();
             const currentYear = now.getFullYear();
             const currentMonth = now.getMonth() + 1;
-            
+
             // 计算本月工作日数
             const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
             let workDays = 0;
             let lateCount = 0;
             let earlyLeaveCount = 0;
             let overtimeHours = 0;
-            
+
             for (let day = 1; day <= daysInMonth; day++) {
                 const date = new Date(currentYear, currentMonth - 1, day);
                 const dayOfWeek = date.getDay();
-                
+
                 // 只计算周一到周五
                 if (dayOfWeek >= 1 && dayOfWeek <= 5) {
                     workDays++;
-                    
+
                     // 检查当天打卡记录
                     const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
                     const clockKey = `sorterClock_${dateStr}`;
                     const clockRecords = JSON.parse(localStorage.getItem(clockKey) || '[]');
-                    
+
                     if (clockRecords.length > 0) {
                         // 检查是否迟到（假设上班时间为08:30）
                         const clockInRecord = clockRecords.find(record => record.type === 'in');
@@ -747,7 +750,7 @@
                                 lateCount++;
                             }
                         }
-                        
+
                         // 检查是否早退（假设下班时间为17:30）
                         const clockOutRecord = clockRecords.find(record => record.type === 'out');
                         if (clockOutRecord) {
@@ -757,7 +760,7 @@
                                 earlyLeaveCount++;
                             }
                         }
-                        
+
                         // 计算加班时间（假设正常工作时长为8小时）
                         const workDuration = calculateWorkDurationInHours(clockRecords);
                         if (workDuration > 8) {
@@ -766,7 +769,7 @@
                     }
                 }
             }
-            
+
             // 更新统计显示
             document.getElementById('total-work-days').textContent = workDays;
             document.getElementById('late-count').textContent = lateCount;
@@ -778,7 +781,7 @@
         function calculateWorkDurationInHours(records) {
             let totalMilliseconds = 0;
             let lastClockIn = null;
-            
+
             records.forEach(record => {
                 if (record.type === 'in') {
                     lastClockIn = record.timestamp;
@@ -787,7 +790,7 @@
                     lastClockIn = null;
                 }
             });
-            
+
             return totalMilliseconds / (1000 * 60 * 60);
         }
 
@@ -798,28 +801,28 @@
             const currentYear = now.getFullYear();
             const currentMonth = now.getMonth() + 1;
             const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-            
+
             const tableBody = document.getElementById('monthly-records');
             let html = '';
-            
+
             for (let day = daysInMonth; day >= 1; day--) {
                 const date = new Date(currentYear, currentMonth - 1, day);
                 const dateStr = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
                 const dayOfWeek = date.getDay();
-                
+
                 // 只显示工作日
                 if (dayOfWeek >= 1 && dayOfWeek <= 5) {
                     const clockKey = `sorterClock_${dateStr}`;
                     const clockRecords = JSON.parse(localStorage.getItem(clockKey) || '[]');
-                    
+
                     const clockInRecord = clockRecords.find(record => record.type === 'in');
                     const clockOutRecord = clockRecords.find(record => record.type === 'out');
-                    
+
                     const clockInTime = clockInRecord ? clockInRecord.time.split(' ')[1] : '-';
                     const clockOutTime = clockOutRecord ? clockOutRecord.time.split(' ')[1] : '-';
                     const workDuration = clockInRecord && clockOutRecord ? calculateWorkDuration(clockRecords) : '-';
                     const status = clockInRecord && clockOutRecord ? 'completed' : 'incomplete';
-                    
+
                     html += `
                         <tr>
                             <td>${dateStr}</td>
@@ -831,13 +834,14 @@
                     `;
                 }
             }
-            
+
             if (html === '') {
                 html = '<tr><td colspan="5" style="text-align: center;">暂无打卡记录</td></tr>';
             }
-            
+
             tableBody.innerHTML = html;
         }
     </script>
 </body>
+
 </html>

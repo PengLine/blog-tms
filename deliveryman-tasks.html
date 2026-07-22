@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>我的任务 - TMS运输管理系统</title>
 
@@ -305,6 +307,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -340,7 +343,7 @@
             <section class="content">
                 <h2>我的任务</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 任务类型切换 -->
                 <div class="task-type-switch">
                     <button class="type-btn active" data-type="all">全部任务</button>
@@ -402,13 +405,13 @@
 
             // 初始化数据
             initializeTaskData();
-            
+
             // 加载任务列表
             loadTasks();
 
             // 绑定任务类型切换事件
             document.querySelectorAll('.type-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
                     loadTasks();
@@ -426,13 +429,13 @@
             if (!localStorage.getItem('deliverymanTasks')) {
                 const tasks = [];
                 const today = new Date();
-                
+
                 // 生成过去7天到未来7天的任务
                 for (let i = -7; i <= 7; i++) {
                     const taskDate = new Date(today);
                     taskDate.setDate(today.getDate() + i);
                     const dateStr = taskDate.toISOString().split('T')[0];
-                    
+
                     // 每天生成2个任务（1个收件，1个派件）
                     for (let j = 1; j <= 2; j++) {
                         const taskType = j === 1 ? '收件' : '派件';
@@ -452,7 +455,7 @@
                         });
                     }
                 }
-                
+
                 localStorage.setItem('deliverymanTasks', JSON.stringify(tasks));
             }
         }
@@ -463,24 +466,24 @@
             const typeFilter = document.querySelector('.type-btn.active').getAttribute('data-type');
             const statusFilter = document.getElementById('status-filter').value;
             const dateFilter = document.getElementById('date-filter').value;
-            
+
             // 筛选任务
             let filteredTasks = tasks.filter(task => {
                 // 类型筛选
                 if (typeFilter !== 'all' && task.type !== typeFilter) {
                     return false;
                 }
-                
+
                 // 状态筛选
                 if (statusFilter !== 'all' && task.status !== statusFilter) {
                     return false;
                 }
-                
+
                 // 日期筛选
                 const taskDate = new Date(task.time);
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-                
+
                 if (dateFilter === 'today') {
                     const taskDateOnly = new Date(taskDate);
                     taskDateOnly.setHours(0, 0, 0, 0);
@@ -497,13 +500,13 @@
                     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
                     return taskDate >= monthStart && taskDate < monthEnd;
                 }
-                
+
                 return true;
             });
-            
+
             // 按时间排序
             filteredTasks.sort((a, b) => new Date(a.time) - new Date(b.time));
-            
+
             // 渲染任务列表
             renderTaskList(filteredTasks);
         }
@@ -511,12 +514,12 @@
         // 渲染任务列表
         function renderTaskList(tasks) {
             const taskList = document.getElementById('taskList');
-            
+
             if (tasks.length === 0) {
                 taskList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">暂无任务</p>';
                 return;
             }
-            
+
             taskList.innerHTML = tasks.map(task => `
                 <div class="task-item">
                     <div class="task-header">
@@ -594,7 +597,7 @@
         function startTask(taskId) {
             const tasks = JSON.parse(localStorage.getItem('deliverymanTasks')) || [];
             const taskIndex = tasks.findIndex(task => task.id === taskId);
-            
+
             if (taskIndex !== -1) {
                 tasks[taskIndex].status = 'in-progress';
                 localStorage.setItem('deliverymanTasks', JSON.stringify(tasks));
@@ -607,7 +610,7 @@
         function completeTask(taskId) {
             const tasks = JSON.parse(localStorage.getItem('deliverymanTasks')) || [];
             const taskIndex = tasks.findIndex(task => task.id === taskId);
-            
+
             if (taskIndex !== -1) {
                 tasks[taskIndex].status = 'completed';
                 localStorage.setItem('deliverymanTasks', JSON.stringify(tasks));
@@ -626,11 +629,12 @@
         function viewTaskDetail(taskId) {
             const tasks = JSON.parse(localStorage.getItem('deliverymanTasks')) || [];
             const task = tasks.find(task => task.id === taskId);
-            
+
             if (task) {
                 alert(`任务详情：\n\n类型：${task.type}\n客户：${task.customer}\n地址：${task.address}\n电话：${task.phone}\n时间：${task.time}\n状态：${getStatusText(task.status)}\n描述：${task.description}\n订单号：${task.orderId || '无'}\n重量：${task.weight || '无'}\n件数：${task.items || '无'}`);
             }
         }
     </script>
 </body>
+
 </html>

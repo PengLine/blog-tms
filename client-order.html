@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>订单查询 - TMS运输管理系统</title>
 
@@ -304,6 +306,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -342,13 +345,13 @@
                         <input type="text" id="order-search" placeholder="输入订单号查询">
                         <button id="search-btn" class="btn btn-primary">查询</button>
                     </div>
-                    
+
                     <!-- Tab切换按钮组 -->
                     <div class="tab-group">
                         <button class="tab-btn btn btn-secondary active" data-tab="shipping">发货订单</button>
                         <button class="tab-btn btn btn-secondary" data-tab="receiving">收货订单</button>
                     </div>
-                    
+
                     <div class="order-list" id="order-list">
                         <!-- 订单数据将通过JS生成 -->
                     </div>
@@ -387,10 +390,10 @@
             // 共享订单数据
             let allOrders = [];
             let currentTab = 'shipping'; // 当前选中的tab，默认为发货订单
-            
+
             // 初始化页面
             initPage();
-            
+
             // 绑定tab切换事件
             const tabBtns = document.querySelectorAll('.tab-btn');
             tabBtns.forEach(btn => {
@@ -398,10 +401,10 @@
                     // 更新tab状态
                     tabBtns.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
-                    
+
                     // 更新当前选中的tab
                     currentTab = btn.dataset.tab;
-                    
+
                     // 重新渲染订单列表，应用当前tab筛选
                     renderOrdersByTab();
                 });
@@ -415,13 +418,13 @@
             function loadAllOrders() {
                 // 优先从localStorage获取用户自己创建的订单
                 const userOrders = JSON.parse(localStorage.getItem('tmsOrders')) || [];
-                
+
                 // 为默认订单生成订单号的辅助函数
                 const generateOrderIdForDefault = (order) => {
                     // 使用common.js中的全局函数
                     return generateOrderId(order.origin, order.customer);
                 };
-                
+
                 // 添加默认模拟订单
                 const defaultOrders = [
                     // 待提交订单
@@ -758,12 +761,12 @@
                         delayReason: '天气原因导致运输延迟'
                     }
                 ];
-                
+
                 // 合并订单数据并去重
                 allOrders = [...userOrders, ...defaultOrders].filter((order, index, self) =>
                     index === self.findIndex((o) => o.id === order.id)
                 );
-                
+
                 // 确保所有订单都有orderType字段
                 allOrders.forEach(order => {
                     if (!order.orderType) {
@@ -771,14 +774,14 @@
                         order.orderType = 'shipping';
                     }
                 });
-                
+
                 // 按创建时间倒序排列
                 allOrders.sort((a, b) => new Date(b.createTime) - new Date(a.createTime));
-                
+
                 // 初始根据当前tab渲染订单
                 renderOrdersByTab();
             }
-            
+
             // 根据当前tab渲染订单
             function renderOrdersByTab() {
                 // 根据当前tab筛选订单
@@ -787,20 +790,20 @@
                     if (order.orderType !== currentTab) {
                         return false;
                     }
-                    
+
                     // 应用搜索关键词筛选（如果有）
                     const keyword = document.getElementById('order-search').value.toLowerCase();
                     if (keyword) {
-                        return order.id.toLowerCase().includes(keyword) || 
-                               (order.consignee && order.consignee.toLowerCase().includes(keyword)) ||
-                               (order.customer && order.customer.toLowerCase().includes(keyword)) ||
-                               order.origin.toLowerCase().includes(keyword) ||
-                               order.destination.toLowerCase().includes(keyword);
+                        return order.id.toLowerCase().includes(keyword) ||
+                            (order.consignee && order.consignee.toLowerCase().includes(keyword)) ||
+                            (order.customer && order.customer.toLowerCase().includes(keyword)) ||
+                            order.origin.toLowerCase().includes(keyword) ||
+                            order.destination.toLowerCase().includes(keyword);
                     }
-                    
+
                     return true;
                 });
-                
+
                 renderOrders(filteredOrders);
             }
 
@@ -811,7 +814,7 @@
 
             function renderOrders(orders) {
                 const container = document.getElementById('order-list');
-                
+
                 if (orders.length === 0) {
                     container.innerHTML = '<div style="text-align: center; padding: 2rem; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);">未找到匹配的订单</div>';
                     return;
@@ -863,7 +866,7 @@
             let currentOrder = null;
 
             // 查看订单详情
-            window.viewOrderDetail = function(orderId) {
+            window.viewOrderDetail = function (orderId) {
                 currentOrder = allOrders.find(order => order.id === orderId);
                 if (!currentOrder) return;
 
@@ -998,7 +1001,7 @@
             }
 
             // 确认收货
-            window.confirmReceipt = function(orderId) {
+            window.confirmReceipt = function (orderId) {
                 const order = allOrders.find(order => order.id === orderId);
                 if (!order) return;
 
@@ -1017,7 +1020,7 @@
             }
 
             // 拒绝接收
-            window.returnOrder = function(orderId) {
+            window.returnOrder = function (orderId) {
                 const order = allOrders.find(order => order.id === orderId);
                 if (!order) return;
 
@@ -1037,7 +1040,7 @@
             }
 
             // 取消订单
-            window.cancelOrder = function(orderId) {
+            window.cancelOrder = function (orderId) {
                 const order = allOrders.find(order => order.id === orderId);
                 if (!order) return;
 
@@ -1070,4 +1073,5 @@
         });
     </script>
 </body>
+
 </html>
