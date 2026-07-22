@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>分拣员 - 扫描</title>
 
@@ -299,6 +301,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -500,7 +503,7 @@
         function saveScanRecord(waybillInfo) {
             const today = new Date().toISOString().split('T')[0];
             const scanKey = `sorterScans_${today}`;
-            
+
             let scans = [];
             const existingScans = localStorage.getItem(scanKey);
             if (existingScans) {
@@ -529,7 +532,7 @@
         function updateScanStats() {
             const today = new Date().toISOString().split('T')[0];
             const statsKey = `sorterStats_${today}`;
-            
+
             let stats = { scanned: 0, sorted: 0, exceptions: 0 };
             const existingStats = localStorage.getItem(statsKey);
             if (existingStats) {
@@ -544,7 +547,7 @@
         function loadTodayScans() {
             const today = new Date().toISOString().split('T')[0];
             const scanKey = `sorterScans_${today}`;
-            
+
             let scans = [];
             const existingScans = localStorage.getItem(scanKey);
             if (existingScans) {
@@ -552,7 +555,7 @@
             }
 
             const historyTable = document.getElementById('scan-history');
-            
+
             if (scans.length > 0) {
                 historyTable.innerHTML = scans.slice(0, 10).map(scan => `
                     <tr>
@@ -582,4 +585,5 @@
         }
     </script>
 </body>
+
 </html>

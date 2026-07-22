@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>分拣处理 - TMS运输管理系统</title>
 
@@ -225,7 +227,8 @@
             border-collapse: collapse;
         }
 
-        th, td {
+        th,
+        td {
             padding: 1rem;
             text-align: left;
             border-bottom: 1px solid #eee;
@@ -365,6 +368,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -400,7 +404,7 @@
             <section class="content">
                 <h2>分拣处理</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 统计概览 -->
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -637,28 +641,28 @@
 
             // 初始化数据
             initializeData();
-            
+
             // 加载统计数据
             loadStats();
-            
+
             // 加载扫描记录
             loadScannedPackages();
-            
+
             // 加载分拣记录
             loadSortedPackages();
-            
+
             // 加载任务列表
             loadSortingTasks();
-            
+
             // 加载异常件列表
             loadExceptionPackages();
 
             // 绑定标签页切换事件
             document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
-                    
+
                     const tabId = this.getAttribute('data-tab');
                     document.querySelectorAll('.tab-content').forEach(content => {
                         content.classList.add('hidden');
@@ -668,7 +672,7 @@
             });
 
             // 扫描输入框回车事件
-            document.getElementById('scan-input').addEventListener('keypress', function(e) {
+            document.getElementById('scan-input').addEventListener('keypress', function (e) {
                 if (e.key === 'Enter') {
                     scanPackage();
                 }
@@ -789,21 +793,21 @@
             scannedPackages = JSON.parse(localStorage.getItem('scannedPackages')) || [];
             sortedPackages = JSON.parse(localStorage.getItem('sortedPackages')) || [];
             exceptionPackages = JSON.parse(localStorage.getItem('exceptionPackages')) || [];
-            
+
             const today = new Date().toDateString();
-            
+
             const todayScanned = scannedPackages.filter(pkg => {
                 return new Date(pkg.scannedAt).toDateString() === today;
             });
-            
+
             const todaySorted = sortedPackages.filter(pkg => {
                 return new Date(pkg.sortedAt).toDateString() === today;
             });
-            
+
             const todayExceptions = exceptionPackages.filter(pkg => {
                 return new Date(pkg.reportedAt).toDateString() === today;
             });
-            
+
             document.getElementById('totalPackages').textContent = todayScanned.length;
             document.getElementById('scannedPackages').textContent = todayScanned.length;
             document.getElementById('sortedPackages').textContent = todaySorted.length;
@@ -817,7 +821,7 @@
                 alert('请输入运单号');
                 return;
             }
-            
+
             const packageInfo = {
                 id: waybillNumber,
                 sender: '寄件人' + Math.floor(Math.random() * 1000),
@@ -826,11 +830,11 @@
                 scannedAt: new Date().toISOString(),
                 status: '已扫描'
             };
-            
+
             scannedPackages = JSON.parse(localStorage.getItem('scannedPackages')) || [];
             scannedPackages.push(packageInfo);
             localStorage.setItem('scannedPackages', JSON.stringify(scannedPackages));
-            
+
             document.getElementById('scan-result').innerHTML = `
                 <div style="color: green;">扫描成功！</div>
                 <div>运单号：${packageInfo.id}</div>
@@ -838,13 +842,13 @@
                 <div>收件人：${packageInfo.receiver}</div>
                 <div>目的地：${packageInfo.destination}</div>
             `;
-            
+
             // 清空输入框
             document.getElementById('scan-input').value = '';
-            
+
             // 更新统计数据
             loadStats();
-            
+
             // 更新扫描记录
             loadScannedPackages();
         }
@@ -853,7 +857,7 @@
         function loadScannedPackages() {
             scannedPackages = JSON.parse(localStorage.getItem('scannedPackages')) || [];
             const tableBody = document.getElementById('scanned-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = scannedPackages.slice(-10).reverse().map(pkg => `
                 <tr>
                     <td>${pkg.id}</td>
@@ -870,7 +874,7 @@
         function sortToBin(bin) {
             const waybillNumber = prompt('请输入要分拣的运单号：');
             if (!waybillNumber) return;
-            
+
             const sortInfo = {
                 id: waybillNumber,
                 destination: ['北京', '上海', '广州', '深圳'][Math.floor(Math.random() * 4)],
@@ -886,21 +890,21 @@
                 sortedAt: new Date().toISOString(),
                 operator: '当前用户'
             };
-            
+
             sortedPackages = JSON.parse(localStorage.getItem('sortedPackages')) || [];
             sortedPackages.push(sortInfo);
             localStorage.setItem('sortedPackages', JSON.stringify(sortedPackages));
-            
+
             // 更新区域计数
             binCounts[bin]++;
             updateBinCounts();
-            
+
             // 更新统计数据
             loadStats();
-            
+
             // 更新分拣记录
             loadSortedPackages();
-            
+
         }
 
         // 更新区域计数
@@ -917,7 +921,7 @@
         function loadSortedPackages() {
             sortedPackages = JSON.parse(localStorage.getItem('sortedPackages')) || [];
             const tableBody = document.getElementById('sorting-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = sortedPackages.slice(-10).reverse().map(pkg => `
                 <tr>
                     <td>${pkg.id}</td>
@@ -934,7 +938,7 @@
             const area = document.getElementById('task-assign-area').value;
             const person = document.getElementById('task-assign-person').value;
             const notes = document.getElementById('task-notes').value;
-            
+
             const areaName = {
                 north: '北区',
                 south: '南区',
@@ -942,14 +946,14 @@
                 west: '西区',
                 central: '中心区'
             }[area];
-            
+
             const personName = {
                 staff1: '张三',
                 staff2: '李四',
                 staff3: '王五',
                 staff4: '赵六'
             }[person];
-            
+
             const task = {
                 id: 'TASK' + Date.now(),
                 area: area,
@@ -961,14 +965,14 @@
                 assignedAt: new Date().toISOString(),
                 status: '待处理'
             };
-            
+
             sortingTasks = JSON.parse(localStorage.getItem('sortingTasks')) || [];
             sortingTasks.push(task);
             localStorage.setItem('sortingTasks', JSON.stringify(sortingTasks));
-            
+
             // 重置表单
             document.getElementById('task-notes').value = '';
-            
+
             // 更新任务列表
             loadSortingTasks();
         }
@@ -977,7 +981,7 @@
         function loadSortingTasks() {
             sortingTasks = JSON.parse(localStorage.getItem('sortingTasks')) || [];
             const tableBody = document.getElementById('tasks-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = sortingTasks.slice(-10).reverse().map(task => `
                 <tr>
                     <td>${task.id}</td>
@@ -1003,7 +1007,7 @@
                 return task;
             });
             localStorage.setItem('sortingTasks', JSON.stringify(updatedTasks));
-            
+
             // 更新任务列表
             loadSortingTasks();
         }
@@ -1013,12 +1017,12 @@
             const waybillNumber = document.getElementById('exception-waybill').value.trim();
             const exceptionType = document.getElementById('exception-type').value;
             const description = document.getElementById('exception-description').value.trim();
-            
+
             if (!waybillNumber || !description) {
                 alert('请填写完整信息');
                 return;
             }
-            
+
             const exceptionInfo = {
                 id: waybillNumber,
                 type: exceptionType,
@@ -1032,21 +1036,21 @@
                 reportedAt: new Date().toISOString(),
                 status: '待处理'
             };
-            
+
             exceptionPackages = JSON.parse(localStorage.getItem('exceptionPackages')) || [];
             exceptionPackages.push(exceptionInfo);
             localStorage.setItem('exceptionPackages', JSON.stringify(exceptionPackages));
-            
+
             // 更新异常件计数
             binCounts.exception++;
             updateBinCounts();
-            
+
             // 更新统计数据
             loadStats();
-            
+
             // 更新异常件列表
             loadExceptionPackages();
-            
+
             // 重置表单
             document.getElementById('exception-waybill').value = '';
             document.getElementById('exception-description').value = '';
@@ -1056,7 +1060,7 @@
         function loadExceptionPackages() {
             exceptionPackages = JSON.parse(localStorage.getItem('exceptionPackages')) || [];
             const tableBody = document.getElementById('exception-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = exceptionPackages.slice(-10).reverse().map(pkg => `
                 <tr>
                     <td>${pkg.id}</td>
@@ -1081,10 +1085,11 @@
                 return pkg;
             });
             localStorage.setItem('exceptionPackages', JSON.stringify(updatedExceptions));
-            
+
             // 更新异常件列表
             loadExceptionPackages();
         }
     </script>
 </body>
+
 </html>

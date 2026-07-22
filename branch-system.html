@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>系统管理 - TMS运输管理系统</title>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
     <style>
@@ -230,7 +234,8 @@
             border-collapse: collapse;
         }
 
-        th, td {
+        th,
+        td {
             padding: 1rem;
             text-align: left;
             border-bottom: 1px solid #eee;
@@ -375,6 +380,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -410,7 +416,7 @@
             <section class="content">
                 <h2>系统管理</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 统计概览 -->
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -466,16 +472,16 @@
                             </div>
                         </div>
                         <button class="btn btn-primary" onclick="loadPerformanceData()">查询绩效</button>
-                        
+
                         <!-- 绩效图表 -->
                         <div class="chart-container">
                             <canvas id="performanceChart"></canvas>
                         </div>
-                        
+
                         <div class="chart-container">
                             <canvas id="taskCompletionChart"></canvas>
                         </div>
-                        
+
                         <div class="table-container">
                             <table id="performance-table">
                                 <thead>
@@ -532,7 +538,8 @@
                             </div>
                             <div class="form-group">
                                 <label>管理区域</label>
-                                <div id="area-selector" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                                <div id="area-selector"
+                                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
                                     <!-- 区域选择将通过JavaScript生成 -->
                                 </div>
                             </div>
@@ -576,7 +583,8 @@
                             </div>
                             <div class="form-group">
                                 <label>权限设置</label>
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                                <div
+                                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
                                     <div>
                                         <input type="checkbox" id="perm-collection" checked>
                                         <label for="perm-collection">揽收管理</label>
@@ -702,7 +710,7 @@
                                 <label for="config-address">地址</label>
                                 <input type="text" id="config-address" value="北京市朝阳区望京街道望京SOHO T3">
                             </div>
-                            
+
                             <h4 style="margin-top: 2rem;">业务配置</h4>
                             <div class="form-row">
                                 <div class="form-group">
@@ -724,7 +732,7 @@
                                     <input type="number" id="config-insurance-rate" step="0.001" value="0.005">
                                 </div>
                             </div>
-                            
+
                             <h4 style="margin-top: 2rem;">系统设置</h4>
                             <div class="form-row">
                                 <div class="form-group">
@@ -745,7 +753,8 @@
                             </div>
                             <div class="form-group">
                                 <label>通知设置</label>
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                                <div
+                                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem;">
                                     <div>
                                         <input type="checkbox" id="notif-email" checked>
                                         <label for="notif-email">邮件通知</label>
@@ -790,12 +799,13 @@
                             <button class="btn btn-secondary" onclick="saveArea()">保存区域</button>
                             <button class="btn btn-danger" onclick="clearDrawing()">清除绘制</button>
                         </div>
-                        
+
                         <!-- 地图容器 -->
-                        <div style="height: 500px; width: 100%; border-radius: 10px; overflow: hidden; margin-bottom: 2rem;">
+                        <div
+                            style="height: 500px; width: 100%; border-radius: 10px; overflow: hidden; margin-bottom: 2rem;">
                             <div id="map-container" style="width: 100%; height: 100%;"></div>
                         </div>
-                        
+
                         <!-- 区域列表 -->
                         <div class="table-container">
                             <h4>区域列表</h4>
@@ -851,10 +861,10 @@
 
             // 初始化数据
             initializeData();
-            
+
             // 加载统计数据
             loadStats();
-            
+
             // 加载绩效数据
             setTimeout(() => {
                 try {
@@ -863,28 +873,28 @@
                     console.error('加载绩效数据时出错:', error);
                 }
             }, 300);
-            
+
             // 加载员工数据
             loadStaffData();
 
             // 绑定标签页切换事件
             document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
-                    
+
                     const tabId = this.getAttribute('data-tab');
                     document.querySelectorAll('.tab-content').forEach(content => {
                         content.classList.add('hidden');
                     });
                     document.getElementById(tabId).classList.remove('hidden');
-                    
+
                     // 如果切换到区域管理标签页，初始化地图
                     if (tabId === 'areas') {
                         initMap();
                         loadAreas();
                     }
-                    
+
                     // 如果切换到人员管理标签页，加载区域选择器
                     if (tabId === 'staff') {
                         loadAreaSelector();
@@ -946,14 +956,14 @@
         // 加载统计数据
         function loadStats() {
             staffRecords = JSON.parse(localStorage.getItem('staffRecords')) || [];
-            
+
             // 模拟数据
             const totalStaff = staffRecords.length;
             const totalTasks = 150;
             const completedTasks = 135;
             const completionRate = Math.round((completedTasks / totalTasks) * 100);
             const totalRevenue = 50000;
-            
+
             document.getElementById('totalStaff').textContent = totalStaff;
             document.getElementById('totalTasks').textContent = totalTasks;
             document.getElementById('completionRate').textContent = completionRate + '%';
@@ -964,14 +974,14 @@
         function loadPerformanceData() {
             const staff = document.getElementById('performance-staff').value;
             const period = document.getElementById('performance-period').value;
-            
+
             // 生成模拟数据
             const performanceData = generatePerformanceData(staff, period);
-            
+
             // 更新绩效图表
             updatePerformanceChart(performanceData);
             updateTaskCompletionChart(performanceData);
-            
+
             // 更新绩效表格
             updatePerformanceTable(performanceData);
         }
@@ -980,7 +990,7 @@
         function generatePerformanceData(staff, period) {
             const staffNames = ['张三', '李四', '王五', '赵六'];
             const data = [];
-            
+
             if (staff === 'all') {
                 staffNames.forEach(name => {
                     data.push({
@@ -1002,34 +1012,34 @@
                     score: Math.floor(Math.random() * 20) + 80
                 });
             }
-            
+
             // 计算完成率和准时率
             data.forEach(item => {
                 item.completionRate = Math.round((item.completed / item.tasks) * 100);
                 item.onTimeRate = Math.round((item.onTime / item.completed) * 100);
             });
-            
+
             // 排序
             data.sort((a, b) => b.score - a.score);
-            
+
             // 添加排名
             data.forEach((item, index) => {
                 item.rank = index + 1;
             });
-            
+
             return data;
         }
 
         // 更新绩效图表
         function updatePerformanceChart(data) {
             const ctx = document.getElementById('performanceChart').getContext('2d');
-            
+
             // 销毁现有图表（如果存在且有destroy方法）
             if (performanceChartInstance && typeof performanceChartInstance.destroy === 'function') {
                 performanceChartInstance.destroy();
                 performanceChartInstance = null;
             }
-            
+
             // 创建新图表
             try {
                 performanceChartInstance = new Chart(ctx, {
@@ -1070,13 +1080,13 @@
         // 更新任务完成率图表
         function updateTaskCompletionChart(data) {
             const ctx = document.getElementById('taskCompletionChart').getContext('2d');
-            
+
             // 销毁现有图表（如果存在且有destroy方法）
             if (taskCompletionChartInstance && typeof taskCompletionChartInstance.destroy === 'function') {
                 taskCompletionChartInstance.destroy();
                 taskCompletionChartInstance = null;
             }
-            
+
             // 创建新图表
             try {
                 taskCompletionChartInstance = new Chart(ctx, {
@@ -1123,7 +1133,7 @@
         // 更新绩效表格
         function updatePerformanceTable(data) {
             const tableBody = document.getElementById('performance-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = data.map(item => `
                 <tr>
                     <td>${item.name}</td>
@@ -1144,18 +1154,18 @@
             const position = document.getElementById('staff-position').value;
             const phone = document.getElementById('staff-phone').value.trim();
             const email = document.getElementById('staff-email').value.trim();
-            
+
             if (!name || !id || !phone) {
                 alert('请填写完整信息');
                 return;
             }
-            
+
             // 获取选中的区域
             const selectedAreas = [];
             document.querySelectorAll('#area-selector input[type="checkbox"]:checked').forEach(checkbox => {
                 selectedAreas.push(checkbox.value);
             });
-            
+
             const newStaff = {
                 id: id,
                 name: name,
@@ -1165,20 +1175,20 @@
                 status: 'active',
                 areas: selectedAreas
             };
-            
+
             staffRecords = JSON.parse(localStorage.getItem('staffRecords')) || [];
             staffRecords.push(newStaff);
             localStorage.setItem('staffRecords', JSON.stringify(staffRecords));
-            
+
             // 重置表单
             resetStaffForm();
-            
+
             // 更新统计数据
             loadStats();
-            
+
             // 更新员工表格
             loadStaffData();
-            
+
         }
 
         // 重置员工表单
@@ -1195,7 +1205,7 @@
             staffRecords = JSON.parse(localStorage.getItem('staffRecords')) || [];
             const areaRecords = JSON.parse(localStorage.getItem('areaRecords')) || [];
             const tableBody = document.getElementById('staff-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = staffRecords.map(staff => {
                 // 获取员工关联的区域名称
                 const staffAreas = staff.areas || [];
@@ -1204,7 +1214,7 @@
                     return area ? area.name : areaId;
                 });
                 const areaDisplay = areaNames.length > 0 ? areaNames.join(', ') : '未关联';
-                
+
                 return `
                     <tr>
                         <td>${staff.id}</td>
@@ -1244,10 +1254,10 @@
                 return staff;
             });
             localStorage.setItem('staffRecords', JSON.stringify(updatedStaff));
-            
+
             // 更新员工表格
             loadStaffData();
-            
+
             alert('员工状态更新成功！');
         }
 
@@ -1262,12 +1272,12 @@
                 service: document.getElementById('perm-service').checked,
                 operation: document.getElementById('perm-operation').checked
             };
-            
+
             // 保存权限设置
             const rolePermissions = JSON.parse(localStorage.getItem('rolePermissions')) || {};
             rolePermissions[role] = permissions;
             localStorage.setItem('rolePermissions', JSON.stringify(rolePermissions));
-            
+
             alert('权限设置保存成功！');
         }
 
@@ -1291,9 +1301,9 @@
                     system: document.getElementById('notif-system').checked
                 }
             };
-            
+
             localStorage.setItem('branchConfig', JSON.stringify(config));
-            
+
         }
 
         // 重置系统配置
@@ -1303,19 +1313,19 @@
                 alert('系统配置已重置！');
             }
         }
-        
+
         // 初始化地图
         function initMap() {
             // 初始化Leaflet地图
             if (map) return;
-            
+
             map = L.map('map-container').setView([39.9042, 116.4074], 13);
-            
+
             // 添加底图图层
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(map);
-            
+
             // 初始化绘制控件
             if (!drawControl) {
                 drawControl = new L.Control.Draw({
@@ -1329,40 +1339,40 @@
                     edit: { enabled: false }
                 });
                 map.addControl(drawControl);
-                
+
                 // 监听绘制完成事件
-                map.on('draw:created', function(e) {
+                map.on('draw:created', function (e) {
                     const layer = e.layer;
                     currentPolygon = layer.getLatLngs()[0].map(latLng => [latLng.lng, latLng.lat]);
-                    
+
                     // 添加多边形到地图
                     layer.addTo(map);
-                    
+
                 });
             }
         }
-        
+
         // 开始绘制区域
         function startDrawingArea() {
             initMap();
         }
-        
+
         // 保存区域
         function saveArea() {
             if (!currentPolygon) {
                 alert('请先绘制区域');
                 return;
             }
-            
+
             const name = document.getElementById('area-name').value.trim();
             const type = document.getElementById('area-type').value;
             const description = document.getElementById('area-description').value.trim();
-            
+
             if (!name) {
                 alert('请输入区域名称');
                 return;
             }
-            
+
             const newArea = {
                 id: 'AREA' + String(areaRecords.length + 1).padStart(3, '0'),
                 name: name,
@@ -1372,50 +1382,50 @@
                 coordinates: currentPolygon,
                 createdAt: new Date().toISOString()
             };
-            
+
             areaRecords = JSON.parse(localStorage.getItem('areaRecords')) || [];
             areaRecords.push(newArea);
             localStorage.setItem('areaRecords', JSON.stringify(areaRecords));
-            
+
             // 重置表单
             document.getElementById('area-name').value = '';
             document.getElementById('area-description').value = '';
             currentPolygon = null;
-            
+
             // 清除地图上的图层
             map.eachLayer(layer => {
                 if (layer instanceof L.Polygon) {
                     map.removeLayer(layer);
                 }
             });
-            
+
             // 加载区域列表
             loadAreas();
-            
+
             alert('区域保存成功！');
         }
-        
+
         // 清除绘制
         function clearDrawing() {
             if (currentPolygon) {
                 currentPolygon = null;
-                
+
                 // 清除地图上的图层
                 map.eachLayer(layer => {
                     if (layer instanceof L.Polygon) {
                         map.removeLayer(layer);
                     }
                 });
-                
+
                 alert('绘制已清除');
             }
         }
-        
+
         // 加载区域列表
         function loadAreas() {
             areaRecords = JSON.parse(localStorage.getItem('areaRecords')) || [];
             const tableBody = document.getElementById('areas-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = areaRecords.map(area => `
                 <tr>
                     <td>${area.id}</td>
@@ -1430,21 +1440,21 @@
                 </tr>
             `).join('');
         }
-        
+
         // 查看区域
         function viewArea(areaId) {
             const area = areaRecords.find(a => a.id === areaId);
             if (area) {
                 // 在地图上显示区域
                 initMap();
-                
+
                 // 清除现有多边形
                 map.eachLayer(layer => {
                     if (layer instanceof L.Polygon) {
                         map.removeLayer(layer);
                     }
                 });
-                
+
                 // 创建多边形
                 const polygon = L.polygon(area.coordinates.map(coord => [coord[1], coord[0]]), {
                     color: 'blue',
@@ -1453,14 +1463,14 @@
                     opacity: 0.8,
                     fillOpacity: 0.3
                 }).addTo(map);
-                
+
                 // 调整地图视野
                 map.fitBounds(polygon.getBounds());
-                
+
                 alert(`查看区域：${area.name}`);
             }
         }
-        
+
         // 删除区域
         function deleteArea(areaId) {
             if (confirm('确定要删除这个区域吗？')) {
@@ -1470,12 +1480,12 @@
                 alert('区域删除成功！');
             }
         }
-        
+
         // 加载区域选择器
         function loadAreaSelector() {
             const areaSelector = document.getElementById('area-selector');
             const areas = JSON.parse(localStorage.getItem('areaRecords')) || [];
-            
+
             areaSelector.innerHTML = areas.map(area => `
                 <div>
                     <input type="checkbox" id="area-${area.id}" value="${area.id}">
@@ -1485,4 +1495,5 @@
         }
     </script>
 </body>
+
 </html>

@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>分拣员 - 绩效</title>
 
@@ -218,7 +220,9 @@
         }
 
         @keyframes growBar {
-            from { height: 0; }
+            from {
+                height: 0;
+            }
         }
 
         /* 绩效明细 */
@@ -330,6 +334,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -621,16 +626,16 @@
             data.forEach((value, index) => {
                 const bar = document.createElement('div');
                 bar.className = 'chart-bar';
-                
+
                 // 计算位置和高度
                 const barHeight = (value / maxValue) * chartHeight * 0.8;
                 const leftPosition = (index * (barWidth + gap)) + gap;
-                
+
                 bar.style.height = `${barHeight}px`;
                 bar.style.left = `${leftPosition}px`;
                 bar.style.bottom = '10px';
                 bar.style.width = `${barWidth}px`;
-                
+
                 container.appendChild(bar);
             });
         }
@@ -672,4 +677,5 @@
         }
     </script>
 </body>
+
 </html>

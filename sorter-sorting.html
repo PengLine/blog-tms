@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>分拣员 - 分拣任务</title>
 
@@ -376,6 +378,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -549,7 +552,7 @@
         function initSortingData() {
             const today = new Date().toISOString().split('T')[0];
             const sortingKey = `sorterSortingItems_${today}`;
-            
+
             const existingItems = localStorage.getItem(sortingKey);
             if (!existingItems) {
                 // 生成模拟数据
@@ -579,7 +582,7 @@
                         status: 'pending'
                     }
                 ];
-                
+
                 localStorage.setItem(sortingKey, JSON.stringify(mockItems));
             }
         }
@@ -588,7 +591,7 @@
         function loadSortingItems() {
             const today = new Date().toISOString().split('T')[0];
             const sortingKey = `sorterSortingItems_${today}`;
-            
+
             let items = [];
             const existingItems = localStorage.getItem(sortingKey);
             if (existingItems) {
@@ -598,7 +601,7 @@
             const tableBody = document.getElementById('sorting-items');
             const pendingCount = items.filter(item => item.status === 'pending').length;
             const sortedCount = items.filter(item => item.status === 'sorted').length;
-            
+
             // 更新统计数字
             document.getElementById('pending-count').textContent = pendingCount;
             document.getElementById('sorted-count').textContent = sortedCount;
@@ -632,11 +635,11 @@
 
         // 打开分拣模态框
         let currentSortingItem = null;
-        
+
         function openSortingModal(itemId) {
             const today = new Date().toISOString().split('T')[0];
             const sortingKey = `sorterSortingItems_${today}`;
-            
+
             let items = [];
             const existingItems = localStorage.getItem(sortingKey);
             if (existingItems) {
@@ -649,7 +652,7 @@
                 document.getElementById('waybill-info').value = currentSortingItem.waybillNumber;
                 document.getElementById('destination').value = currentSortingItem.destination;
                 document.getElementById('sorting-remark').value = '';
-                
+
                 // 根据目的地自动选择分拣位置
                 const locationMap = {
                     '北京': 'A区',
@@ -659,11 +662,11 @@
                     '杭州': 'E区',
                     '南京': 'F区'
                 };
-                
+
                 if (locationMap[currentSortingItem.destination]) {
                     document.getElementById('sorting-location').value = locationMap[currentSortingItem.destination];
                 }
-                
+
                 // 显示模态框
                 document.getElementById('sorting-modal').classList.remove('hidden');
             }
@@ -689,7 +692,7 @@
 
             const today = new Date().toISOString().split('T')[0];
             const sortingKey = `sorterSortingItems_${today}`;
-            
+
             let items = [];
             const existingItems = localStorage.getItem(sortingKey);
             if (existingItems) {
@@ -703,18 +706,18 @@
                 items[itemIndex].sortingLocation = sortingLocation;
                 items[itemIndex].sortingRemark = sortingRemark;
                 items[itemIndex].sortingTime = new Date().toLocaleString('zh-CN');
-                
+
                 localStorage.setItem(sortingKey, JSON.stringify(items));
-                
+
                 // 更新分拣统计
                 updateSortingStats();
-                
+
                 // 更新列表
                 loadSortingItems();
-                
+
                 // 关闭模态框
                 closeSortingModal();
-                
+
                 alert('分拣完成！');
             }
         }
@@ -723,7 +726,7 @@
         function updateSortingStats() {
             const today = new Date().toISOString().split('T')[0];
             const statsKey = `sorterStats_${today}`;
-            
+
             let stats = { scanned: 0, sorted: 0, exceptions: 0 };
             const existingStats = localStorage.getItem(statsKey);
             if (existingStats) {
@@ -738,7 +741,7 @@
         function viewSortingRecord(itemId) {
             const today = new Date().toISOString().split('T')[0];
             const sortingKey = `sorterSortingItems_${today}`;
-            
+
             let items = [];
             const existingItems = localStorage.getItem(sortingKey);
             if (existingItems) {
@@ -755,7 +758,7 @@
                 if (item.sortingRemark) {
                     recordInfo += `备注: ${item.sortingRemark}\n`;
                 }
-                
+
                 alert(recordInfo);
             }
         }
@@ -764,7 +767,7 @@
         function clearFinishedItems() {
             const today = new Date().toISOString().split('T')[0];
             const sortingKey = `sorterSortingItems_${today}`;
-            
+
             let items = [];
             const existingItems = localStorage.getItem(sortingKey);
             if (existingItems) {
@@ -773,10 +776,11 @@
 
             const pendingItems = items.filter(item => item.status === 'pending');
             localStorage.setItem(sortingKey, JSON.stringify(pendingItems));
-            
+
             loadSortingItems();
             alert('已清空所有已完成分拣的包裹');
         }
     </script>
 </body>
+
 </html>

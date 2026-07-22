@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>个人中心 - TMS运输管理系统</title>
 
@@ -396,6 +398,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -507,7 +510,8 @@
                             </div>
                             <div class="form-group">
                                 <label for="confirm-password">确认新密码</label>
-                                <input type="password" id="confirm-password" name="confirmPassword" placeholder="请确认新密码">
+                                <input type="password" id="confirm-password" name="confirmPassword"
+                                    placeholder="请确认新密码">
                             </div>
                         </div>
                         <button type="button" class="btn btn-primary" id="change-password-btn">修改密码</button>
@@ -573,7 +577,7 @@
 
                 // 加载详细信息
                 let profile = JSON.parse(localStorage.getItem('tmsUserProfile'));
-                
+
                 if (!profile) {
                     profile = {
                         fullName: '张三',
@@ -638,7 +642,7 @@
             if (user) {
                 // 更新密码（实际项目中应该加密处理）
                 user.password = newPassword;
-                
+
                 // 保存更新后的用户信息
                 const users = JSON.parse(localStorage.getItem('tmsUsers')) || [];
                 const userIndex = users.findIndex(u => u.username === user.username);
@@ -808,7 +812,7 @@
 
         function generateOrderChart(orders) {
             const ctx = document.getElementById('order-chart').getContext('2d');
-            
+
             // 按月分组订单
             const monthlyOrders = {};
             orders.forEach(order => {
@@ -901,4 +905,5 @@
         });
     </script>
 </body>
+
 </html>

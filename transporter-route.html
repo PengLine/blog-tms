@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>发车路线 - TMS运输管理系统</title>
 
@@ -232,7 +234,8 @@
             color: #555;
         }
 
-        .form-group input, .form-group select {
+        .form-group input,
+        .form-group select {
             width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
@@ -240,7 +243,8 @@
             font-size: 0.9rem;
         }
 
-        .form-group input:focus, .form-group select:focus {
+        .form-group input:focus,
+        .form-group select:focus {
             outline: none;
             border-color: #f9ca24;
         }
@@ -339,7 +343,8 @@
             border-collapse: collapse;
         }
 
-        .data-table th, .data-table td {
+        .data-table th,
+        .data-table td {
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid #eee;
@@ -387,6 +392,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -421,7 +427,7 @@
             <section class="content">
                 <h2>路线管理</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 标签页 -->
                 <div class="tabs">
                     <button class="tab active" data-tab="planning">路线规划</button>
@@ -573,14 +579,14 @@
 
             // 初始化数据
             initializeRouteData();
-            
+
             // 加载路线数据
             loadRouteHistory();
             loadFavoriteRoutes();
-            
+
             // 绑定标签页事件
             bindTabEvents();
-            
+
             // 绑定表单提交事件
             bindFormEvents();
         });
@@ -592,7 +598,7 @@
                 const currentYear = new Date().getFullYear();
                 const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
                 const currentDate = new Date().getDate();
-                
+
                 const routeHistory = [
                     {
                         id: 'rh-001',
@@ -636,7 +642,7 @@
                 ];
                 localStorage.setItem('routeHistory', JSON.stringify(routeHistory));
             }
-            
+
             // 初始化常用路线
             if (!localStorage.getItem('favoriteRoutes')) {
                 const favoriteRoutes = [
@@ -675,15 +681,15 @@
         // 绑定标签页事件
         function bindTabEvents() {
             const tabs = document.querySelectorAll('.tab');
-            
+
             tabs.forEach(tab => {
-                tab.addEventListener('click', function() {
+                tab.addEventListener('click', function () {
                     // 移除所有标签页的激活状态
                     tabs.forEach(t => t.classList.remove('active'));
                     document.querySelectorAll('.tab-content').forEach(content => {
                         content.classList.remove('active');
                     });
-                    
+
                     // 添加当前标签页的激活状态
                     this.classList.add('active');
                     const tabId = this.getAttribute('data-tab');
@@ -695,21 +701,21 @@
         // 绑定表单事件
         function bindFormEvents() {
             const routeForm = document.getElementById('routePlanningForm');
-            
-            routeForm.addEventListener('submit', function(e) {
+
+            routeForm.addEventListener('submit', function (e) {
                 e.preventDefault();
-                
+
                 const origin = document.getElementById('origin').value;
                 const destination = document.getElementById('destination').value;
                 const departureTime = document.getElementById('departureTime').value;
                 const vehicle = document.getElementById('vehicle').value;
                 const cargoType = document.getElementById('cargoType').value;
                 const routeType = document.getElementById('routeType').value;
-                
+
                 // 模拟路线规划计算
                 simulateRoutePlanning(origin, destination);
             });
-            
+
             // 绑定保存路线事件
             document.getElementById('saveRoute').addEventListener('click', saveRoute);
         }
@@ -721,13 +727,13 @@
             const duration = Math.floor(distance / 80);
             const fuel = Math.floor(distance * 0.15);
             const tolls = Math.floor(distance * 0.45);
-            
+
             // 更新路线信息显示
             document.getElementById('distance').textContent = distance + ' km';
             document.getElementById('duration').textContent = duration + ' 小时';
             document.getElementById('fuel').textContent = fuel + ' L';
             document.getElementById('tolls').textContent = tolls + ' 元';
-            
+
             // 更新地图预览
             updateMapPreview(origin, destination);
         }
@@ -759,12 +765,12 @@
             const departureTime = document.getElementById('departureTime').value;
             const distance = document.getElementById('distance').textContent;
             const duration = document.getElementById('duration').textContent;
-            
+
             if (!origin || !destination) {
                 alert('请先规划路线');
                 return;
             }
-            
+
             // 创建新路线记录
             const newRoute = {
                 id: 'rh-' + Date.now(),
@@ -779,15 +785,15 @@
                 vehicle: document.getElementById('vehicle').value,
                 cargoType: document.getElementById('cargoType').value
             };
-            
+
             // 添加到路线历史
             const routeHistory = JSON.parse(localStorage.getItem('routeHistory')) || [];
             routeHistory.unshift(newRoute);
             localStorage.setItem('routeHistory', JSON.stringify(routeHistory));
-            
+
             // 重新加载路线历史
             loadRouteHistory();
-            
+
             alert('路线已保存到历史记录');
         }
 
@@ -795,7 +801,7 @@
         function loadRouteHistory() {
             const routeHistory = JSON.parse(localStorage.getItem('routeHistory')) || [];
             const tableBody = document.getElementById('routeHistoryTable');
-            
+
             tableBody.innerHTML = routeHistory.map(route => `
                 <tr>
                     <td>${route.name}</td>
@@ -816,7 +822,7 @@
         function loadFavoriteRoutes() {
             const favoriteRoutes = JSON.parse(localStorage.getItem('favoriteRoutes')) || [];
             const routesList = document.getElementById('favoriteRoutes');
-            
+
             routesList.innerHTML = favoriteRoutes.map(route => `
                 <div class="route-item">
                     <div class="route-header">
@@ -835,15 +841,15 @@
         function useRoute(routeId) {
             const routeHistory = JSON.parse(localStorage.getItem('routeHistory')) || [];
             const route = routeHistory.find(r => r.id === routeId);
-            
+
             if (route) {
                 // 填充表单
                 document.getElementById('origin').value = route.origin;
                 document.getElementById('destination').value = route.destination;
-                
+
                 // 切换到路线规划标签页
                 document.querySelector('.tab[data-tab="planning"]').click();
-                
+
                 // 模拟路线规划
                 simulateRoutePlanning(route.origin, route.destination);
             }
@@ -853,15 +859,15 @@
         function addToFavorites(routeId) {
             const routeHistory = JSON.parse(localStorage.getItem('routeHistory')) || [];
             const favoriteRoutes = JSON.parse(localStorage.getItem('favoriteRoutes')) || [];
-            
+
             const route = routeHistory.find(r => r.id === routeId);
             if (!route) return;
-            
+
             // 检查是否已在常用路线中
-            const existingRoute = favoriteRoutes.find(fr => 
+            const existingRoute = favoriteRoutes.find(fr =>
                 fr.origin === route.origin && fr.destination === route.destination
             );
-            
+
             if (existingRoute) {
                 // 增加使用频率
                 existingRoute.frequency++;
@@ -878,12 +884,13 @@
                 };
                 favoriteRoutes.push(newFavorite);
             }
-            
+
             localStorage.setItem('favoriteRoutes', JSON.stringify(favoriteRoutes));
             loadFavoriteRoutes();
-            
+
             alert('已添加到常用路线');
         }
     </script>
 </body>
+
 </html>

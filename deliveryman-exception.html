@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>异常上报 - TMS运输管理系统</title>
 
@@ -301,6 +303,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -336,7 +339,7 @@
             <section class="content">
                 <h2>异常上报</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 常见问题一键上报 -->
                 <div class="card quick-report">
                     <h3>常见问题一键上报</h3>
@@ -391,7 +394,8 @@
                         </div>
                         <div class="form-group">
                             <label for="exception-description">异常描述：</label>
-                            <textarea id="exception-description" name="description" placeholder="详细描述异常情况..."></textarea>
+                            <textarea id="exception-description" name="description"
+                                placeholder="详细描述异常情况..."></textarea>
                         </div>
                         <div class="form-group">
                             <label for="exception-location">发生地点：</label>
@@ -450,13 +454,13 @@
 
             // 初始化异常数据
             initializeExceptionData();
-            
+
             // 加载异常记录
             loadExceptionRecords();
 
             // 绑定常见问题点击事件
             document.querySelectorAll('.problem-card').forEach(card => {
-                card.addEventListener('click', function() {
+                card.addEventListener('click', function () {
                     const problemType = this.getAttribute('data-problem');
                     document.getElementById('exception-type').value = problemType;
                     document.getElementById('exception-description').focus();
@@ -465,7 +469,7 @@
             });
 
             // 绑定表单提交事件
-            document.getElementById('exception-form').addEventListener('submit', function(e) {
+            document.getElementById('exception-form').addEventListener('submit', function (e) {
                 e.preventDefault();
                 submitException();
             });
@@ -477,11 +481,11 @@
             if (!localStorage.getItem('deliverymanExceptions')) {
                 const exceptions = [];
                 const today = new Date();
-                
+
                 for (let i = 1; i <= 5; i++) {
                     const exceptionDate = new Date(today);
                     exceptionDate.setDate(today.getDate() - i);
-                    
+
                     exceptions.push({
                         id: `exception-${i}`,
                         taskId: `task-${i}`,
@@ -495,7 +499,7 @@
                         reportTime: exceptionDate.toISOString()
                     });
                 }
-                
+
                 localStorage.setItem('deliverymanExceptions', JSON.stringify(exceptions));
             }
         }
@@ -504,15 +508,15 @@
         function loadExceptionRecords() {
             const exceptions = JSON.parse(localStorage.getItem('deliverymanExceptions')) || [];
             const exceptionList = document.getElementById('exception-list-content');
-            
+
             if (exceptions.length === 0) {
                 exceptionList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">暂无异常记录</p>';
                 return;
             }
-            
+
             // 按时间倒序排序
             exceptions.sort((a, b) => new Date(b.reportTime) - new Date(a.reportTime));
-            
+
             exceptionList.innerHTML = exceptions.map(exception => `
                 <div class="exception-item">
                     <div class="exception-header">
@@ -542,21 +546,21 @@
             const description = form.description.value;
             const location = form.location.value;
             const time = form.time.value;
-            
+
             if (!exceptionType) {
                 alert('请选择异常类型');
                 return;
             }
-            
+
             if (!description) {
                 alert('请填写异常描述');
                 return;
             }
-            
+
             // 获取当前用户
             const user = getCurrentUser();
             const reporter = user ? user.username : '未知用户';
-            
+
             // 创建异常记录
             const exception = {
                 id: `exception-${Date.now()}`,
@@ -570,18 +574,18 @@
                 reporter: reporter,
                 reportTime: new Date().toISOString()
             };
-            
+
             // 保存到localStorage
             const exceptions = JSON.parse(localStorage.getItem('deliverymanExceptions')) || [];
             exceptions.unshift(exception);
             localStorage.setItem('deliverymanExceptions', JSON.stringify(exceptions));
-            
+
             // 重置表单
             resetForm();
-            
+
             // 重新加载异常记录
             loadExceptionRecords();
-            
+
         }
 
         // 重置表单
@@ -591,4 +595,5 @@
         }
     </script>
 </body>
+
 </html>

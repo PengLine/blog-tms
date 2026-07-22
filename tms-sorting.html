@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>分拣管理 - TMS运输管理系统</title>
 
@@ -108,19 +110,19 @@
             position: relative;
         }
 
-        .has-submenu > a {
+        .has-submenu>a {
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .has-submenu > a::after {
+        .has-submenu>a::after {
             content: '▼';
             font-size: 0.7rem;
             transition: transform 0.3s ease;
         }
 
-        .has-submenu.active > a::after {
+        .has-submenu.active>a::after {
             transform: rotate(180deg);
         }
 
@@ -338,6 +340,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -365,16 +368,31 @@
                         <li class="has-submenu">
                             <a href="tms-operation.html">运营管理</a>
                             <ul class="submenu">
-                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
-                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
-                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
-                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
-                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
-                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
-                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
-                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#delivery-address"
+                                        onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate"
+                                        onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a>
+                                </li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a>
+                                </li>
+                                <li><a href="#inbound-scan"
+                                        onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a>
+                                </li>
+                                <li><a href="#outbound-scan"
+                                        onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a>
+                                </li>
+                                <li><a href="#delivery-scan"
+                                        onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a>
+                                </li>
+                                <li><a href="#miss-sort"
+                                        onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a>
+                                </li>
+                                <li><a href="#forklift"
+                                        onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a>
+                                </li>
                                 <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
-                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                                <li><a href="#evaluation-index"
+                                        onclick="switchTab('evaluation'); return false;">考核指标</a></li>
                             </ul>
                         </li>
                         <li><a href="tms-timing.html">时效管理</a></li>
@@ -402,7 +420,7 @@
                 <div class="view">
                     <h2>分拣管理</h2>
                     <p>管理货物的分拣作业，确保货物准确分流。</p>
-                    
+
                     <!-- 分拣统计 -->
                     <div class="sorting-stats">
                         <div class="stat-card">
@@ -512,10 +530,10 @@
     <script src="common.js"></script>
     <script>
         // 子菜单切换功能
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const submenuItems = document.querySelectorAll('.has-submenu');
             submenuItems.forEach(item => {
-                item.addEventListener('click', function(e) {
+                item.addEventListener('click', function (e) {
                     if (e.target === this || e.target === this.querySelector('a')) {
                         this.classList.toggle('active');
                     }
@@ -531,7 +549,7 @@
                 sections.forEach(section => {
                     section.classList.add('hidden');
                 });
-                
+
                 // 如果指定了sectionId，显示该部分
                 if (sectionId) {
                     const targetSection = document.getElementById(sectionId);
@@ -560,20 +578,20 @@
                 logout();
             });
 
-            
 
-                const userInfo = JSON.parse(user);
-                if (userInfo.role !== 'admin') {
-                    // 角色不匹配，跳转到登录页面
-                    window.location.href = 'index.html';
-                    return;
-                }
 
-                // 显示用户信息
-                displayCurrentUser();
-            
+            const userInfo = JSON.parse(user);
+            if (userInfo.role !== 'admin') {
+                // 角色不匹配，跳转到登录页面
+                window.location.href = 'index.html';
+                return;
+            }
 
-            
+            // 显示用户信息
+            displayCurrentUser();
+
+
+
 
             // 分拣管理相关函数
             // 查看分拣任务详情
@@ -617,4 +635,5 @@
         });
     </script>
 </body>
+
 </html>

@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>电子围栏管理 - TMS运输管理系统</title>
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
     <style>
         /* 基础样式重置 */
@@ -96,19 +99,19 @@
             position: relative;
         }
 
-        .has-submenu > a {
+        .has-submenu>a {
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .has-submenu > a::after {
+        .has-submenu>a::after {
             content: '▼';
             font-size: 0.7rem;
             transition: transform 0.3s ease;
         }
 
-        .has-submenu.active > a::after {
+        .has-submenu.active>a::after {
             transform: rotate(180deg);
         }
 
@@ -434,6 +437,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -461,16 +465,31 @@
                         <li class="has-submenu">
                             <a href="tms-operation.html">运营管理</a>
                             <ul class="submenu">
-                                <li><a href="#delivery-address" onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
-                                <li><a href="#sign-rate" onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a></li>
-                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a></li>
-                                <li><a href="#inbound-scan" onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a></li>
-                                <li><a href="#outbound-scan" onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a></li>
-                                <li><a href="#delivery-scan" onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a></li>
-                                <li><a href="#miss-sort" onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a></li>
-                                <li><a href="#forklift" onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a></li>
+                                <li><a href="#delivery-address"
+                                        onclick="switchTab('delivery-address'); return false;">派送地址</a></li>
+                                <li><a href="#sign-rate"
+                                        onclick="switchTab('statistics', 'sign-rate-section'); scrollToSection('sign-rate-section'); return false;">签收率</a>
+                                </li>
+                                <li><a href="#sign-evaluation" onclick="switchTab('evaluation'); return false;">签收考核</a>
+                                </li>
+                                <li><a href="#inbound-scan"
+                                        onclick="switchTab('statistics', 'inbound-scan-section'); scrollToSection('inbound-scan-section'); return false;">入库扫描率</a>
+                                </li>
+                                <li><a href="#outbound-scan"
+                                        onclick="switchTab('statistics', 'outbound-scan-section'); scrollToSection('outbound-scan-section'); return false;">出库扫描率</a>
+                                </li>
+                                <li><a href="#delivery-scan"
+                                        onclick="switchTab('statistics', 'delivery-scan-section'); scrollToSection('delivery-scan-section'); return false;">派送扫描率</a>
+                                </li>
+                                <li><a href="#miss-sort"
+                                        onclick="switchTab('statistics', 'miss-sort-section'); scrollToSection('miss-sort-section'); return false;">漏拣统计</a>
+                                </li>
+                                <li><a href="#forklift"
+                                        onclick="switchTab('statistics', 'forklift-section'); scrollToSection('forklift-section'); return false;">叉车货统计</a>
+                                </li>
                                 <li><a href="#order-change" onclick="switchTab('records'); return false;">改单记录</a></li>
-                                <li><a href="#evaluation-index" onclick="switchTab('evaluation'); return false;">考核指标</a></li>
+                                <li><a href="#evaluation-index"
+                                        onclick="switchTab('evaluation'); return false;">考核指标</a></li>
                             </ul>
                         </li>
                         <li><a href="tms-timing.html">时效管理</a></li>
@@ -497,7 +516,7 @@
             <section class="content">
                 <h2>电子围栏管理</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 地图展示 -->
                 <div class="card">
                     <h3>围栏绘制与管理</h3>
@@ -572,15 +591,16 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <script src="common.js"></script>
     <script>
         // 子菜单切换功能
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const submenuItems = document.querySelectorAll('.has-submenu');
             submenuItems.forEach(item => {
-                item.addEventListener('click', function(e) {
+                item.addEventListener('click', function (e) {
                     if (e.target === this || e.target === this.querySelector('a')) {
                         this.classList.toggle('active');
                     }
@@ -596,7 +616,7 @@
                 sections.forEach(section => {
                     section.classList.add('hidden');
                 });
-                
+
                 // 如果指定了sectionId，显示该部分
                 if (sectionId) {
                     const targetSection = document.getElementById(sectionId);
@@ -641,21 +661,21 @@
 
             // 初始化地图
             initMap();
-            
+
             // 初始化围栏数据
             initializeFenceData();
-            
+
             // 加载围栏数据
             loadFenceData();
 
             // 绑定表单提交事件
-            document.getElementById('fence-form').addEventListener('submit', function(e) {
+            document.getElementById('fence-form').addEventListener('submit', function (e) {
                 e.preventDefault();
                 saveFence();
             });
 
             // 绑定围栏类型变化事件
-            document.getElementById('fence-type').addEventListener('change', function() {
+            document.getElementById('fence-type').addEventListener('change', function () {
                 updateFormFields();
             });
         });
@@ -694,10 +714,10 @@
             map.addControl(drawControl);
 
             // 监听绘制完成事件
-            map.on(L.Draw.Event.CREATED, function(e) {
+            map.on(L.Draw.Event.CREATED, function (e) {
                 const layer = e.layer;
                 const coordinates = layer.getLatLngs()[0].map(latLng => [latLng.lat, latLng.lng]);
-                
+
                 // 显示编辑模态框
                 openEditModal(null, {
                     type: currentFenceType,
@@ -709,12 +729,12 @@
         // 开始绘制围栏
         function startDrawing(type) {
             currentFenceType = type;
-            
+
             // 移除现有的绘制控件
             if (map.getControl('draw')) {
                 map.removeControl(map.getControl('draw'));
             }
-            
+
             // 创建新的绘制控件
             drawControl = new L.Control.Draw({
                 draw: {
@@ -731,7 +751,7 @@
                 }
             });
             map.addControl(drawControl);
-            
+
             // 提示用户开始绘制
             alert(`请在地图上绘制${getTypeText(type)}围栏，双击完成绘制`);
         }
@@ -800,7 +820,7 @@
                         description: '张师傅负责的派送区域'
                     }
                 ];
-                
+
                 localStorage.setItem('tmsGeofences', JSON.stringify(defaultFences));
             }
         }
@@ -808,10 +828,10 @@
         // 加载围栏数据
         function loadFenceData() {
             const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
-            
+
             // 显示围栏列表
             displayFenceList(fences);
-            
+
             // 在地图上显示围栏
             displayFencesOnMap(fences);
         }
@@ -819,7 +839,7 @@
         // 显示围栏列表
         function displayFenceList(fences) {
             const fenceList = document.getElementById('fence-list');
-            
+
             fenceList.innerHTML = fences.map(fence => `
                 <div class="fence-item" data-id="${fence.id}">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -856,7 +876,7 @@
                     fillOpacity: 0.5,
                     weight: 2
                 }).addTo(map);
-                
+
                 // 添加弹出信息
                 polygon.bindPopup(`
                     <div>
@@ -867,10 +887,10 @@
                         <p><strong>描述：</strong>${fence.description}</p>
                     </div>
                 `);
-                
+
                 // 添加到图层数组
                 fenceLayers.push(polygon);
-                
+
                 // 添加标签
                 const center = getPolygonCenter(fence.coordinates);
                 const label = L.marker(center, {
@@ -889,12 +909,12 @@
         function getPolygonCenter(coordinates) {
             let latSum = 0;
             let lngSum = 0;
-            
+
             coordinates.forEach(coord => {
                 latSum += coord[0];
                 lngSum += coord[1];
             });
-            
+
             return [latSum / coordinates.length, lngSum / coordinates.length];
         }
 
@@ -932,7 +952,7 @@
         function zoomToFence(fenceId) {
             const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
             const fence = fences.find(f => f.id === fenceId);
-            
+
             if (fence) {
                 const polygon = L.polygon(fence.coordinates);
                 map.fitBounds(polygon.getBounds(), { padding: [50, 50] });
@@ -942,15 +962,15 @@
         // 缩放到所有围栏
         function zoomToAllFences() {
             const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
-            
+
             if (fences.length > 0) {
                 const bounds = L.latLngBounds();
-                
+
                 fences.forEach(fence => {
                     const polygon = L.polygon(fence.coordinates);
                     bounds.extend(polygon.getBounds());
                 });
-                
+
                 map.fitBounds(bounds, { padding: [50, 50] });
             }
         }
@@ -965,12 +985,12 @@
             const modal = document.getElementById('fence-modal');
             const modalTitle = document.getElementById('modal-title');
             const fenceForm = document.getElementById('fence-form');
-            
+
             if (fenceId) {
                 // 编辑现有围栏
                 const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
                 const fence = fences.find(f => f.id === fenceId);
-                
+
                 if (fence) {
                     modalTitle.textContent = '编辑围栏';
                     document.getElementById('fence-id').value = fence.id;
@@ -979,10 +999,10 @@
                     document.getElementById('fence-description').value = fence.description;
                     document.getElementById('fence-branch').value = fence.branchId || '';
                     document.getElementById('fence-courier').value = fence.courierId || '';
-                    
+
                     // 更新表单字段显示
                     updateFormFields();
-                    
+
                     // 显示模态框
                     modal.classList.remove('hidden');
                 }
@@ -992,13 +1012,13 @@
                 fenceForm.reset();
                 document.getElementById('fence-id').value = '';
                 document.getElementById('fence-type').value = fenceData.type;
-                
+
                 // 存储临时坐标
                 fenceForm.dataset.coordinates = JSON.stringify(fenceData.coordinates);
-                
+
                 // 更新表单字段显示
                 updateFormFields();
-                
+
                 // 显示模态框
                 modal.classList.remove('hidden');
             }
@@ -1015,11 +1035,11 @@
             const fenceType = document.getElementById('fence-type').value;
             const branchGroup = document.getElementById('branch-group');
             const courierGroup = document.getElementById('courier-group');
-            
+
             // 重置显示
             branchGroup.classList.remove('hidden');
             courierGroup.classList.remove('hidden');
-            
+
             // 根据围栏类型显示/隐藏字段
             if (fenceType === 'delivery') {
                 // 派送围栏需要关联网点
@@ -1034,7 +1054,7 @@
                 branchGroup.classList.add('hidden');
                 courierGroup.classList.remove('hidden');
             }
-            
+
             // 加载网点和派送员选项
             loadBranchOptions();
             loadCourierOptions();
@@ -1043,10 +1063,10 @@
         // 加载网点选项
         function loadBranchOptions() {
             const branchSelect = document.getElementById('fence-branch');
-            
+
             // 清空现有选项
             branchSelect.innerHTML = '<option value="">请选择网点</option>';
-            
+
             // 模拟网点数据
             const branches = [
                 { id: 'branch-1', name: '朝阳区网点' },
@@ -1055,7 +1075,7 @@
                 { id: 'branch-4', name: '西城区网点' },
                 { id: 'branch-5', name: '丰台区网点' }
             ];
-            
+
             // 添加选项
             branches.forEach(branch => {
                 const option = document.createElement('option');
@@ -1068,10 +1088,10 @@
         // 加载派送员选项
         function loadCourierOptions() {
             const courierSelect = document.getElementById('fence-courier');
-            
+
             // 清空现有选项
             courierSelect.innerHTML = '<option value="">请选择派送员</option>';
-            
+
             // 模拟派送员数据
             const couriers = [
                 { id: 'courier-1', name: '张师傅' },
@@ -1080,7 +1100,7 @@
                 { id: 'courier-4', name: '赵师傅' },
                 { id: 'courier-5', name: '刘师傅' }
             ];
-            
+
             // 添加选项
             couriers.forEach(courier => {
                 const option = document.createElement('option');
@@ -1099,13 +1119,13 @@
             const fenceDescription = document.getElementById('fence-description').value;
             const fenceBranch = document.getElementById('fence-branch').value;
             const fenceCourier = document.getElementById('fence-courier').value;
-            
+
             // 验证表单
             if (!fenceName || !fenceType) {
                 alert('请填写完整的围栏信息');
                 return;
             }
-            
+
             // 获取围栏数据
             let fenceData;
             if (fenceId) {
@@ -1119,12 +1139,12 @@
                     coordinates: JSON.parse(fenceForm.dataset.coordinates || '[]')
                 };
             }
-            
+
             // 更新围栏数据
             fenceData.name = fenceName;
             fenceData.type = fenceType;
             fenceData.description = fenceDescription;
-            
+
             // 处理关联数据
             if (fenceType === 'delivery' || fenceType === 'arrival') {
                 // 关联网点
@@ -1139,10 +1159,10 @@
                 fenceData.branchId = '';
                 fenceData.branchName = '';
             }
-            
+
             // 保存到本地存储
             const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
-            
+
             if (fenceId) {
                 // 更新现有围栏
                 const index = fences.findIndex(f => f.id === fenceId);
@@ -1153,15 +1173,15 @@
                 // 添加新围栏
                 fences.push(fenceData);
             }
-            
+
             localStorage.setItem('tmsGeofences', JSON.stringify(fences));
-            
+
             // 关闭模态框
             closeModal();
-            
+
             // 重新加载围栏数据
             loadFenceData();
-            
+
             // 提示保存成功
             alert('围栏保存成功');
         }
@@ -1172,10 +1192,10 @@
                 const fences = JSON.parse(localStorage.getItem('tmsGeofences')) || [];
                 const updatedFences = fences.filter(f => f.id !== fenceId);
                 localStorage.setItem('tmsGeofences', JSON.stringify(updatedFences));
-                
+
                 // 重新加载围栏数据
                 loadFenceData();
-                
+
                 // 提示删除成功
                 alert('围栏删除成功');
             }
@@ -1206,7 +1226,7 @@
         }
 
         // 点击模态框外部关闭
-        window.onclick = function(event) {
+        window.onclick = function (event) {
             const modal = document.getElementById('fence-modal');
             if (event.target === modal) {
                 closeModal();
@@ -1214,4 +1234,5 @@
         }
     </script>
 </body>
+
 </html>

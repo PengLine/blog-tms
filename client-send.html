@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>我要寄件 - TMS运输管理系统</title>
 
@@ -282,6 +284,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -351,7 +354,8 @@
                         </div>
                         <div class="form-group">
                             <label for="sender-address">寄件地址</label>
-                            <textarea id="sender-address" name="senderAddress" required rows="3" placeholder="请输入详细寄件地址"></textarea>
+                            <textarea id="sender-address" name="senderAddress" required rows="3"
+                                placeholder="请输入详细寄件地址"></textarea>
                         </div>
 
                         <!-- 收货人信息 -->
@@ -394,7 +398,8 @@
                         </div>
                         <div class="form-group">
                             <label for="receiver-address">收货地址</label>
-                            <textarea id="receiver-address" name="receiverAddress" required rows="3" placeholder="请输入详细收货地址"></textarea>
+                            <textarea id="receiver-address" name="receiverAddress" required rows="3"
+                                placeholder="请输入详细收货地址"></textarea>
                         </div>
 
                         <!-- 货物信息 -->
@@ -419,11 +424,13 @@
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="cargo-quantity">货物数量</label>
-                                <input type="number" id="cargo-quantity" name="cargoQuantity" required min="1" placeholder="请输入货物数量">
+                                <input type="number" id="cargo-quantity" name="cargoQuantity" required min="1"
+                                    placeholder="请输入货物数量">
                             </div>
                             <div class="form-group">
                                 <label for="cargo-weight">货物重量 (kg)</label>
-                                <input type="number" id="cargo-weight" name="cargoWeight" required min="0.1" step="0.1" placeholder="请输入货物重量">
+                                <input type="number" id="cargo-weight" name="cargoWeight" required min="0.1" step="0.1"
+                                    placeholder="请输入货物重量">
                             </div>
                         </div>
                         <div class="form-row">
@@ -521,15 +528,15 @@
             if (orderForm) {
                 orderForm.addEventListener('submit', (e) => {
                     e.preventDefault();
-                    
+
                     // 获取表单数据
                     const formData = new FormData(orderForm);
                     const origin = formData.get('origin');
-                    
+
                     // 获取用户信息，用于生成订单号
                     const user = getCurrentUser();
                     const userId = user ? user.username : 'guest';
-                    
+
                     const orderData = {
                         id: generateOrderId(origin, userId),
                         senderName: formData.get('senderName'),
@@ -595,10 +602,10 @@
 
             // 燃油附加费
             const fuelFee = baseFee * 0.05;
-            
+
             // 服务费
             const serviceFee = 2;
-            
+
             // 总计
             const totalFee = baseFee + fuelFee + serviceFee;
 
@@ -610,4 +617,5 @@
         }
     </script>
 </body>
+
 </html>

@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>运输员打卡 - TMS系统</title>
 
@@ -239,7 +241,8 @@
             border-collapse: collapse;
         }
 
-        .data-table th, .data-table td {
+        .data-table th,
+        .data-table td {
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid #eee;
@@ -295,6 +298,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -367,7 +371,7 @@
                         <button class="record-tab" data-tab="weekly">本周记录</button>
                         <button class="record-tab" data-tab="monthly">本月记录</button>
                     </div>
-                    
+
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
@@ -410,23 +414,23 @@
 
             // 初始化数据
             initializeClockData();
-            
+
             // 更新当前时间
             updateCurrentTime();
             setInterval(updateCurrentTime, 1000);
-            
+
             // 检查当前打卡状态
             checkClockStatus();
-            
+
             // 加载统计数据
             loadStats();
-            
+
             // 加载打卡记录
             loadClockRecords();
-            
+
             // 绑定打卡按钮事件
             bindClockEvents();
-            
+
             // 绑定标签页事件
             bindTabEvents();
         });
@@ -437,15 +441,15 @@
                 const currentYear = new Date().getFullYear();
                 const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
                 const currentDate = new Date().getDate();
-                
+
                 const clockRecords = {};
-                
+
                 // 添加最近几天的打卡记录
                 for (let i = 0; i < 7; i++) {
                     const date = new Date();
                     date.setDate(currentDate - i);
                     const dateString = `${currentYear}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                    
+
                     clockRecords[dateString] = [
                         {
                             id: `cr-${String(i + 1).padStart(3, '0')}`,
@@ -457,7 +461,7 @@
                         }
                     ];
                 }
-                
+
                 localStorage.setItem('clockRecords', JSON.stringify(clockRecords));
             }
         }
@@ -472,7 +476,7 @@
                 day: 'numeric',
                 weekday: 'long'
             });
-            
+
             document.getElementById('currentTime').textContent = timeString;
             document.getElementById('currentDate').textContent = dateString;
         }
@@ -482,7 +486,7 @@
             const today = new Date().toISOString().split('T')[0];
             const currentStatus = localStorage.getItem(`clockStatus_${today}`);
             const clockButton = document.getElementById('clockButton');
-            
+
             if (currentStatus === 'clocked-in') {
                 clockButton.textContent = '打卡下班';
                 clockButton.classList.add('clocked-in');
@@ -495,13 +499,13 @@
         // 绑定打卡事件
         function bindClockEvents() {
             const clockButton = document.getElementById('clockButton');
-            
-            clockButton.addEventListener('click', function() {
+
+            clockButton.addEventListener('click', function () {
                 const today = new Date().toISOString().split('T')[0];
                 const now = new Date();
                 const currentTime = now.toLocaleTimeString('zh-CN');
                 const currentStatus = localStorage.getItem(`clockStatus_${today}`);
-                
+
                 if (currentStatus === 'clocked-in') {
                     // 打卡下班
                     clockOut(today, currentTime);
@@ -516,43 +520,43 @@
         function clockIn(date, time) {
             localStorage.setItem(`clockStatus_${date}`, 'clocked-in');
             localStorage.setItem(`clockInTime_${date}`, time);
-            
+
             // 更新按钮状态
             const clockButton = document.getElementById('clockButton');
             clockButton.textContent = '打卡下班';
             clockButton.classList.add('clocked-in');
-            
+
             // 保存打卡记录
             saveClockRecord(date, time, null);
-            
+
             alert('打卡上班成功！时间：' + time);
         }
 
         // 打卡下班
         function clockOut(date, time) {
             const clockInTime = localStorage.getItem(`clockInTime_${date}`);
-            
+
             if (!clockInTime) {
                 alert('请先打卡上班！');
                 return;
             }
-            
+
             // 计算工时
             const hours = calculateHours(clockInTime, time);
-            
+
             localStorage.removeItem(`clockStatus_${date}`);
             localStorage.removeItem(`clockInTime_${date}`);
-            
+
             // 更新按钮状态
             const clockButton = document.getElementById('clockButton');
             clockButton.textContent = '打卡上班';
             clockButton.classList.remove('clocked-in');
-            
+
             // 保存打卡记录
             saveClockRecord(date, clockInTime, time, hours);
-            
+
             alert('打卡下班成功！今日工时：' + hours + '小时');
-            
+
             // 更新统计数据
             loadStats();
             loadClockRecords();
@@ -562,10 +566,10 @@
         function calculateHours(clockInTime, clockOutTime) {
             const [inH, inM, inS] = clockInTime.split(':').map(Number);
             const [outH, outM, outS] = clockOutTime.split(':').map(Number);
-            
+
             const inTotalSeconds = inH * 3600 + inM * 60 + inS;
             const outTotalSeconds = outH * 3600 + outM * 60 + outS;
-            
+
             const diffSeconds = outTotalSeconds - inTotalSeconds;
             return (diffSeconds / 3600).toFixed(2);
         }
@@ -573,11 +577,11 @@
         // 保存打卡记录
         function saveClockRecord(date, clockInTime, clockOutTime, hours = null) {
             const records = JSON.parse(localStorage.getItem('clockRecords')) || {};
-            
+
             if (!records[date]) {
                 records[date] = [];
             }
-            
+
             const record = {
                 id: 'cr-' + Date.now(),
                 date: date,
@@ -586,7 +590,7 @@
                 hours: hours || 0,
                 status: clockOutTime ? 'completed' : 'in_progress'
             };
-            
+
             // 查找是否已有当天记录
             const existingIndex = records[date].findIndex(r => r.status === 'in_progress');
             if (existingIndex !== -1) {
@@ -596,7 +600,7 @@
                 // 添加新记录
                 records[date].push(record);
             }
-            
+
             localStorage.setItem('clockRecords', JSON.stringify(records));
         }
 
@@ -606,33 +610,33 @@
             const today = new Date().toISOString().split('T')[0];
             const currentMonth = new Date().getMonth() + 1;
             const currentYear = new Date().getFullYear();
-            
+
             let todayHours = 0;
             let weekHours = 0;
             let monthHours = 0;
             let monthDays = 0;
-            
+
             const weekStart = new Date();
             weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-            
+
             Object.keys(records).forEach(date => {
                 const dateObj = new Date(date);
                 const dateRecords = records[date];
-                
+
                 if (date === today) {
                     todayHours = dateRecords.reduce((total, record) => total + parseFloat(record.hours), 0);
                 }
-                
+
                 if (dateObj >= weekStart) {
                     weekHours += dateRecords.reduce((total, record) => total + parseFloat(record.hours), 0);
                 }
-                
+
                 if (dateObj.getMonth() + 1 === currentMonth && dateObj.getFullYear() === currentYear) {
                     monthHours += dateRecords.reduce((total, record) => total + parseFloat(record.hours), 0);
                     monthDays++;
                 }
             });
-            
+
             document.getElementById('todayHours').textContent = todayHours.toFixed(2);
             document.getElementById('weekHours').textContent = weekHours.toFixed(2);
             document.getElementById('monthHours').textContent = monthHours.toFixed(2);
@@ -644,10 +648,10 @@
             const records = JSON.parse(localStorage.getItem('clockRecords')) || {};
             const tableBody = document.getElementById('clockRecordsTable');
             const today = new Date().toISOString().split('T')[0];
-            
+
             // 获取今日记录
             const todayRecords = records[today] || [];
-            
+
             tableBody.innerHTML = todayRecords.map(record => `
                 <tr>
                     <td>${record.date}</td>
@@ -663,7 +667,7 @@
                     </td>
                 </tr>
             `).join('');
-            
+
             if (todayRecords.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #666; padding: 20px;">今日暂无打卡记录</td></tr>';
             }
@@ -672,15 +676,15 @@
         // 绑定标签页事件
         function bindTabEvents() {
             const tabs = document.querySelectorAll('.record-tab');
-            
+
             tabs.forEach(tab => {
-                tab.addEventListener('click', function() {
+                tab.addEventListener('click', function () {
                     // 移除所有标签页的激活状态
                     tabs.forEach(t => t.classList.remove('active'));
-                    
+
                     // 添加当前标签页的激活状态
                     this.classList.add('active');
-                    
+
                     // 根据标签页类型加载不同的记录
                     const tabType = this.getAttribute('data-tab');
                     loadRecordsByType(tabType);
@@ -697,14 +701,14 @@
             const currentYear = new Date().getFullYear();
             const weekStart = new Date();
             weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-            
+
             let filteredRecords = [];
-            
+
             Object.keys(records).forEach(date => {
                 const dateObj = new Date(date);
                 const dateRecords = records[date];
-                
-                switch(type) {
+
+                switch (type) {
                     case 'daily':
                         if (date === today) {
                             filteredRecords = filteredRecords.concat(dateRecords);
@@ -722,7 +726,7 @@
                         break;
                 }
             });
-            
+
             tableBody.innerHTML = filteredRecords.map(record => `
                 <tr>
                     <td>${record.date}</td>
@@ -738,11 +742,12 @@
                     </td>
                 </tr>
             `).join('');
-            
+
             if (filteredRecords.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #666; padding: 20px;">暂无打卡记录</td></tr>';
             }
         }
     </script>
 </body>
+
 </html>

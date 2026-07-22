@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>运输员 - 发车</title>
 
@@ -421,6 +423,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -643,7 +646,7 @@
 
             // 初始化发车记录
             initDepartureHistory();
-            
+
             // 加载发车记录
             loadDepartureHistory();
         });
@@ -653,12 +656,12 @@
             const now = new Date();
             const later = new Date(now);
             later.setHours(now.getHours() + 12); // 预计12小时后到达
-            
+
             // 格式化时间为datetime-local格式
             const formatDate = (date) => {
                 return date.toISOString().slice(0, 16);
             };
-            
+
             document.getElementById('departure-time').value = formatDate(now);
             document.getElementById('estimated-arrival').value = formatDate(later);
         }
@@ -675,24 +678,24 @@
             const departureTime = document.getElementById('departure-time').value;
             const estimatedArrival = document.getElementById('estimated-arrival').value;
             const driverRemark = document.getElementById('driver-remark').value;
-            
+
             if (!departureTime || !estimatedArrival) {
                 alert('请填写发车时间和预计到达时间');
                 return;
             }
-            
+
             // 检查是否完成所有检查项
             const checkboxes = document.querySelectorAll('.checklist-item input[type="checkbox"]');
             const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-            
+
             if (!allChecked) {
                 alert('请完成所有发车前检查项');
                 return;
             }
-            
+
             // 更新发车状态
             updateDepartureStatus('in-progress');
-            
+
             alert('模拟发车成功！运输任务已开始。');
         }
 
@@ -701,31 +704,31 @@
             const departureTime = document.getElementById('departure-time').value;
             const estimatedArrival = document.getElementById('estimated-arrival').value;
             const driverRemark = document.getElementById('driver-remark').value;
-            
+
             if (!departureTime || !estimatedArrival) {
                 alert('请填写发车时间和预计到达时间');
                 return;
             }
-            
+
             // 检查是否完成所有检查项
             const checkboxes = document.querySelectorAll('.checklist-item input[type="checkbox"]');
             const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-            
+
             if (!allChecked) {
                 alert('请完成所有发车前检查项');
                 return;
             }
-            
+
             // 保存发车记录
             saveDepartureRecord(departureTime, estimatedArrival, driverRemark);
-            
+
             // 更新发车状态
             updateDepartureStatus('in-progress');
-            
+
             // 更新运输统计
             updateTransportStats('departed', 1);
-            
-            
+
+
             // 跳转到路线页面
             setTimeout(() => {
                 window.location.href = 'transporter-route.html';
@@ -736,7 +739,7 @@
         function updateDepartureStatus(status) {
             const statusElement = document.getElementById('departure-status');
             statusElement.className = `status ${status}`;
-            
+
             if (status === 'pending') {
                 statusElement.textContent = '待发车';
             } else if (status === 'in-progress') {
@@ -751,9 +754,9 @@
             const user = getCurrentUser();
             const today = new Date().toISOString().split('T')[0];
             const historyKey = `transporterDepartureHistory`;
-            
+
             let history = JSON.parse(localStorage.getItem(historyKey) || '[]');
-            
+
             const newRecord = {
                 id: `TRANS-${Date.now()}`,
                 taskId: 'TRANS-20260120001',
@@ -766,10 +769,10 @@
                 remark: driverRemark,
                 createdAt: new Date().toISOString()
             };
-            
+
             history.unshift(newRecord); // 添加到记录开头
             localStorage.setItem(historyKey, JSON.stringify(history));
-            
+
             // 加载更新后的记录
             loadDepartureHistory();
         }
@@ -777,7 +780,7 @@
         // 初始化发车记录
         function initDepartureHistory() {
             const historyKey = `transporterDepartureHistory`;
-            
+
             if (!localStorage.getItem(historyKey)) {
                 const mockHistory = [
                     {
@@ -805,7 +808,7 @@
                         createdAt: new Date(Date.now() - 172800000).toISOString()
                     }
                 ];
-                
+
                 localStorage.setItem(historyKey, JSON.stringify(mockHistory));
             }
         }
@@ -814,13 +817,13 @@
         function loadDepartureHistory() {
             const historyKey = `transporterDepartureHistory`;
             const history = JSON.parse(localStorage.getItem(historyKey) || '[]');
-            
+
             const tableBody = document.getElementById('departure-history');
-            
+
             if (history.length > 0) {
                 tableBody.innerHTML = history.map(record => {
                     const statusText = record.status === 'pending' ? '待发车' : record.status === 'in-progress' ? '运输中' : '已完成';
-                    
+
                     return `
                         <tr>
                             <td>${record.taskId}</td>
@@ -840,13 +843,13 @@
         function updateTransportStats(type, value) {
             const today = new Date().toISOString().split('T')[0];
             const statsKey = `transporterStats_${today}`;
-            
+
             let stats = { loaded: 0, departed: 0, mileage: 0 };
             const existingStats = localStorage.getItem(statsKey);
             if (existingStats) {
                 stats = JSON.parse(existingStats);
             }
-            
+
             if (type === 'loaded') {
                 stats.loaded += value;
             } else if (type === 'departed') {
@@ -854,9 +857,10 @@
             } else if (type === 'mileage') {
                 stats.mileage += value;
             }
-            
+
             localStorage.setItem(statsKey, JSON.stringify(stats));
         }
     </script>
 </body>
+
 </html>

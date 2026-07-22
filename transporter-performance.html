@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>绩效统计 - TMS系统</title>
 
@@ -299,7 +301,8 @@
             border-collapse: collapse;
         }
 
-        .data-table th, .data-table td {
+        .data-table th,
+        .data-table td {
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid #eee;
@@ -409,6 +412,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -509,8 +513,9 @@
                         <h4>准时率统计</h4>
                         <div class="donut-chart">
                             <svg viewBox="0 0 100 100">
-                                <circle cx="50" cy="50" r="40" fill="none" stroke="#e0e0e0" stroke-width="15"/>
-                                <circle cx="50" cy="50" r="40" fill="none" stroke="#f9ca24" stroke-width="15" stroke-dasharray="251.2" stroke-dashoffset="3.77" transform="rotate(-90 50 50)"/>
+                                <circle cx="50" cy="50" r="40" fill="none" stroke="#e0e0e0" stroke-width="15" />
+                                <circle cx="50" cy="50" r="40" fill="none" stroke="#f9ca24" stroke-width="15"
+                                    stroke-dasharray="251.2" stroke-dashoffset="3.77" transform="rotate(-90 50 50)" />
                             </svg>
                             <div class="donut-text">
                                 <div class="donut-number">98.5%</div>
@@ -576,13 +581,13 @@
 
             // 初始化数据
             initializePerformanceData();
-            
+
             // 加载绩效数据
             loadPerformanceData();
-            
+
             // 生成图表
             generateCharts();
-            
+
             // 加载排名
             loadRanking();
         });
@@ -652,7 +657,7 @@
                 };
                 localStorage.setItem('transporterPerformance', JSON.stringify(performanceData));
             }
-            
+
             // 初始化排名数据
             if (!localStorage.getItem('transporterRanking')) {
                 const ranking = [
@@ -671,9 +676,9 @@
             const performanceData = JSON.parse(localStorage.getItem('transporterPerformance')) || {};
             const currentPeriod = '2025-07';
             const data = performanceData[currentPeriod] || {};
-            
+
             const tableBody = document.getElementById('performanceTable');
-            
+
             if (data.dailyData && data.dailyData.length > 0) {
                 tableBody.innerHTML = data.dailyData.map(item => `
                     <tr>
@@ -703,10 +708,10 @@
             // 生成月度运输量柱状图
             const monthlyData = [12, 8, 15, 10, 20, 18, 16];
             const months = ['7/1', '7/2', '7/3', '7/4', '7/5', '7/6', '7/7'];
-            
+
             const barChart = document.getElementById('monthlyVolumeChart');
             const maxValue = Math.max(...monthlyData) + 5;
-            
+
             barChart.innerHTML = monthlyData.map((value, index) => {
                 const height = (value / maxValue) * 250;
                 return `
@@ -722,7 +727,7 @@
         function loadRanking() {
             const ranking = JSON.parse(localStorage.getItem('transporterRanking')) || [];
             const rankList = document.getElementById('rankList');
-            
+
             rankList.innerHTML = ranking.map(item => `
                 <div class="rank-item">
                     <div class="rank-number">${item.rank}</div>
@@ -737,11 +742,12 @@
             const period = document.getElementById('period').value;
             const year = document.getElementById('year').value;
             const month = document.getElementById('month').value;
-            
+
             // 这里可以根据筛选条件重新加载数据
             console.log('应用筛选:', period, year, month);
             alert('筛选功能开发中...');
         }
     </script>
 </body>
+
 </html>

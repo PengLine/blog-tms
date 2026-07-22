@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>运输员 - 装车</title>
 
@@ -427,6 +429,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -592,10 +595,10 @@
 
             // 初始化装车数据
             initLoadingData();
-            
+
             // 加载装车列表
             loadPackageList();
-            
+
             // 更新统计信息
             updateLoadingStats();
         });
@@ -604,7 +607,7 @@
         function initLoadingData() {
             const today = new Date().toISOString().split('T')[0];
             const loadingKey = `transporterLoading_${today}`;
-            
+
             if (!localStorage.getItem(loadingKey)) {
                 // 生成模拟装车数据
                 const mockPackages = [
@@ -649,7 +652,7 @@
                         scanTime: null
                     }
                 ];
-                
+
                 localStorage.setItem(loadingKey, JSON.stringify(mockPackages));
             }
         }
@@ -659,49 +662,49 @@
             const packageInput = document.getElementById('package-input');
             const waybillNumber = packageInput.value.trim();
             const resultDiv = document.getElementById('scan-result');
-            
+
             if (!waybillNumber) {
                 showError('请输入运单号');
                 return;
             }
-            
+
             // 验证运单号格式
             if (!waybillNumber.startsWith('WB')) {
                 showError('运单号格式错误，应以WB开头');
                 return;
             }
-            
+
             const today = new Date().toISOString().split('T')[0];
             const loadingKey = `transporterLoading_${today}`;
             let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
-            
+
             // 查找包裹
             const packageIndex = packages.findIndex(pkg => pkg.waybillNumber === waybillNumber);
-            
+
             if (packageIndex === -1) {
                 showError('该运单号不在装车清单中');
                 return;
             }
-            
+
             const pkg = packages[packageIndex];
-            
+
             if (pkg.status === 'loaded') {
                 showError('该包裹已装车');
                 return;
             }
-            
+
             // 更新包裹状态
             packages[packageIndex].status = 'loaded';
             packages[packageIndex].scanTime = new Date().toLocaleString('zh-CN');
-            
+
             localStorage.setItem(loadingKey, JSON.stringify(packages));
-            
+
             // 显示扫描成功结果
             showScanResult(pkg, true);
-            
+
             // 清空输入框
             packageInput.value = '';
-            
+
             // 更新列表和统计
             loadPackageList();
             updateLoadingStats();
@@ -711,7 +714,7 @@
         function showScanResult(pkg, success = true) {
             const resultDiv = document.getElementById('scan-result');
             resultDiv.className = `scan-result ${success ? '' : 'error'}`;
-            
+
             if (success) {
                 resultDiv.innerHTML = `
                     <h4>扫描成功</h4>
@@ -725,9 +728,9 @@
                     <p>${pkg.errorMessage}</p>
                 `;
             }
-            
+
             resultDiv.classList.remove('hidden');
-            
+
             // 3秒后隐藏结果
             setTimeout(() => {
                 resultDiv.classList.add('hidden');
@@ -744,9 +747,9 @@
             const today = new Date().toISOString().split('T')[0];
             const loadingKey = `transporterLoading_${today}`;
             let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
-            
+
             const packageList = document.getElementById('package-list');
-            
+
             if (packages.length > 0) {
                 packageList.innerHTML = packages.map(pkg => `
                     <tr>
@@ -772,12 +775,12 @@
             const today = new Date().toISOString().split('T')[0];
             const loadingKey = `transporterLoading_${today}`;
             let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
-            
+
             const totalPackages = packages.length;
             const loadedPackages = packages.filter(pkg => pkg.status === 'loaded').length;
             const pendingPackages = packages.filter(pkg => pkg.status === 'pending').length;
             const loadingRate = totalPackages > 0 ? Math.round((loadedPackages / totalPackages) * 100) : 0;
-            
+
             // 更新统计显示
             document.getElementById('total-packages').textContent = totalPackages;
             document.getElementById('loaded-packages').textContent = loadedPackages;
@@ -791,20 +794,20 @@
                 const today = new Date().toISOString().split('T')[0];
                 const loadingKey = `transporterLoading_${today}`;
                 let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
-                
+
                 // 重置所有包裹状态
                 packages = packages.map(pkg => ({
                     ...pkg,
                     status: 'pending',
                     scanTime: null
                 }));
-                
+
                 localStorage.setItem(loadingKey, JSON.stringify(packages));
-                
+
                 // 更新列表和统计
                 loadPackageList();
                 updateLoadingStats();
-                
+
                 alert('重置成功！');
             }
         }
@@ -814,15 +817,15 @@
             const today = new Date().toISOString().split('T')[0];
             const loadingKey = `transporterLoading_${today}`;
             let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
-            
+
             const loadedPackages = packages.filter(pkg => pkg.status === 'loaded');
             const pendingPackages = packages.filter(pkg => pkg.status === 'pending');
-            
+
             let message = `装车核对结果：\n`;
             message += `总包裹数：${packages.length}\n`;
             message += `已装车：${loadedPackages.length}\n`;
             message += `待装车：${pendingPackages.length}\n\n`;
-            
+
             if (pendingPackages.length > 0) {
                 message += `未装车的包裹：\n`;
                 pendingPackages.forEach(pkg => {
@@ -831,7 +834,7 @@
             } else {
                 message += `所有包裹已装车，核对无误！`;
             }
-            
+
             alert(message);
         }
 
@@ -840,19 +843,19 @@
             const today = new Date().toISOString().split('T')[0];
             const loadingKey = `transporterLoading_${today}`;
             let packages = JSON.parse(localStorage.getItem(loadingKey) || '[]');
-            
+
             const pendingPackages = packages.filter(pkg => pkg.status === 'pending');
-            
+
             if (pendingPackages.length > 0) {
                 if (!confirm(`还有${pendingPackages.length}个包裹未装车，确定要完成装车吗？`)) {
                     return;
                 }
             }
-            
+
             // 更新装车统计
             const loadedPackages = packages.filter(pkg => pkg.status === 'loaded').length;
             updateTransportStats('loaded', loadedPackages);
-            
+
             // 跳转到发车页面
             window.location.href = 'transporter-departure.html';
         }
@@ -861,13 +864,13 @@
         function updateTransportStats(type, value) {
             const today = new Date().toISOString().split('T')[0];
             const statsKey = `transporterStats_${today}`;
-            
+
             let stats = { loaded: 0, departed: 0, mileage: 0 };
             const existingStats = localStorage.getItem(statsKey);
             if (existingStats) {
                 stats = JSON.parse(existingStats);
             }
-            
+
             if (type === 'loaded') {
                 stats.loaded = value;
             } else if (type === 'departed') {
@@ -875,9 +878,10 @@
             } else if (type === 'mileage') {
                 stats.mileage += value;
             }
-            
+
             localStorage.setItem(statsKey, JSON.stringify(stats));
         }
     </script>
 </body>
+
 </html>

@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>分拣员 - TMS运输管理系统</title>
 
@@ -195,6 +197,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -228,7 +231,7 @@
             <section class="content">
                 <h2>欢迎回来，分拣员</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <div class="stats">
                     <div class="stat-card">
                         <div style="font-size: 2rem; color: #4ecdc4;">0</div>
@@ -303,19 +306,19 @@
             // 从localStorage获取今日数据
             const today = new Date().toISOString().split('T')[0];
             const todayStats = localStorage.getItem(`sorterStats_${today}`);
-            
+
             if (todayStats) {
                 const stats = JSON.parse(todayStats);
                 document.querySelector('.stats .stat-card:nth-child(1) div').textContent = stats.scanned || 0;
                 document.querySelector('.stats .stat-card:nth-child(2) div').textContent = stats.sorted || 0;
                 document.querySelector('.stats .stat-card:nth-child(3) div').textContent = stats.exceptions || 0;
             }
-            
+
             // 加载本月绩效
             const currentMonth = new Date().getMonth() + 1;
             const currentYear = new Date().getFullYear();
             const performance = localStorage.getItem(`sorterPerformance_${currentYear}_${currentMonth}`);
-            
+
             if (performance) {
                 const perfData = JSON.parse(performance);
                 document.querySelector('.stats .stat-card:nth-child(4) div').textContent = perfData.total || 0;
@@ -323,4 +326,5 @@
         }
     </script>
 </body>
+
 </html>

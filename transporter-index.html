@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>运输员 - TMS运输管理系统</title>
 
@@ -247,6 +249,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -281,7 +284,7 @@
             <section class="content">
                 <h2>欢迎回来，运输员</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <div class="stats">
                     <div class="stat-card">
                         <div style="font-size: 2rem; color: #f9ca24;">0</div>
@@ -355,7 +358,7 @@
 
             // 加载今日任务
             loadTodayTasks();
-            
+
             // 加载统计数据
             loadStats();
         });
@@ -365,12 +368,12 @@
             // 从localStorage获取任务数据
             const today = new Date().toISOString().split('T')[0];
             const tasks = localStorage.getItem(`transporterTasks_${today}`);
-            
+
             const container = document.getElementById('tasks-container');
-            
+
             if (tasks) {
                 const taskList = JSON.parse(tasks);
-                
+
                 if (taskList.length > 0) {
                     container.innerHTML = taskList.map(task => `
                         <div class="task-item">
@@ -398,7 +401,7 @@
                         status: 'pending'
                     }
                 ];
-                
+
                 localStorage.setItem(`transporterTasks_${today}`, JSON.stringify(mockTasks));
                 container.innerHTML = mockTasks.map(task => `
                     <div class="task-item">
@@ -417,7 +420,7 @@
             // 从localStorage获取统计数据
             const today = new Date().toISOString().split('T')[0];
             const stats = localStorage.getItem(`transporterStats_${today}`);
-            
+
             if (stats) {
                 const statsData = JSON.parse(stats);
                 document.querySelector('.stats .stat-card:nth-child(1) div').textContent = statsData.loaded || 0;
@@ -435,12 +438,12 @@
                 document.querySelector('.stats .stat-card:nth-child(2) div').textContent = defaultStats.departed;
                 document.querySelector('.stats .stat-card:nth-child(3) div').textContent = defaultStats.mileage;
             }
-            
+
             // 加载本月绩效
             const currentMonth = new Date().getMonth() + 1;
             const currentYear = new Date().getFullYear();
             const performance = localStorage.getItem(`transporterPerformance_${currentYear}_${currentMonth}`);
-            
+
             if (performance) {
                 const perfData = JSON.parse(performance);
                 document.querySelector('.stats .stat-card:nth-child(4) div').textContent = perfData.total || 0;
@@ -455,4 +458,5 @@
         }
     </script>
 </body>
+
 </html>

@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>服务与售后 - TMS运输管理系统</title>
 
@@ -225,7 +227,8 @@
             border-collapse: collapse;
         }
 
-        th, td {
+        th,
+        td {
             padding: 1rem;
             text-align: left;
             border-bottom: 1px solid #eee;
@@ -371,6 +374,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -406,7 +410,7 @@
             <section class="content">
                 <h2>服务与售后</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 统计概览 -->
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -665,28 +669,28 @@
 
             // 初始化数据
             initializeData();
-            
+
             // 加载统计数据
             loadStats();
-            
+
             // 加载自提记录
             loadSelfPickupRecords();
-            
+
             // 加载问题件记录
             loadIssueRecords();
-            
+
             // 加载退货/拒收记录
             loadReturnRecords();
-            
+
             // 加载服务记录
             loadServiceRecords();
 
             // 绑定标签页切换事件
             document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
-                    
+
                     const tabId = this.getAttribute('data-tab');
                     document.querySelectorAll('.tab-content').forEach(content => {
                         content.classList.add('hidden');
@@ -879,25 +883,25 @@
             issueRecords = JSON.parse(localStorage.getItem('issueRecords')) || [];
             returnRecords = JSON.parse(localStorage.getItem('returnRecords')) || [];
             serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
-            
+
             const today = new Date().toDateString();
-            
+
             const todaySelfPickup = selfPickupRecords.filter(record => {
                 return new Date(record.pickupTime).toDateString() === today;
             });
-            
+
             const todayIssues = issueRecords.filter(record => {
                 return new Date(record.issueTime).toDateString() === today;
             });
-            
+
             const todayReturns = returnRecords.filter(record => {
                 return new Date(record.returnTime).toDateString() === today;
             });
-            
+
             const pendingServices = serviceRecords.filter(record => {
                 return record.status === 'pending';
             });
-            
+
             document.getElementById('selfPickupCount').textContent = todaySelfPickup.length;
             document.getElementById('issueCount').textContent = todayIssues.length;
             document.getElementById('returnCount').textContent = todayReturns.length;
@@ -911,12 +915,12 @@
             const idNumber = document.getElementById('pickup-id').value.trim();
             const phoneNumber = document.getElementById('pickup-phone').value.trim();
             const notes = document.getElementById('pickup-notes').value.trim();
-            
+
             if (!waybillNumber || !customerName || !idNumber || !phoneNumber) {
                 alert('请填写完整信息');
                 return;
             }
-            
+
             const pickupRecord = {
                 id: 'PICK' + Date.now(),
                 waybillNumber: waybillNumber,
@@ -927,11 +931,11 @@
                 pickupTime: new Date().toISOString(),
                 operator: '当前用户'
             };
-            
+
             selfPickupRecords = JSON.parse(localStorage.getItem('selfPickupRecords')) || [];
             selfPickupRecords.push(pickupRecord);
             localStorage.setItem('selfPickupRecords', JSON.stringify(selfPickupRecords));
-            
+
             // 添加到服务记录
             const serviceRecord = {
                 id: 'SERV' + Date.now(),
@@ -943,34 +947,34 @@
                 status: 'completed',
                 operator: '当前用户'
             };
-            
+
             serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
             serviceRecords.push(serviceRecord);
             localStorage.setItem('serviceRecords', JSON.stringify(serviceRecords));
-            
+
             // 重置表单
             document.getElementById('pickup-waybill').value = '';
             document.getElementById('pickup-customer').value = '';
             document.getElementById('pickup-id').value = '';
             document.getElementById('pickup-phone').value = '';
             document.getElementById('pickup-notes').value = '';
-            
+
             // 更新统计数据
             loadStats();
-            
+
             // 更新自提记录
             loadSelfPickupRecords();
-            
+
             // 更新服务记录
             loadServiceRecords();
-            
+
         }
 
         // 加载自提记录
         function loadSelfPickupRecords() {
             selfPickupRecords = JSON.parse(localStorage.getItem('selfPickupRecords')) || [];
             const tableBody = document.getElementById('self-pickup-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = selfPickupRecords.slice(-10).reverse().map(record => `
                 <tr>
                     <td>${record.waybillNumber}</td>
@@ -991,12 +995,12 @@
             const reporter = document.getElementById('issue-reporter').value.trim();
             const issueTime = document.getElementById('issue-time').value;
             const solution = document.getElementById('issue-solution').value.trim();
-            
+
             if (!waybillNumber || !description || !reporter || !issueTime) {
                 alert('请填写完整信息');
                 return;
             }
-            
+
             const issueRecord = {
                 id: 'ISSUE' + Date.now(),
                 waybillNumber: waybillNumber,
@@ -1014,11 +1018,11 @@
                 solution: solution,
                 status: solution ? 'resolved' : 'pending'
             };
-            
+
             issueRecords = JSON.parse(localStorage.getItem('issueRecords')) || [];
             issueRecords.push(issueRecord);
             localStorage.setItem('issueRecords', JSON.stringify(issueRecords));
-            
+
             // 添加到服务记录
             const serviceRecord = {
                 id: 'SERV' + Date.now(),
@@ -1030,37 +1034,37 @@
                 status: solution ? 'completed' : 'pending',
                 operator: reporter
             };
-            
+
             serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
             serviceRecords.push(serviceRecord);
             localStorage.setItem('serviceRecords', JSON.stringify(serviceRecords));
-            
+
             // 重置表单
             document.getElementById('issue-waybill').value = '';
             document.getElementById('issue-description').value = '';
             document.getElementById('issue-reporter').value = '';
             document.getElementById('issue-time').value = '';
             document.getElementById('issue-solution').value = '';
-            
+
             // 更新统计数据
             loadStats();
-            
+
             // 更新问题件记录
             loadIssueRecords();
-            
+
             // 更新服务记录
             loadServiceRecords();
-            
+
         }
 
         // 处理问题
         function resolveIssue() {
             const issueId = prompt('请输入问题件ID：');
             if (!issueId) return;
-            
+
             const solution = prompt('请输入解决方案：');
             if (!solution) return;
-            
+
             issueRecords = JSON.parse(localStorage.getItem('issueRecords')) || [];
             const updatedIssues = issueRecords.map(issue => {
                 if (issue.id === issueId) {
@@ -1069,7 +1073,7 @@
                 return issue;
             });
             localStorage.setItem('issueRecords', JSON.stringify(updatedIssues));
-            
+
             // 更新服务记录
             serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
             const updatedServices = serviceRecords.map(service => {
@@ -1079,20 +1083,20 @@
                 return service;
             });
             localStorage.setItem('serviceRecords', JSON.stringify(updatedServices));
-            
+
             // 更新问题件记录
             loadIssueRecords();
-            
+
             // 更新服务记录
             loadServiceRecords();
-            
+
         }
 
         // 加载问题件记录
         function loadIssueRecords() {
             issueRecords = JSON.parse(localStorage.getItem('issueRecords')) || [];
             const tableBody = document.getElementById('issue-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = issueRecords.slice(-10).reverse().map(issue => `
                 <tr>
                     <td>${issue.waybillNumber}</td>
@@ -1116,7 +1120,7 @@
         function resolveIssueById(issueId) {
             const solution = prompt('请输入解决方案：');
             if (!solution) return;
-            
+
             issueRecords = JSON.parse(localStorage.getItem('issueRecords')) || [];
             const updatedIssues = issueRecords.map(issue => {
                 if (issue.id === issueId) {
@@ -1125,7 +1129,7 @@
                 return issue;
             });
             localStorage.setItem('issueRecords', JSON.stringify(updatedIssues));
-            
+
             // 更新服务记录
             serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
             const updatedServices = serviceRecords.map(service => {
@@ -1135,13 +1139,13 @@
                 return service;
             });
             localStorage.setItem('serviceRecords', JSON.stringify(updatedServices));
-            
+
             // 更新问题件记录
             loadIssueRecords();
-            
+
             // 更新服务记录
             loadServiceRecords();
-            
+
         }
 
         // 确认退货/拒收
@@ -1151,12 +1155,12 @@
             const returnReason = document.getElementById('return-reason').value;
             const description = document.getElementById('return-description').value.trim();
             const returnTime = document.getElementById('return-time').value;
-            
+
             if (!waybillNumber || !returnTime) {
                 alert('请填写完整信息');
                 return;
             }
-            
+
             const returnRecord = {
                 id: 'RETURN' + Date.now(),
                 waybillNumber: waybillNumber,
@@ -1173,11 +1177,11 @@
                 returnTime: new Date(returnTime).toISOString(),
                 status: 'registered'
             };
-            
+
             returnRecords = JSON.parse(localStorage.getItem('returnRecords')) || [];
             returnRecords.push(returnRecord);
             localStorage.setItem('returnRecords', JSON.stringify(returnRecords));
-            
+
             // 添加到服务记录
             const serviceRecord = {
                 id: 'SERV' + Date.now(),
@@ -1189,32 +1193,32 @@
                 status: 'completed',
                 operator: '当前用户'
             };
-            
+
             serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
             serviceRecords.push(serviceRecord);
             localStorage.setItem('serviceRecords', JSON.stringify(serviceRecords));
-            
+
             // 重置表单
             document.getElementById('return-waybill').value = '';
             document.getElementById('return-description').value = '';
             document.getElementById('return-time').value = '';
-            
+
             // 更新统计数据
             loadStats();
-            
+
             // 更新退货/拒收记录
             loadReturnRecords();
-            
+
             // 更新服务记录
             loadServiceRecords();
-            
+
         }
 
         // 加载退货/拒收记录
         function loadReturnRecords() {
             returnRecords = JSON.parse(localStorage.getItem('returnRecords')) || [];
             const tableBody = document.getElementById('return-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = returnRecords.slice(-10).reverse().map(record => `
                 <tr>
                     <td>${record.waybillNumber}</td>
@@ -1233,7 +1237,7 @@
         function loadServiceRecords() {
             serviceRecords = JSON.parse(localStorage.getItem('serviceRecords')) || [];
             const tableBody = document.getElementById('service-table').querySelector('tbody');
-            
+
             tableBody.innerHTML = serviceRecords.slice(-10).reverse().map(record => `
                 <tr>
                     <td>${record.id}</td>
@@ -1252,4 +1256,5 @@
         }
     </script>
 </body>
+
 </html>

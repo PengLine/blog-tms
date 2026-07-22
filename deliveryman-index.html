@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>派送员首页 - TMS运输管理系统</title>
 
@@ -210,6 +212,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -245,7 +248,7 @@
             <section class="content">
                 <h2>欢迎回来，<span id="welcome-username"></span></h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 统计卡片 -->
                 <div class="stats">
                     <div class="stat-card">
@@ -309,7 +312,7 @@
 
             // 初始化数据
             initializeDeliverymanData();
-            
+
             // 加载统计数据
             loadStats();
         });
@@ -321,7 +324,7 @@
                 const tasks = [];
                 const today = new Date();
                 const todayStr = today.toISOString().split('T')[0];
-                
+
                 // 生成今日任务
                 for (let i = 1; i <= 8; i++) {
                     tasks.push({
@@ -336,7 +339,7 @@
                         description: i % 2 === 0 ? `收取包裹，重量约${i}kg` : `派送包裹，单号：HL${Math.floor(Math.random() * 10000000000)}`
                     });
                 }
-                
+
                 localStorage.setItem('deliverymanTasks', JSON.stringify(tasks));
             }
 
@@ -344,11 +347,11 @@
             if (!localStorage.getItem('deliverymanExceptions')) {
                 const exceptions = [];
                 const today = new Date();
-                
+
                 for (let i = 1; i <= 3; i++) {
                     const exceptionDate = new Date(today);
                     exceptionDate.setDate(today.getDate() - (3 - i));
-                    
+
                     exceptions.push({
                         id: `exception-${i}`,
                         type: ['地址错误', '收件人拒收', '联系不上收件人'][i - 1],
@@ -358,7 +361,7 @@
                         status: i === 1 ? 'pending' : 'processed'
                     });
                 }
-                
+
                 localStorage.setItem('deliverymanExceptions', JSON.stringify(exceptions));
             }
         }
@@ -367,22 +370,22 @@
         function loadStats() {
             const tasks = JSON.parse(localStorage.getItem('deliverymanTasks')) || [];
             const today = new Date().toISOString().split('T')[0];
-            
+
             // 筛选今日任务
             const todayTasks = tasks.filter(task => task.time.startsWith(today));
             const pendingTasks = todayTasks.filter(task => task.status === 'pending').length;
             const inProgressTasks = todayTasks.filter(task => task.status === 'in-progress').length;
             const completedTasks = todayTasks.filter(task => task.status === 'completed').length;
-            
+
             // 更新统计卡片
             document.getElementById('totalTasks').textContent = todayTasks.length;
             document.getElementById('pendingTasks').textContent = pendingTasks;
             document.getElementById('inProgressTasks').textContent = inProgressTasks;
             document.getElementById('completedTasks').textContent = completedTasks;
-            
+
             // 加载今日任务列表
             loadTodayTasks(todayTasks);
-            
+
             // 加载最近异常
             loadRecentExceptions();
         }
@@ -390,12 +393,12 @@
         // 加载今日任务列表
         function loadTodayTasks(tasks) {
             const taskList = document.getElementById('todayTaskList');
-            
+
             if (tasks.length === 0) {
                 taskList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">今日暂无任务</p>';
                 return;
             }
-            
+
             taskList.innerHTML = tasks.map(task => `
                 <div class="task-item">
                     <div class="task-header">
@@ -419,12 +422,12 @@
         function loadRecentExceptions() {
             const exceptions = JSON.parse(localStorage.getItem('deliverymanExceptions')) || [];
             const exceptionList = document.getElementById('recentExceptions');
-            
+
             if (exceptions.length === 0) {
                 exceptionList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">最近无异常记录</p>';
                 return;
             }
-            
+
             exceptionList.innerHTML = exceptions.map(exception => `
                 <div class="task-item">
                     <div class="task-header">
@@ -452,4 +455,5 @@
         }
     </script>
 </body>
+
 </html>

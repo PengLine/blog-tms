@@ -1,7 +1,9 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TMS架构介绍 - TMS运输管理系统</title>
 
@@ -20,7 +22,7 @@
             --dark-color: #333;
             --text-color: #666;
             --border-color: #ddd;
-            
+
             /* 布局变量 */
             --container-max-width: 1400px;
             --section-padding: 2rem;
@@ -428,7 +430,7 @@
             border-radius: 8px;
             text-align: center;
             min-width: 180px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             transition: var(--transition);
             position: relative;
             overflow: hidden;
@@ -436,7 +438,7 @@
 
         .node:hover {
             transform: translateY(-3px);
-            box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
         }
 
         .node::before {
@@ -551,6 +553,7 @@
                 opacity: 0;
                 transform: translateY(20px);
             }
+
             to {
                 opacity: 1;
                 transform: translateY(0);
@@ -562,10 +565,12 @@
                 transform: scale(1);
                 opacity: 1;
             }
+
             50% {
                 transform: scale(1.05);
                 opacity: 0.8;
             }
+
             100% {
                 transform: scale(1);
                 opacity: 1;
@@ -620,6 +625,7 @@
         }
     </style>
 </head>
+
 <body>
     <button class="back-btn" onclick="window.location.href='index.html'">← 返回首页</button>
 
@@ -670,9 +676,9 @@
                         <div class="module">管理员端</div>
                     </div>
                 </div>
-                
+
                 <div class="arrow">↓</div>
-                
+
                 <div class="layer">
                     <div class="layer-title">业务逻辑层</div>
                     <div class="layer-content">
@@ -684,9 +690,9 @@
                         <div class="module">人力资源管理</div>
                     </div>
                 </div>
-                
+
                 <div class="arrow">↓</div>
-                
+
                 <div class="layer">
                     <div class="layer-title">数据访问层</div>
                     <div class="layer-content">
@@ -695,9 +701,9 @@
                         <div class="module">数据同步</div>
                     </div>
                 </div>
-                
+
                 <div class="arrow">↓</div>
-                
+
                 <div class="layer">
                     <div class="layer-title">数据存储层</div>
                     <div class="layer-content">
@@ -888,7 +894,9 @@
                         </div>
                         <div class="diagram-arrow">↓</div>
                         <div class="diagram-row">
-                            <h5 style="width: 100%; text-align: center; color: var(--primary-color); margin-bottom: 1rem;">存储服务</h5>
+                            <h5
+                                style="width: 100%; text-align: center; color: var(--primary-color); margin-bottom: 1rem;">
+                                存储服务</h5>
                         </div>
                         <div class="diagram-row services-row">
                             <div class="node db-instance">
@@ -919,620 +927,622 @@
                                     <span class="instance">OSS-2</span>
                                     <span class="instance">OSS-3</span>
                                 </div>
-                        </div>
-                        <div class="diagram-arrow">↓</div>
-                        <div class="diagram-row">
-                            <div class="node nginx-cluster">
-                                <h5>运维监控</h5>
-                                <p>统一监控平台</p>
-                                <div class="cluster-instances">
-                                    <span class="instance">Prometheus</span>
-                                    <span class="instance">Grafana</span>
-                                    <span class="instance">ELK Stack</span>
-                                    <span class="instance">Jenkins</span>
+                            </div>
+                            <div class="diagram-arrow">↓</div>
+                            <div class="diagram-row">
+                                <div class="node nginx-cluster">
+                                    <h5>运维监控</h5>
+                                    <p>统一监控平台</p>
+                                    <div class="cluster-instances">
+                                        <span class="instance">Prometheus</span>
+                                        <span class="instance">Grafana</span>
+                                        <span class="instance">ELK Stack</span>
+                                        <span class="instance">Jenkins</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            <div class="sub-section">
-                <h4>集群介绍</h4>
-                <h5>1. 客户端层</h5>
-                <ul>
-                    <li><strong>多端支持</strong>：APP、PC、小程序三端覆盖，满足不同用户场景</li>
-                    <li><strong>负载均衡</strong>：通过DNS轮询和Nginx实现客户端请求分发</li>
-                    <li><strong>CDN加速</strong>：静态资源通过CDN分发，提升访问速度</li>
-                </ul>
-                
-                <h5>2. 接入层</h5>
-                <ul>
-                    <li><strong>Nginx集群</strong>：部署多节点Nginx，实现高可用和负载均衡</li>
-                    <li><strong>SSL/TLS</strong>：全链路HTTPS加密，保障数据传输安全</li>
-                    <li><strong>限流熔断</strong>：实现请求限流和熔断机制，保护后端服务</li>
-                </ul>
-                
-                <h5>3. 网关层</h5>
-                <ul>
-                    <li><strong>Gateway集群</strong>：基于Spring Cloud Gateway的API网关集群</li>
-                    <li><strong>路由管理</strong>：动态路由配置，支持服务灰度发布</li>
-                    <li><strong>统一认证</strong>：集中式身份认证和授权管理</li>
-                    <li><strong>监控告警</strong>：实时监控网关健康状态和请求流量</li>
-                </ul>
-                
-                <h5>4. 服务层</h5>
-                <ul>
-                    <li><strong>Nacos服务发现</strong>：实现服务注册与发现，支持动态扩缩容</li>
-                    <li><strong>服务集群</strong>：各微服务独立部署3节点集群，提高可用性</li>
-                    <li><strong>负载均衡</strong>：基于Ribbon的客户端负载均衡</li>
-                    <li><strong>服务治理</strong>：通过Sentinel实现服务熔断、限流和降级</li>
-                </ul>
-                
-                <h5>5. 核心服务介绍</h5>
-                <ul>
-                    <li><strong>订单服务（Order Service）</strong>：
-                        <ul>
-                            <li>订单创建、修改、取消等全生命周期管理</li>
-                            <li>订单状态流转和通知</li>
-                            <li>订单数据分库分表处理</li>
-                        </ul>
-                    </li>
-                    <li><strong>客户端服务（Client Service）</strong>：
-                        <ul>
-                            <li>用户注册、登录、认证授权</li>
-                            <li>用户信息管理和积分管理</li>
-                            <li>收货地址管理</li>
-                        </ul>
-                    </li>
-                    <li><strong>运输服务（Transport Service）</strong>：
-                        <ul>
-                            <li>运输路线规划和调度</li>
-                            <li>车辆和司机管理</li>
-                            <li>运输过程跟踪和监控</li>
-                        </ul>
-                    </li>
-                    <li><strong>网点服务（Branch Service）</strong>：
-                        <ul>
-                            <li>网点信息管理和查询</li>
-                            <li>网点能力评估（到货、派送能力）</li>
-                            <li>网点库存和出入库管理</li>
-                        </ul>
-                    </li>
-                    <li><strong>检索服务（Search Service）</strong>：
-                        <ul>
-                            <li>基于ElasticSearch的全文检索</li>
-                            <li>订单、货物、网点等多维度搜索</li>
-                            <li>GIS地理位置检索和路线规划</li>
-                            <li>实时索引更新和缓存优化</li>
-                        </ul>
-                    </li>
-                    <li><strong>TMS服务（TMS Service）</strong>：
-                        <ul>
-                            <li>TMS核心业务逻辑处理</li>
-                            <li>分拣、装卸、发车等业务流程管理</li>
-                            <li>考核、绩效、运单等核心功能</li>
-                            <li>与其他服务的业务协调和数据同步</li>
-                        </ul>
-                    </li>
-                </ul>
-                
-                <h5>6. 存储层</h5>
-                <ul>
-                    <li><strong>Redis集群</strong>：部署6节点哨兵模式，3主3从，提供高性能缓存</li>
-                    <li><strong>MySQL主从</strong>：16库主从复制架构，每个库1主2从，实现读写分离</li>
-                    <li><strong>数据库分片</strong>：根据业务需求实现水平分片，提高存储容量和性能</li>
-                    <li><strong>数据备份</strong>：定期全量备份和增量备份，保障数据安全</li>
-                </ul>
-                
-                <h5>7. 运维监控</h5>
-                <ul>
-                    <li><strong>Prometheus监控</strong>：实时监控系统各项指标</li>
-                    <li><strong>Grafana可视化</strong>：直观展示系统运行状态</li>
-                    <li><strong>ELK日志系统</strong>：集中式日志收集和分析</li>
-                    <li><strong>自动化部署</strong>：基于Jenkins的CI/CD流程</li>
-                </ul>
-            </div>
-        </div>
+                <div class="sub-section">
+                    <h4>集群介绍</h4>
+                    <h5>1. 客户端层</h5>
+                    <ul>
+                        <li><strong>多端支持</strong>：APP、PC、小程序三端覆盖，满足不同用户场景</li>
+                        <li><strong>负载均衡</strong>：通过DNS轮询和Nginx实现客户端请求分发</li>
+                        <li><strong>CDN加速</strong>：静态资源通过CDN分发，提升访问速度</li>
+                    </ul>
 
-        <div class="section">
-            <h2>客户端架构</h2>
-            <div class="architecture-diagram">
-                <div class="layer">
-                    <div class="layer-title">多端支持</div>
-                    <div class="layer-content">
-                        <div class="module">APP端</div>
-                        <div class="module">PC端</div>
-                        <div class="module">小程序端</div>
-                    </div>
-                </div>
-                <div class="arrow">↓</div>
-                <div class="layer">
-                    <div class="layer-title">核心功能</div>
-                    <div class="layer-content">
-                        <div class="module">下单功能</div>
-                        <div class="module">订单查询</div>
-                        <div class="module">网点搜索</div>
-                        <div class="module">网点能力查询（可到货、可派送）</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+                    <h5>2. 接入层</h5>
+                    <ul>
+                        <li><strong>Nginx集群</strong>：部署多节点Nginx，实现高可用和负载均衡</li>
+                        <li><strong>SSL/TLS</strong>：全链路HTTPS加密，保障数据传输安全</li>
+                        <li><strong>限流熔断</strong>：实现请求限流和熔断机制，保护后端服务</li>
+                    </ul>
 
-        <div class="section">
-            <h2>订单系统</h2>
-            <div class="sub-section">
-                <h4>订单管理</h4>
-                <ul>
-                    <li><strong>订单提取</strong>：从队列中提取待处理订单，分配给相应网点或运输员</li>
-                    <li><strong>订单修改</strong>：支持订单信息修改，包括收货人、地址、货物信息等</li>
-                    <li><strong>运费计算</strong>：根据距离、重量、体积等自动计算运费</li>
-                    <li><strong>服务费管理</strong>：支持增值服务费用，如保价费、加急费等</li>
-                    <li><strong>支付管理</strong>：支持在线支付、货到付款、月结等多种支付方式</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>积分与优惠</h4>
-                <ul>
-                    <li><strong>积分扣除</strong>：下单时可使用积分抵扣运费，积分实时扣除</li>
-                    <li><strong>网点折扣</strong>：支持网点折扣策略，不同网点可设置不同折扣率</li>
-                    <li><strong>修改通知</strong>：订单状态变更时自动通知用户，包括短信、APP推送等</li>
-                </ul>
-            </div>
-        </div>
+                    <h5>3. 网关层</h5>
+                    <ul>
+                        <li><strong>Gateway集群</strong>：基于Spring Cloud Gateway的API网关集群</li>
+                        <li><strong>路由管理</strong>：动态路由配置，支持服务灰度发布</li>
+                        <li><strong>统一认证</strong>：集中式身份认证和授权管理</li>
+                        <li><strong>监控告警</strong>：实时监控网关健康状态和请求流量</li>
+                    </ul>
 
-        <div class="section">
-            <h2>TMS核心系统</h2>
-            <div class="sub-section">
-                <h4>运输管理</h4>
-                <ul>
-                    <li><strong>运输调度</strong>：智能分配运输任务，优化运输路线</li>
-                    <li><strong>运输跟踪</strong>：实时跟踪运输车辆位置和货物状态</li>
-                    <li><strong>运输监控</strong>：监控运输过程中的异常情况，及时预警</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>考核管理</h4>
-                <ul>
-                    <li><strong>绩效考核</strong>：对运输员、派送员进行绩效评估</li>
-                    <li><strong>考核指标</strong>：包括准时率、完好率、客户满意度等</li>
-                    <li><strong>考核报表</strong>：生成考核报表，支持多维度分析</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>货箱管理</h4>
-                <ul>
-                    <li><strong>货箱创建</strong>：创建货箱，绑定货物信息</li>
-                    <li><strong>货箱跟踪</strong>：跟踪货箱流转状态</li>
-                    <li><strong>货箱盘点</strong>：定期盘点货箱库存</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>转运管理</h4>
-                <ul>
-                    <li><strong>转运调度</strong>：安排货物在网点间的转运</li>
-                    <li><strong>转运跟踪</strong>：跟踪转运进度和状态</li>
-                    <li><strong>转运确认</strong>：确认货物到达转运网点</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>订单运营</h4>
-                <ul>
-                    <li><strong>订单分配</strong>：将订单分配给合适的运输员或派送员</li>
-                    <li><strong>订单监控</strong>：监控订单处理进度</li>
-                    <li><strong>异常处理</strong>：处理订单异常情况</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>车辆管理</h4>
-                <ul>
-                    <li><strong>车辆信息</strong>：管理车辆基本信息、证件、保险等</li>
-                    <li><strong>车辆调度</strong>：安排车辆执行运输任务</li>
-                    <li><strong>车辆维护</strong>：记录车辆维护、保养信息</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>绩效管理</h4>
-                <ul>
-                    <li><strong>绩效统计</strong>：统计员工工作量和效率</li>
-                    <li><strong>绩效排名</strong>：生成员工绩效排名</li>
-                    <li><strong>绩效奖励</strong>：根据绩效发放奖励</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>装卸管理</h4>
-                <ul>
-                    <li><strong>装卸计划</strong>：制定装卸作业计划</li>
-                    <li><strong>装卸记录</strong>：记录装卸作业情况</li>
-                    <li><strong>装卸确认</strong>：确认装卸完成</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>分拨管理</h4>
-                <ul>
-                    <li><strong>分拨调度</strong>：安排货物分拨到不同网点</li>
-                    <li><strong>分拨跟踪</strong>：跟踪分拨进度</li>
-                    <li><strong>分拨确认</strong>：确认分拨完成</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>扫描管理</h4>
-                <ul>
-                    <li><strong>入库扫描</strong>：扫描货物入库</li>
-                    <li><strong>出库扫描</strong>：扫描货物出库</li>
-                    <li><strong>转运扫描</strong>：扫描货物转运</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>运单管理</h4>
-                <ul>
-                    <li><strong>运单生成</strong>：自动生成运单</li>
-                    <li><strong>运单打印</strong>：支持运单打印</li>
-                    <li><strong>运单查询</strong>：查询运单信息</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>到货管理</h4>
-                <ul>
-                    <li><strong>到货登记</strong>：登记货物到达网点</li>
-                    <li><strong>到货确认</strong>：确认货物到货</li>
-                    <li><strong>到货通知</strong>：通知相关人员到货</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>发车管理</h4>
-                <ul>
-                    <li><strong>发车计划</strong>：制定发车计划</li>
-                    <li><strong>发车确认</strong>：确认车辆发车</li>
-                    <li><strong>发车跟踪</strong>：跟踪发车状态</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>入库记录</h4>
-                <ul>
-                    <li><strong>入库登记</strong>：登记货物入库</li>
-                    <li><strong>入库确认</strong>：确认入库完成</li>
-                    <li><strong>入库统计</strong>：统计入库数据</li>
-                </ul>
-            </div>
-        </div>
+                    <h5>4. 服务层</h5>
+                    <ul>
+                        <li><strong>Nacos服务发现</strong>：实现服务注册与发现，支持动态扩缩容</li>
+                        <li><strong>服务集群</strong>：各微服务独立部署3节点集群，提高可用性</li>
+                        <li><strong>负载均衡</strong>：基于Ribbon的客户端负载均衡</li>
+                        <li><strong>服务治理</strong>：通过Sentinel实现服务熔断、限流和降级</li>
+                    </ul>
 
-        <div class="section">
-            <h2>数据库架构</h2>
-            <div class="sub-section">
-                <h4>分库策略</h4>
-                <ul>
-                    <li><strong>按省份ID分库</strong>：根据订单所属省份ID进行分库，将不同省份的订单数据存储在不同的数据库实例中，实现数据的地域隔离和负载分散</li>
-                    <li><strong>分库数量</strong>：根据业务量和地域分布，建议设置8-16个数据库实例，每个实例负责1-3个省份的数据</li>
-                    <li><strong>优势</strong>：提高系统可用性，单库故障不影响其他地区业务；便于按地区进行数据备份和恢复</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>分表策略</h4>
-                <h5>订单表（orders）</h5>
-                <ul>
-                    <li><strong>分表依据</strong>：按省份ID分表，与分库策略保持一致</li>
-                    <li><strong>数据量估算</strong>：每个表约有800w数据（计算公式：100000单/天 * 320天/年 * 4年 / 16库 = 800w）</li>
-                    <li><strong>分表数量</strong>：每个数据库实例分4-8个表，根据实际数据量动态调整</li>
-                    <li><strong>索引策略</strong>：订单ID（主键）、用户ID、网点ID、订单时间、订单状态</li>
-                </ul>
-                
-                <h5>2.订单货物详情表（order_goods）</h5>
-                <ul>
-                    <li><strong>分表依据</strong>：与订单表保持一致，按省份ID分表，确保订单和货物在同一数据库实例中</li>
-                    <li><strong>数据量估算</strong>：每个表约有4000w数据（计算公式：800w订单 * 5件货物/订单 = 4000w）</li>
-                    <li><strong>存储内容</strong>：每个订单对应一种类型多个货物的详细信息</li>
-                    <li><strong>索引策略</strong>：货物ID（主键）、订单ID（外键）、货物类型、货物状态</li>
-                </ul>
-                
-                <h5>3. 运单扫描记录表（waybill_scan）</h5>
-                <ul>
-                    <li><strong>分表依据</strong>：按订单时间按月分表，便于数据清理和归档</li>
-                    <li><strong>数据量估算</strong>：每个表约有500w数据（计算公式：100000单/天 * 5次扫描/单 * 30天 = 1500w，考虑扫描记录较多，估算500w）</li>
-                    <li><strong>数据清理</strong>：清除6个月之前的数据，归档到历史数据库或冷存储</li>
-                    <li><strong>索引策略</strong>：扫描ID（主键）、订单ID、扫描时间、扫描状态、扫描网点</li>
-                </ul>
-                
-                <h5>4. 用户订单关联表（user_order）</h5>
-                <ul>
-                    <li><strong>分表依据</strong>：按用户ID分表，确保同一用户的订单记录在同一表中</li>
-                    <li><strong>数据量估算</strong>：每个表约有1000w数据（计算公式：总用户数 * 平均订单数 / 表数量）</li>
-                    <li><strong>存储内容</strong>：记录下单用户、网点信息、订单ID、地区信息和签收用户信息</li>
-                    <li><strong>索引策略</strong>：关联ID（主键）、用户ID、订单ID、下单时间、订单状态</li>
-                </ul>
-                
-                <h5>5. 其他基础表</h5>
-                <ul>
-                    <li><strong>用户表（users）</strong>：存储用户基本信息，按用户ID分表</li>
-                    <li><strong>网点表（branches）</strong>：存储网点基本信息，按省份ID分表</li>
-                    <li><strong>车辆表（vehicles）</strong>：存储车辆基本信息，按网点ID分表</li>
-                    <li><strong>员工表（employees）</strong>：存储员工基本信息，按网点ID分表</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>分表后带来的问题及解决方案</h4>
-                <h5>1. 如何根据订单号定位查询订单详情、货物信息和扫描记录？</h5>
-                <ul>
-                    <li><strong>订单号设计</strong>：采用标准化格式，长度16位，格式为：地区码(2位) + 年份(2位) + 序号(12位)，如YN24000000000001</li>
-                    <li><strong>地区码映射</strong>：建立地区码到数据库实例的映射表，如YN→db_instance_1, SX→db_instance_2</li>
-                    <li><strong>定位流程</strong>：
-                        <ul>
-                            <li>从订单号前2位提取地区码（如YN）</li>
-                            <li>根据地区码映射表确定对应的数据库实例</li>
-                            <li>从订单号解析出年份和序号信息</li>
-                            <li>根据序号计算分表位置（序号 % 表数量）</li>
-                            <li>根据年份和月份确定扫描记录表的分表</li>
-                            <li>在同一数据库实例中查询订单详情、货物信息和扫描记录</li>
-                        </ul>
-                    </li>
-                    <li><strong>性能优化</strong>：使用Redis缓存订单号到数据库实例的映射关系，减少映射表查询</li>
-                </ul>
-                
-                <h5>2. 如何查询某用户或某网点的所有订单记录？</h5>
-                <ul>
-                    <li><strong>解决方案</strong>：
-                        <ul>
-                            <li><strong>多级关联表设计</strong>：
-                                <ul>
-                                    <li>用户订单关联表（user_order_mapping）：按用户ID分表，记录用户ID、订单ID、地区信息、订单时间、订单状态</li>
-                                    <li>网点订单关联表（branch_order_mapping）：按网点ID分表，记录网点ID、订单ID、地区信息、订单时间、订单状态</li>
-                                    <li>订单索引表（order_index）：按时间分表，记录订单基本信息和状态，用于快速查询</li>
-                                </ul>
-                            </li>
-                            <li><strong>分布式查询服务</strong>：
-                                <ul>
-                                    <li>查询路由：根据用户ID或网点ID路由到对应的数据分片</li>
-                                    <li>并行执行器：同时执行多个数据库实例的查询</li>
-                                    <li>结果聚合器：汇总和排序查询结果</li>
-                                </ul>
-                            </li>
-                            <li><strong>智能缓存策略</strong>：
-                                <ul>
-                                    <li>L1缓存：Redis本地缓存，存储热点用户的订单列表</li>
-                                    <li>L2缓存：分布式Redis缓存，存储用户最近的订单记录</li>
-                                    <li>缓存预热：系统启动时预热活跃用户的订单数据</li>
-                                    <li>缓存失效策略：基于时间和访问频率的智能失效</li>
-                                </ul>
-                            </li>
-                        </ul>
-                    </li>
-                    <li><strong>查询流程</strong>：
-                        <ul>
-                            <li><strong>第一步：缓存查询</strong>
-                                <ul>
-                                    <li>查询Redis本地缓存，检查是否存在热点用户的订单列表</li>
-                                    <li>若缓存命中，直接返回缓存结果</li>
-                                </ul>
-                            </li>
-                            <li><strong>第二步：关联表查询</strong>
-                                <ul>
-                                    <li>根据用户ID或网点ID计算分表位置</li>
-                                    <li>查询对应的关联表，获取订单ID和地区信息</li>
-                                    <li>应用时间范围、订单状态等过滤条件</li>
-                                </ul>
-                            </li>
-                            <li><strong>第三步：分布式查询</strong>
-                                <ul>
-                                    <li>根据地区信息分组，确定需要查询的数据库实例</li>
-                                    <li>使用线程池并行查询多个数据库实例</li>
-                                    <li>每个查询使用主从负载均衡，优先选择从库</li>
-                                </ul>
-                            </li>
-                            <li><strong>第四步：结果处理</strong>
-                                <ul>
-                                    <li>汇总来自不同数据库实例的查询结果</li>
-                                    <li>按时间戳排序，支持正序和倒序</li>
-                                    <li>应用分页逻辑，返回指定页的数据</li>
-                                    <li>将结果缓存到Redis，设置合理的过期时间</li>
-                                </ul>
-                            </li>
-                        </ul>
-                    </li>
-                    <li><strong>高级优化策略</strong>：
-                        <ul>
-                            <li><strong>ElasticSearch集成</strong>：
-                                <ul>
-                                    <li>实时同步订单数据到ElasticSearch</li>
-                                    <li>支持全文检索、模糊查询、范围查询等复杂条件</li>
-                                    <li>提供聚合分析功能，如按时间、地区、状态统计</li>
-                                    <li>使用ES作为复杂查询的主数据源，数据库作为详细信息来源</li>
-                                </ul>
-                            </li>
-                            <li><strong>数据分片优化</strong>：
-                                <ul>
-                                    <li>用户订单关联表：按用户ID范围分片，每100万用户一个分片</li>
-                                    <li>网点订单关联表：按网点ID范围分片，每1000个网点一个分片</li>
-                                    <li>使用一致性哈希算法，支持动态扩缩容</li>
-                                </ul>
-                            </li>
-                            <li><strong>读写分离增强</strong>：
-                                <ul>
-                                    <li>写操作：路由到主库</li>
-                                    <li>读操作：智能路由到负载较低的从库</li>
-                                    <li>延迟敏感查询：使用主库</li>
-                                    <li>批量查询：使用从库</li>
-                                </ul>
-                            </li>
-                            <li><strong>监控与告警</strong>：
-                                <ul>
-                                    <li>监控查询响应时间、QPS、错误率等指标</li>
-                                    <li>设置阈值告警，当查询时间超过阈值时及时通知</li>
-                                    <li>慢查询日志分析，定期优化查询语句</li>
-                                    <li>缓存命中率监控，及时调整缓存策略</li>
-                                </ul>
-                            </li>
-                            <li><strong>降级策略</strong>：
-                                <ul>
-                                    <li>当ElasticSearch不可用时，降级为直接查询数据库</li>
-                                    <li>当缓存失效时，使用异步加载策略，避免阻塞主线程</li>
-                                    <li>当数据库负载过高时，启用限流和排队机制</li>
-                                </ul>
-                            </li>
-                        </ul>
-                    </li>
-                    <li><strong>扩展性考虑</strong>：
-                        <ul>
-                            <li>支持水平扩展：当数据量增长时，可以添加更多的数据库实例</li>
-                            <li>支持垂直扩展：当单实例性能不足时，可以升级硬件配置</li>
-                            <li>支持跨区域部署：可以在不同区域部署数据库实例，提高访问速度</li>
-                            <li>支持多租户：可以为不同的客户或业务线提供独立的数据分片</li>
-                        </ul>
-                    </li>
-                </ul>
-                
-                <h5>3. 跨库事务处理</h5>
-                <ul>
-                    <li><strong>问题</strong>：分库后，单个业务可能涉及多个数据库实例，传统事务无法满足需求</li>
-                    <li><strong>解决方案</strong>：
-                        <ul>
-                            <li>使用分布式事务框架（如Seata）保证数据一致性</li>
-                            <li>采用最终一致性方案，通过消息队列实现异步数据同步</li>
-                            <li>将业务逻辑设计为幂等性，支持重试机制</li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>数据库优化策略</h4>
-                <h5>1. 读写分离</h5>
-                <ul>
-                    <li><strong>主从架构</strong>：每个数据库实例配置1主2从，主库负责写操作，从库负责读操作</li>
-                    <li><strong>负载均衡</strong>：使用中间件（如ShardingSphere、MyCat）实现读写分离和负载均衡</li>
-                    <li><strong>数据同步</strong>：主从复制采用半同步模式，确保数据一致性</li>
-                </ul>
-                
-                <h5>2. 缓存策略</h5>
-                <ul>
-                    <li><strong>热点数据缓存</strong>：使用Redis缓存热点订单、用户信息、网点信息等</li>
-                    <li><strong>缓存穿透防护</strong>：使用布隆过滤器防止缓存穿透</li>
-                    <li><strong>缓存雪崩防护</strong>：设置不同的过期时间，避免同时失效</li>
-                    <li><strong>缓存更新策略</strong>：采用Cache-Aside模式，写操作先更新数据库再删除缓存</li>
-                </ul>
-                
-                <h5>3. 索引优化</h5>
-                <ul>
-                    <li><strong>联合索引</strong>：根据查询频率和选择性，合理设计联合索引</li>
-                    <li><strong>索引覆盖</strong>：尽量使用索引覆盖查询，避免回表</li>
-                    <li><strong>索引监控</strong>：定期监控索引使用情况，删除无用索引</li>
-                </ul>
-            </div>
-            <div class="sub-section">
-                <h4>运维与容灾</h4>
-                <h5>1. 数据迁移与扩容</h5>
-                <ul>
-                    <li><strong>平滑扩容</strong>：采用双写方案，新数据同时写入新旧表，历史数据异步迁移</li>
-                    <li><strong>数据校验</strong>：迁移完成后进行数据一致性校验，确保数据无误</li>
-                    <li><strong>灰度切换</strong>：逐步将流量切换到新表，出现问题可快速回滚</li>
-                </ul>
-                
-                <h5>2. 备份与恢复</h5>
-                <ul>
-                    <li><strong>全量备份</strong>：每周进行一次全量备份，存储到异地备份中心</li>
-                    <li><strong>增量备份</strong>：每天进行增量备份，减少备份时间和存储空间</li>
-                    <li><strong>恢复演练</strong>：定期进行恢复演练，验证备份的有效性</li>
-                </ul>
-                
-                <h5>3. 监控与告警</h5>
-                <ul>
-                    <li><strong>性能监控</strong>：监控数据库QPS、响应时间、慢查询等指标</li>
-                    <li><strong>容量监控</strong>：监控磁盘使用率、表数据量，提前预警扩容需求</li>
-                    <li><strong>异常告警</strong>：设置告警阈值，及时发现和处理异常情况</li>
-                </ul>
-            </div>
-        </div>
+                    <h5>5. 核心服务介绍</h5>
+                    <ul>
+                        <li><strong>订单服务（Order Service）</strong>：
+                            <ul>
+                                <li>订单创建、修改、取消等全生命周期管理</li>
+                                <li>订单状态流转和通知</li>
+                                <li>订单数据分库分表处理</li>
+                            </ul>
+                        </li>
+                        <li><strong>客户端服务（Client Service）</strong>：
+                            <ul>
+                                <li>用户注册、登录、认证授权</li>
+                                <li>用户信息管理和积分管理</li>
+                                <li>收货地址管理</li>
+                            </ul>
+                        </li>
+                        <li><strong>运输服务（Transport Service）</strong>：
+                            <ul>
+                                <li>运输路线规划和调度</li>
+                                <li>车辆和司机管理</li>
+                                <li>运输过程跟踪和监控</li>
+                            </ul>
+                        </li>
+                        <li><strong>网点服务（Branch Service）</strong>：
+                            <ul>
+                                <li>网点信息管理和查询</li>
+                                <li>网点能力评估（到货、派送能力）</li>
+                                <li>网点库存和出入库管理</li>
+                            </ul>
+                        </li>
+                        <li><strong>检索服务（Search Service）</strong>：
+                            <ul>
+                                <li>基于ElasticSearch的全文检索</li>
+                                <li>订单、货物、网点等多维度搜索</li>
+                                <li>GIS地理位置检索和路线规划</li>
+                                <li>实时索引更新和缓存优化</li>
+                            </ul>
+                        </li>
+                        <li><strong>TMS服务（TMS Service）</strong>：
+                            <ul>
+                                <li>TMS核心业务逻辑处理</li>
+                                <li>分拣、装卸、发车等业务流程管理</li>
+                                <li>考核、绩效、运单等核心功能</li>
+                                <li>与其他服务的业务协调和数据同步</li>
+                            </ul>
+                        </li>
+                    </ul>
 
-        <div class="section">
-            <h2>定时任务</h2>
-            <div class="architecture-diagram">
-                <div class="layer">
-                    <div class="layer-title">订单超时处理</div>
-                    <div class="layer-content">
-                        <div class="module">订单超时检测</div>
-                        <div class="module">自动取消</div>
-                        <div class="module">通知用户</div>
-                    </div>
-                </div>
-                <div class="arrow">↓</div>
-                <div class="layer">
-                    <div class="layer-title">运输调度</div>
-                    <div class="layer-content">
-                        <div class="module">路线优化</div>
-                        <div class="module">车辆分配</div>
-                        <div class="module">发车计划</div>
-                    </div>
-                </div>
-                <div class="arrow">↓</div>
-                <div class="layer">
-                    <div class="layer-title">数据统计</div>
-                    <div class="layer-content">
-                        <div class="module">日/周/月报表</div>
-                        <div class="module">KPI指标计算</div>
-                        <div class="module">异常数据检测</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+                    <h5>6. 存储层</h5>
+                    <ul>
+                        <li><strong>Redis集群</strong>：部署6节点哨兵模式，3主3从，提供高性能缓存</li>
+                        <li><strong>MySQL主从</strong>：16库主从复制架构，每个库1主2从，实现读写分离</li>
+                        <li><strong>数据库分片</strong>：根据业务需求实现水平分片，提高存储容量和性能</li>
+                        <li><strong>数据备份</strong>：定期全量备份和增量备份，保障数据安全</li>
+                    </ul>
 
-        <div class="section">
-            <h2>检索任务</h2>
-            <div class="architecture-diagram">
-                <div class="layer">
-                    <div class="layer-title">数据索引</div>
-                    <div class="layer-content">
-                        <div class="module">订单数据索引</div>
-                        <div class="module">网点数据索引</div>
-                        <div class="module">货物数据索引</div>
-                    </div>
-                </div>
-                <div class="arrow">↓</div>
-                <div class="layer">
-                    <div class="layer-title">检索服务</div>
-                    <div class="layer-content">
-                        <div class="module">全文检索</div>
-                        <div class="module">地理位置检索</div>
-                        <div class="module">多维度过滤</div>
-                    </div>
-                </div>
-                <div class="arrow">↓</div>
-                <div class="layer">
-                    <div class="layer-title">结果处理</div>
-                    <div class="layer-content">
-                        <div class="module">结果排序</div>
-                        <div class="module">聚合分析</div>
-                        <div class="module">缓存结果</div>
-                    </div>
+                    <h5>7. 运维监控</h5>
+                    <ul>
+                        <li><strong>Prometheus监控</strong>：实时监控系统各项指标</li>
+                        <li><strong>Grafana可视化</strong>：直观展示系统运行状态</li>
+                        <li><strong>ELK日志系统</strong>：集中式日志收集和分析</li>
+                        <li><strong>自动化部署</strong>：基于Jenkins的CI/CD流程</li>
+                    </ul>
                 </div>
             </div>
-        </div>
 
-        <div class="section">
-            <h2>技术栈</h2>
-            <div class="tech-stack">
-                <div class="tech-item">
-                    <h4>前端技术</h4>
-                    <p>Vue3 + TypeScript + Vite + Element Plus</p>
+            <div class="section">
+                <h2>客户端架构</h2>
+                <div class="architecture-diagram">
+                    <div class="layer">
+                        <div class="layer-title">多端支持</div>
+                        <div class="layer-content">
+                            <div class="module">APP端</div>
+                            <div class="module">PC端</div>
+                            <div class="module">小程序端</div>
+                        </div>
+                    </div>
+                    <div class="arrow">↓</div>
+                    <div class="layer">
+                        <div class="layer-title">核心功能</div>
+                        <div class="layer-content">
+                            <div class="module">下单功能</div>
+                            <div class="module">订单查询</div>
+                            <div class="module">网点搜索</div>
+                            <div class="module">网点能力查询（可到货、可派送）</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="tech-item">
-                    <h4>后端技术</h4>
-                    <p>Spring Boot + Spring Cloud + MyBatis Plus</p>
+            </div>
+
+            <div class="section">
+                <h2>订单系统</h2>
+                <div class="sub-section">
+                    <h4>订单管理</h4>
+                    <ul>
+                        <li><strong>订单提取</strong>：从队列中提取待处理订单，分配给相应网点或运输员</li>
+                        <li><strong>订单修改</strong>：支持订单信息修改，包括收货人、地址、货物信息等</li>
+                        <li><strong>运费计算</strong>：根据距离、重量、体积等自动计算运费</li>
+                        <li><strong>服务费管理</strong>：支持增值服务费用，如保价费、加急费等</li>
+                        <li><strong>支付管理</strong>：支持在线支付、货到付款、月结等多种支付方式</li>
+                    </ul>
                 </div>
-                <div class="tech-item">
-                    <h4>数据库</h4>
-                    <p>MySQL + Redis + ElasticSearch</p>
+                <div class="sub-section">
+                    <h4>积分与优惠</h4>
+                    <ul>
+                        <li><strong>积分扣除</strong>：下单时可使用积分抵扣运费，积分实时扣除</li>
+                        <li><strong>网点折扣</strong>：支持网点折扣策略，不同网点可设置不同折扣率</li>
+                        <li><strong>修改通知</strong>：订单状态变更时自动通知用户，包括短信、APP推送等</li>
+                    </ul>
                 </div>
-                <div class="tech-item">
-                    <h4>部署</h4>
-                    <p>Docker + Kubernetes + Nginx</p>
+            </div>
+
+            <div class="section">
+                <h2>TMS核心系统</h2>
+                <div class="sub-section">
+                    <h4>运输管理</h4>
+                    <ul>
+                        <li><strong>运输调度</strong>：智能分配运输任务，优化运输路线</li>
+                        <li><strong>运输跟踪</strong>：实时跟踪运输车辆位置和货物状态</li>
+                        <li><strong>运输监控</strong>：监控运输过程中的异常情况，及时预警</li>
+                    </ul>
                 </div>
-                <div class="tech-item">
-                    <h4>安全</h4>
-                    <p>Spring Security + JWT + OAuth2</p>
+                <div class="sub-section">
+                    <h4>考核管理</h4>
+                    <ul>
+                        <li><strong>绩效考核</strong>：对运输员、派送员进行绩效评估</li>
+                        <li><strong>考核指标</strong>：包括准时率、完好率、客户满意度等</li>
+                        <li><strong>考核报表</strong>：生成考核报表，支持多维度分析</li>
+                    </ul>
                 </div>
-                <div class="tech-item">
-                    <h4>监控</h4>
-                    <p>Prometheus + Grafana + ELK</p>
+                <div class="sub-section">
+                    <h4>货箱管理</h4>
+                    <ul>
+                        <li><strong>货箱创建</strong>：创建货箱，绑定货物信息</li>
+                        <li><strong>货箱跟踪</strong>：跟踪货箱流转状态</li>
+                        <li><strong>货箱盘点</strong>：定期盘点货箱库存</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>转运管理</h4>
+                    <ul>
+                        <li><strong>转运调度</strong>：安排货物在网点间的转运</li>
+                        <li><strong>转运跟踪</strong>：跟踪转运进度和状态</li>
+                        <li><strong>转运确认</strong>：确认货物到达转运网点</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>订单运营</h4>
+                    <ul>
+                        <li><strong>订单分配</strong>：将订单分配给合适的运输员或派送员</li>
+                        <li><strong>订单监控</strong>：监控订单处理进度</li>
+                        <li><strong>异常处理</strong>：处理订单异常情况</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>车辆管理</h4>
+                    <ul>
+                        <li><strong>车辆信息</strong>：管理车辆基本信息、证件、保险等</li>
+                        <li><strong>车辆调度</strong>：安排车辆执行运输任务</li>
+                        <li><strong>车辆维护</strong>：记录车辆维护、保养信息</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>绩效管理</h4>
+                    <ul>
+                        <li><strong>绩效统计</strong>：统计员工工作量和效率</li>
+                        <li><strong>绩效排名</strong>：生成员工绩效排名</li>
+                        <li><strong>绩效奖励</strong>：根据绩效发放奖励</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>装卸管理</h4>
+                    <ul>
+                        <li><strong>装卸计划</strong>：制定装卸作业计划</li>
+                        <li><strong>装卸记录</strong>：记录装卸作业情况</li>
+                        <li><strong>装卸确认</strong>：确认装卸完成</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>分拨管理</h4>
+                    <ul>
+                        <li><strong>分拨调度</strong>：安排货物分拨到不同网点</li>
+                        <li><strong>分拨跟踪</strong>：跟踪分拨进度</li>
+                        <li><strong>分拨确认</strong>：确认分拨完成</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>扫描管理</h4>
+                    <ul>
+                        <li><strong>入库扫描</strong>：扫描货物入库</li>
+                        <li><strong>出库扫描</strong>：扫描货物出库</li>
+                        <li><strong>转运扫描</strong>：扫描货物转运</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>运单管理</h4>
+                    <ul>
+                        <li><strong>运单生成</strong>：自动生成运单</li>
+                        <li><strong>运单打印</strong>：支持运单打印</li>
+                        <li><strong>运单查询</strong>：查询运单信息</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>到货管理</h4>
+                    <ul>
+                        <li><strong>到货登记</strong>：登记货物到达网点</li>
+                        <li><strong>到货确认</strong>：确认货物到货</li>
+                        <li><strong>到货通知</strong>：通知相关人员到货</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>发车管理</h4>
+                    <ul>
+                        <li><strong>发车计划</strong>：制定发车计划</li>
+                        <li><strong>发车确认</strong>：确认车辆发车</li>
+                        <li><strong>发车跟踪</strong>：跟踪发车状态</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>入库记录</h4>
+                    <ul>
+                        <li><strong>入库登记</strong>：登记货物入库</li>
+                        <li><strong>入库确认</strong>：确认入库完成</li>
+                        <li><strong>入库统计</strong>：统计入库数据</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>数据库架构</h2>
+                <div class="sub-section">
+                    <h4>分库策略</h4>
+                    <ul>
+                        <li><strong>按省份ID分库</strong>：根据订单所属省份ID进行分库，将不同省份的订单数据存储在不同的数据库实例中，实现数据的地域隔离和负载分散</li>
+                        <li><strong>分库数量</strong>：根据业务量和地域分布，建议设置8-16个数据库实例，每个实例负责1-3个省份的数据</li>
+                        <li><strong>优势</strong>：提高系统可用性，单库故障不影响其他地区业务；便于按地区进行数据备份和恢复</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>分表策略</h4>
+                    <h5>订单表（orders）</h5>
+                    <ul>
+                        <li><strong>分表依据</strong>：按省份ID分表，与分库策略保持一致</li>
+                        <li><strong>数据量估算</strong>：每个表约有800w数据（计算公式：100000单/天 * 320天/年 * 4年 / 16库 = 800w）</li>
+                        <li><strong>分表数量</strong>：每个数据库实例分4-8个表，根据实际数据量动态调整</li>
+                        <li><strong>索引策略</strong>：订单ID（主键）、用户ID、网点ID、订单时间、订单状态</li>
+                    </ul>
+
+                    <h5>2.订单货物详情表（order_goods）</h5>
+                    <ul>
+                        <li><strong>分表依据</strong>：与订单表保持一致，按省份ID分表，确保订单和货物在同一数据库实例中</li>
+                        <li><strong>数据量估算</strong>：每个表约有4000w数据（计算公式：800w订单 * 5件货物/订单 = 4000w）</li>
+                        <li><strong>存储内容</strong>：每个订单对应一种类型多个货物的详细信息</li>
+                        <li><strong>索引策略</strong>：货物ID（主键）、订单ID（外键）、货物类型、货物状态</li>
+                    </ul>
+
+                    <h5>3. 运单扫描记录表（waybill_scan）</h5>
+                    <ul>
+                        <li><strong>分表依据</strong>：按订单时间按月分表，便于数据清理和归档</li>
+                        <li><strong>数据量估算</strong>：每个表约有500w数据（计算公式：100000单/天 * 5次扫描/单 * 30天 = 1500w，考虑扫描记录较多，估算500w）
+                        </li>
+                        <li><strong>数据清理</strong>：清除6个月之前的数据，归档到历史数据库或冷存储</li>
+                        <li><strong>索引策略</strong>：扫描ID（主键）、订单ID、扫描时间、扫描状态、扫描网点</li>
+                    </ul>
+
+                    <h5>4. 用户订单关联表（user_order）</h5>
+                    <ul>
+                        <li><strong>分表依据</strong>：按用户ID分表，确保同一用户的订单记录在同一表中</li>
+                        <li><strong>数据量估算</strong>：每个表约有1000w数据（计算公式：总用户数 * 平均订单数 / 表数量）</li>
+                        <li><strong>存储内容</strong>：记录下单用户、网点信息、订单ID、地区信息和签收用户信息</li>
+                        <li><strong>索引策略</strong>：关联ID（主键）、用户ID、订单ID、下单时间、订单状态</li>
+                    </ul>
+
+                    <h5>5. 其他基础表</h5>
+                    <ul>
+                        <li><strong>用户表（users）</strong>：存储用户基本信息，按用户ID分表</li>
+                        <li><strong>网点表（branches）</strong>：存储网点基本信息，按省份ID分表</li>
+                        <li><strong>车辆表（vehicles）</strong>：存储车辆基本信息，按网点ID分表</li>
+                        <li><strong>员工表（employees）</strong>：存储员工基本信息，按网点ID分表</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>分表后带来的问题及解决方案</h4>
+                    <h5>1. 如何根据订单号定位查询订单详情、货物信息和扫描记录？</h5>
+                    <ul>
+                        <li><strong>订单号设计</strong>：采用标准化格式，长度16位，格式为：地区码(2位) + 年份(2位) + 序号(12位)，如YN24000000000001</li>
+                        <li><strong>地区码映射</strong>：建立地区码到数据库实例的映射表，如YN→db_instance_1, SX→db_instance_2</li>
+                        <li><strong>定位流程</strong>：
+                            <ul>
+                                <li>从订单号前2位提取地区码（如YN）</li>
+                                <li>根据地区码映射表确定对应的数据库实例</li>
+                                <li>从订单号解析出年份和序号信息</li>
+                                <li>根据序号计算分表位置（序号 % 表数量）</li>
+                                <li>根据年份和月份确定扫描记录表的分表</li>
+                                <li>在同一数据库实例中查询订单详情、货物信息和扫描记录</li>
+                            </ul>
+                        </li>
+                        <li><strong>性能优化</strong>：使用Redis缓存订单号到数据库实例的映射关系，减少映射表查询</li>
+                    </ul>
+
+                    <h5>2. 如何查询某用户或某网点的所有订单记录？</h5>
+                    <ul>
+                        <li><strong>解决方案</strong>：
+                            <ul>
+                                <li><strong>多级关联表设计</strong>：
+                                    <ul>
+                                        <li>用户订单关联表（user_order_mapping）：按用户ID分表，记录用户ID、订单ID、地区信息、订单时间、订单状态</li>
+                                        <li>网点订单关联表（branch_order_mapping）：按网点ID分表，记录网点ID、订单ID、地区信息、订单时间、订单状态</li>
+                                        <li>订单索引表（order_index）：按时间分表，记录订单基本信息和状态，用于快速查询</li>
+                                    </ul>
+                                </li>
+                                <li><strong>分布式查询服务</strong>：
+                                    <ul>
+                                        <li>查询路由：根据用户ID或网点ID路由到对应的数据分片</li>
+                                        <li>并行执行器：同时执行多个数据库实例的查询</li>
+                                        <li>结果聚合器：汇总和排序查询结果</li>
+                                    </ul>
+                                </li>
+                                <li><strong>智能缓存策略</strong>：
+                                    <ul>
+                                        <li>L1缓存：Redis本地缓存，存储热点用户的订单列表</li>
+                                        <li>L2缓存：分布式Redis缓存，存储用户最近的订单记录</li>
+                                        <li>缓存预热：系统启动时预热活跃用户的订单数据</li>
+                                        <li>缓存失效策略：基于时间和访问频率的智能失效</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </li>
+                        <li><strong>查询流程</strong>：
+                            <ul>
+                                <li><strong>第一步：缓存查询</strong>
+                                    <ul>
+                                        <li>查询Redis本地缓存，检查是否存在热点用户的订单列表</li>
+                                        <li>若缓存命中，直接返回缓存结果</li>
+                                    </ul>
+                                </li>
+                                <li><strong>第二步：关联表查询</strong>
+                                    <ul>
+                                        <li>根据用户ID或网点ID计算分表位置</li>
+                                        <li>查询对应的关联表，获取订单ID和地区信息</li>
+                                        <li>应用时间范围、订单状态等过滤条件</li>
+                                    </ul>
+                                </li>
+                                <li><strong>第三步：分布式查询</strong>
+                                    <ul>
+                                        <li>根据地区信息分组，确定需要查询的数据库实例</li>
+                                        <li>使用线程池并行查询多个数据库实例</li>
+                                        <li>每个查询使用主从负载均衡，优先选择从库</li>
+                                    </ul>
+                                </li>
+                                <li><strong>第四步：结果处理</strong>
+                                    <ul>
+                                        <li>汇总来自不同数据库实例的查询结果</li>
+                                        <li>按时间戳排序，支持正序和倒序</li>
+                                        <li>应用分页逻辑，返回指定页的数据</li>
+                                        <li>将结果缓存到Redis，设置合理的过期时间</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </li>
+                        <li><strong>高级优化策略</strong>：
+                            <ul>
+                                <li><strong>ElasticSearch集成</strong>：
+                                    <ul>
+                                        <li>实时同步订单数据到ElasticSearch</li>
+                                        <li>支持全文检索、模糊查询、范围查询等复杂条件</li>
+                                        <li>提供聚合分析功能，如按时间、地区、状态统计</li>
+                                        <li>使用ES作为复杂查询的主数据源，数据库作为详细信息来源</li>
+                                    </ul>
+                                </li>
+                                <li><strong>数据分片优化</strong>：
+                                    <ul>
+                                        <li>用户订单关联表：按用户ID范围分片，每100万用户一个分片</li>
+                                        <li>网点订单关联表：按网点ID范围分片，每1000个网点一个分片</li>
+                                        <li>使用一致性哈希算法，支持动态扩缩容</li>
+                                    </ul>
+                                </li>
+                                <li><strong>读写分离增强</strong>：
+                                    <ul>
+                                        <li>写操作：路由到主库</li>
+                                        <li>读操作：智能路由到负载较低的从库</li>
+                                        <li>延迟敏感查询：使用主库</li>
+                                        <li>批量查询：使用从库</li>
+                                    </ul>
+                                </li>
+                                <li><strong>监控与告警</strong>：
+                                    <ul>
+                                        <li>监控查询响应时间、QPS、错误率等指标</li>
+                                        <li>设置阈值告警，当查询时间超过阈值时及时通知</li>
+                                        <li>慢查询日志分析，定期优化查询语句</li>
+                                        <li>缓存命中率监控，及时调整缓存策略</li>
+                                    </ul>
+                                </li>
+                                <li><strong>降级策略</strong>：
+                                    <ul>
+                                        <li>当ElasticSearch不可用时，降级为直接查询数据库</li>
+                                        <li>当缓存失效时，使用异步加载策略，避免阻塞主线程</li>
+                                        <li>当数据库负载过高时，启用限流和排队机制</li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </li>
+                        <li><strong>扩展性考虑</strong>：
+                            <ul>
+                                <li>支持水平扩展：当数据量增长时，可以添加更多的数据库实例</li>
+                                <li>支持垂直扩展：当单实例性能不足时，可以升级硬件配置</li>
+                                <li>支持跨区域部署：可以在不同区域部署数据库实例，提高访问速度</li>
+                                <li>支持多租户：可以为不同的客户或业务线提供独立的数据分片</li>
+                            </ul>
+                        </li>
+                    </ul>
+
+                    <h5>3. 跨库事务处理</h5>
+                    <ul>
+                        <li><strong>问题</strong>：分库后，单个业务可能涉及多个数据库实例，传统事务无法满足需求</li>
+                        <li><strong>解决方案</strong>：
+                            <ul>
+                                <li>使用分布式事务框架（如Seata）保证数据一致性</li>
+                                <li>采用最终一致性方案，通过消息队列实现异步数据同步</li>
+                                <li>将业务逻辑设计为幂等性，支持重试机制</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>数据库优化策略</h4>
+                    <h5>1. 读写分离</h5>
+                    <ul>
+                        <li><strong>主从架构</strong>：每个数据库实例配置1主2从，主库负责写操作，从库负责读操作</li>
+                        <li><strong>负载均衡</strong>：使用中间件（如ShardingSphere、MyCat）实现读写分离和负载均衡</li>
+                        <li><strong>数据同步</strong>：主从复制采用半同步模式，确保数据一致性</li>
+                    </ul>
+
+                    <h5>2. 缓存策略</h5>
+                    <ul>
+                        <li><strong>热点数据缓存</strong>：使用Redis缓存热点订单、用户信息、网点信息等</li>
+                        <li><strong>缓存穿透防护</strong>：使用布隆过滤器防止缓存穿透</li>
+                        <li><strong>缓存雪崩防护</strong>：设置不同的过期时间，避免同时失效</li>
+                        <li><strong>缓存更新策略</strong>：采用Cache-Aside模式，写操作先更新数据库再删除缓存</li>
+                    </ul>
+
+                    <h5>3. 索引优化</h5>
+                    <ul>
+                        <li><strong>联合索引</strong>：根据查询频率和选择性，合理设计联合索引</li>
+                        <li><strong>索引覆盖</strong>：尽量使用索引覆盖查询，避免回表</li>
+                        <li><strong>索引监控</strong>：定期监控索引使用情况，删除无用索引</li>
+                    </ul>
+                </div>
+                <div class="sub-section">
+                    <h4>运维与容灾</h4>
+                    <h5>1. 数据迁移与扩容</h5>
+                    <ul>
+                        <li><strong>平滑扩容</strong>：采用双写方案，新数据同时写入新旧表，历史数据异步迁移</li>
+                        <li><strong>数据校验</strong>：迁移完成后进行数据一致性校验，确保数据无误</li>
+                        <li><strong>灰度切换</strong>：逐步将流量切换到新表，出现问题可快速回滚</li>
+                    </ul>
+
+                    <h5>2. 备份与恢复</h5>
+                    <ul>
+                        <li><strong>全量备份</strong>：每周进行一次全量备份，存储到异地备份中心</li>
+                        <li><strong>增量备份</strong>：每天进行增量备份，减少备份时间和存储空间</li>
+                        <li><strong>恢复演练</strong>：定期进行恢复演练，验证备份的有效性</li>
+                    </ul>
+
+                    <h5>3. 监控与告警</h5>
+                    <ul>
+                        <li><strong>性能监控</strong>：监控数据库QPS、响应时间、慢查询等指标</li>
+                        <li><strong>容量监控</strong>：监控磁盘使用率、表数据量，提前预警扩容需求</li>
+                        <li><strong>异常告警</strong>：设置告警阈值，及时发现和处理异常情况</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>定时任务</h2>
+                <div class="architecture-diagram">
+                    <div class="layer">
+                        <div class="layer-title">订单超时处理</div>
+                        <div class="layer-content">
+                            <div class="module">订单超时检测</div>
+                            <div class="module">自动取消</div>
+                            <div class="module">通知用户</div>
+                        </div>
+                    </div>
+                    <div class="arrow">↓</div>
+                    <div class="layer">
+                        <div class="layer-title">运输调度</div>
+                        <div class="layer-content">
+                            <div class="module">路线优化</div>
+                            <div class="module">车辆分配</div>
+                            <div class="module">发车计划</div>
+                        </div>
+                    </div>
+                    <div class="arrow">↓</div>
+                    <div class="layer">
+                        <div class="layer-title">数据统计</div>
+                        <div class="layer-content">
+                            <div class="module">日/周/月报表</div>
+                            <div class="module">KPI指标计算</div>
+                            <div class="module">异常数据检测</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>检索任务</h2>
+                <div class="architecture-diagram">
+                    <div class="layer">
+                        <div class="layer-title">数据索引</div>
+                        <div class="layer-content">
+                            <div class="module">订单数据索引</div>
+                            <div class="module">网点数据索引</div>
+                            <div class="module">货物数据索引</div>
+                        </div>
+                    </div>
+                    <div class="arrow">↓</div>
+                    <div class="layer">
+                        <div class="layer-title">检索服务</div>
+                        <div class="layer-content">
+                            <div class="module">全文检索</div>
+                            <div class="module">地理位置检索</div>
+                            <div class="module">多维度过滤</div>
+                        </div>
+                    </div>
+                    <div class="arrow">↓</div>
+                    <div class="layer">
+                        <div class="layer-title">结果处理</div>
+                        <div class="layer-content">
+                            <div class="module">结果排序</div>
+                            <div class="module">聚合分析</div>
+                            <div class="module">缓存结果</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>技术栈</h2>
+                <div class="tech-stack">
+                    <div class="tech-item">
+                        <h4>前端技术</h4>
+                        <p>Vue3 + TypeScript + Vite + Element Plus</p>
+                    </div>
+                    <div class="tech-item">
+                        <h4>后端技术</h4>
+                        <p>Spring Boot + Spring Cloud + MyBatis Plus</p>
+                    </div>
+                    <div class="tech-item">
+                        <h4>数据库</h4>
+                        <p>MySQL + Redis + ElasticSearch</p>
+                    </div>
+                    <div class="tech-item">
+                        <h4>部署</h4>
+                        <p>Docker + Kubernetes + Nginx</p>
+                    </div>
+                    <div class="tech-item">
+                        <h4>安全</h4>
+                        <p>Spring Security + JWT + OAuth2</p>
+                    </div>
+                    <div class="tech-item">
+                        <h4>监控</h4>
+                        <p>Prometheus + Grafana + ELK</p>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 </body>
+
 </html>

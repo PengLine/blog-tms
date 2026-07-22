@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>派送区域 - TMS运输管理系统</title>
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <style>
         /* 基础样式重置 */
         * {
@@ -255,6 +258,7 @@
         }
     </style>
 </head>
+
 <body>
     <!-- 主界面 -->
     <div id="main-container">
@@ -290,7 +294,7 @@
             <section class="content">
                 <h2>派送区域</h2>
                 <p>今天是：<span id="current-date"></span></p>
-                
+
                 <!-- 地图展示 -->
                 <div class="card">
                     <h3>区域围栏</h3>
@@ -315,7 +319,8 @@
         </main>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="common.js"></script>
     <script>
         // 全局变量
@@ -343,7 +348,7 @@
 
             // 初始化地图
             initMap();
-            
+
             // 加载区域数据
             loadAreaData();
         });
@@ -363,13 +368,13 @@
         function loadAreaData() {
             // 初始化区域数据
             initializeAreaData();
-            
+
             // 从本地存储获取区域数据
             const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
-            
+
             // 显示区域列表
             displayAreaList(areas);
-            
+
             // 在地图上显示区域
             displayAreasOnMap(areas);
         }
@@ -422,7 +427,7 @@
                         notes: '主要覆盖三里屯商圈、工人体育场等区域'
                     }
                 ];
-                
+
                 localStorage.setItem('deliverymanAreas', JSON.stringify(defaultAreas));
             }
         }
@@ -430,7 +435,7 @@
         // 显示区域列表
         function displayAreaList(areas) {
             const areaList = document.getElementById('area-list');
-            
+
             areaList.innerHTML = areas.map(area => `
                 <div class="area-item" data-id="${area.id}">
                     <h4>${area.name}</h4>
@@ -463,7 +468,7 @@
                     fillOpacity: 0.5,
                     weight: 2
                 }).addTo(map);
-                
+
                 // 添加弹出信息
                 polygon.bindPopup(`
                     <div>
@@ -473,10 +478,10 @@
                         <p><strong>地址：</strong>${area.address}</p>
                     </div>
                 `);
-                
+
                 // 添加到图层数组
                 areaLayers.push(polygon);
-                
+
                 // 添加标签
                 if (showLabels) {
                     const center = getPolygonCenter(area.coordinates);
@@ -497,12 +502,12 @@
         function getPolygonCenter(coordinates) {
             let latSum = 0;
             let lngSum = 0;
-            
+
             coordinates.forEach(coord => {
                 latSum += coord[0];
                 lngSum += coord[1];
             });
-            
+
             return [latSum / coordinates.length, lngSum / coordinates.length];
         }
 
@@ -510,7 +515,7 @@
         function zoomToArea(areaId) {
             const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
             const area = areas.find(a => a.id === areaId);
-            
+
             if (area) {
                 const polygon = L.polygon(area.coordinates);
                 map.fitBounds(polygon.getBounds(), { padding: [50, 50] });
@@ -520,15 +525,15 @@
         // 缩放到所有区域
         function zoomToAllAreas() {
             const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
-            
+
             if (areas.length > 0) {
                 const bounds = L.latLngBounds();
-                
+
                 areas.forEach(area => {
                     const polygon = L.polygon(area.coordinates);
                     bounds.extend(polygon.getBounds());
                 });
-                
+
                 map.fitBounds(bounds, { padding: [50, 50] });
             }
         }
@@ -541,7 +546,7 @@
         // 切换区域标签显示
         function toggleAreaLabels() {
             showLabels = !showLabels;
-            
+
             // 重新加载区域
             const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
             displayAreasOnMap(areas);
@@ -551,11 +556,12 @@
         function showAreaDetails(areaId) {
             const areas = JSON.parse(localStorage.getItem('deliverymanAreas')) || [];
             const area = areas.find(a => a.id === areaId);
-            
+
             if (area) {
                 alert(`区域详情：\n名称：${area.name}\n类型：${area.type}\n任务数：${area.taskCount} 个\n地址：${area.address}\n备注：${area.notes}`);
             }
         }
     </script>
 </body>
+
 </html>
