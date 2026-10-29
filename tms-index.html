@@ -218,7 +218,76 @@
                 font-size: 1.2rem;
             }
         }
+
+        /* 运营总览专用 */
+        .dash-list {
+            display: flex;
+            flex-direction: column;
+            gap: .6rem;
+        }
+
+        .dash-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: .75rem;
+            padding: .7rem .8rem;
+            border: 1px solid #eef1f5;
+            border-radius: 8px;
+            background: #fbfcfe;
+        }
+
+        .dash-item-main {
+            min-width: 0;
+        }
+
+        .dash-item-title {
+            font-size: .9rem;
+            color: #2f3b4a;
+            font-weight: 600;
+        }
+
+        .dash-item-sub {
+            font-size: .78rem;
+            color: #7b8794;
+            margin-top: .15rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .dash-quick {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: .75rem;
+        }
+
+        .dash-quick a {
+            display: block;
+            padding: .85rem 1rem;
+            border: 1px solid #eef1f5;
+            border-radius: 8px;
+            background: #fbfcfe;
+            color: #2f3b4a;
+            text-decoration: none;
+            font-size: .88rem;
+            transition: all .2s ease;
+        }
+
+        .dash-quick a:hover {
+            border-color: #96ceb4;
+            background: #f2fbf8;
+            color: #2f8f7c;
+        }
+
+        .dash-quick a small {
+            display: block;
+            color: #98a4b3;
+            font-size: .75rem;
+            margin-top: .2rem;
+        }
     </style>
+    <link rel="stylesheet" href="tms-ui.css?v=20261022d">
 </head>
 
 <body>
@@ -297,48 +366,61 @@
 
             <!-- 主内容 -->
             <section class="content">
-                <h2>欢迎使用TMS系统</h2>
-                <p>作为运营管理员，您可以在这里监控系统状态和管理用户。</p>
+                <div class="tms-page">
+                    <div class="tms-page-head">
+                        <div>
+                            <h2>运营总览</h2>
+                            <p id="dash-sub">正在加载运营数据…</p>
+                        </div>
+                        <div class="tms-page-actions">
+                            <button class="tms-page-btn" id="dash-refresh">刷新数据</button>
+                            <button class="tms-page-btn tms-page-btn-primary" id="dash-new-order">新建订单</button>
+                        </div>
+                    </div>
 
-                <div class="stats">
-                    <div class="stat-card">
-                        <div style="font-size: 2rem; color: #96ceb4;">23</div>
-                        <div>在线用户</div>
-                    </div>
-                    <div class="stat-card">
-                        <div style="font-size: 2rem; color: #ffd93d;">45%</div>
-                        <div>系统负载</div>
-                    </div>
-                    <div class="stat-card">
-                        <div style="font-size: 2rem; color: #4ecdc4;">120ms</div>
-                        <div>响应时间</div>
-                    </div>
-                    <div class="stat-card">
-                        <div style="font-size: 2rem; color: #4caf50;">99.9%</div>
-                        <div>系统可用率</div>
-                    </div>
-                </div>
+                    <div class="tms-kpis" id="dash-kpis"></div>
 
-                <div
-                    style="background: white; padding: 2rem; border-radius: 10px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); margin-top: 1rem;">
-                    <h3>系统状态概览</h3>
-                    <div
-                        style="margin-top: 1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
-                        <div style="padding: 1rem; background: #f5f7fa; border-radius: 5px;">
-                            <strong>数据库状态</strong>
-                            <div style="margin-top: 0.5rem; color: #4caf50;">正常运行</div>
+                    <div class="tms-grid-2">
+                        <div class="tms-panel">
+                            <div class="tms-panel-head"><h3>近 7 日订单趋势</h3></div>
+                            <div class="tms-panel-body"><div id="dash-trend"></div></div>
                         </div>
-                        <div style="padding: 1rem; background: #f5f7fa; border-radius: 5px;">
-                            <strong>API接口</strong>
-                            <div style="margin-top: 0.5rem; color: #4caf50;">全部可用</div>
+                        <div class="tms-panel">
+                            <div class="tms-panel-head"><h3>订单状态分布</h3></div>
+                            <div class="tms-panel-body"><div id="dash-status"></div></div>
                         </div>
-                        <div style="padding: 1rem; background: #f5f7fa; border-radius: 5px;">
-                            <strong>系统运行时间</strong>
-                            <div style="margin-top: 0.5rem; color: #666;">12天5小时30分钟</div>
+                    </div>
+
+                    <div class="tms-grid-2">
+                        <div class="tms-panel">
+                            <div class="tms-panel-head">
+                                <h3>最新订单</h3>
+                                <a class="tms-link" href="tms-transport.html">查看全部</a>
+                            </div>
+                            <div class="tms-panel-body" id="dash-orders"></div>
                         </div>
-                        <div style="padding: 1rem; background: #f5f7fa; border-radius: 5px;">
-                            <strong>最近备份</strong>
-                            <div style="margin-top: 0.5rem; color: #666;">2024-01-17 00:00</div>
+                        <div class="tms-panel">
+                            <div class="tms-panel-head">
+                                <h3>待处理异常</h3>
+                                <a class="tms-link" href="tms-exception.html">处理异常</a>
+                            </div>
+                            <div class="tms-panel-body" id="dash-exceptions"></div>
+                        </div>
+                    </div>
+
+                    <div class="tms-panel">
+                        <div class="tms-panel-head"><h3>快捷入口</h3></div>
+                        <div class="tms-panel-body">
+                            <div class="dash-quick">
+                                <a href="tms-transport.html">运输调度<small>发车、到达与签收</small></a>
+                                <a href="tms-sorting.html">分拣作业<small>拣货任务与漏拣</small></a>
+                                <a href="tms-loading.html">装卸作业<small>月台与叉车</small></a>
+                                <a href="tms-scan.html">扫描管理<small>设备状态与补扫</small></a>
+                                <a href="tms-warehouse.html">仓储管理<small>库存与预警</small></a>
+                                <a href="tms-vehicle.html">车辆管理<small>在线与维修</small></a>
+                                <a href="tms-finance.html">财务管理<small>收入与支出</small></a>
+                                <a href="tms-monitor.html">系统监控<small>运行指标</small></a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -346,80 +428,152 @@
         </main>
     </div>
 
-    <script src="common.js"></script>
+    <script src="common.js?v=20261022d"></script>
+    <script src="tms-store.js?v=20261022d"></script>
+    <script src="tms-ui.js?v=20261022d"></script>
+    <script src="tms-pages.js?v=20261022d"></script>
     <script>
-        // 运营系统逻辑
-        document.addEventListener('DOMContentLoaded', () => {
-            // 检查用户登录状态
-            checkLoginStatus('admin');
+        // 运营总览：全部指标与列表均来自 TmsStore，实时联动
+        document.addEventListener('DOMContentLoaded', function () {
+            if (checkLoginStatus('admin') === undefined) return;
+            TmsUI.initShell();
+            renderDashboard();
 
-            // 绑定退出登录事件
-            document.getElementById('logout-btn').addEventListener('click', () => {
-                logout();
+            document.getElementById('dash-refresh').addEventListener('click', function () {
+                renderDashboard();
+                TmsUI.toast('运营数据已刷新', 'success');
             });
 
-            // 显示当前用户名
-            displayCurrentUser();
+            document.getElementById('dash-new-order').addEventListener('click', openNewOrder);
 
-            // 绑定子菜单点击事件
-            document.querySelectorAll('.has-submenu > a').forEach(item => {
-                item.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const parentLi = this.parentElement;
-                    parentLi.classList.toggle('active');
-                });
+            document.getElementById('dash-orders').addEventListener('click', function (e) {
+                var el = e.target.closest('[data-order-link]');
+                if (el) TmsPages.orderDetail(el.dataset.orderLink);
             });
+
+            // 数据变更时自动刷新；定时刷新保证跨标签页/时间维度数据及时更新
+            TmsStore.subscribe(renderDashboard);
+            window.addEventListener('storage', renderDashboard);
+            setInterval(renderDashboard, 30000);
         });
 
-        // 切换标签页函数
-        function switchTab(tabId, sectionId = null) {
-            // 隐藏所有标签页内容
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.add('hidden');
-            });
-
-            // 移除所有标签页的活跃状态
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-
-            // 显示选中的标签页内容
-            const targetTab = document.getElementById(`${tabId}-tab`);
-            if (targetTab) {
-                targetTab.classList.remove('hidden');
-            }
-
-            // 标记选中的标签页为活跃状态
-            const targetTabBtn = document.querySelector(`.tab[data-tab="${tabId}"]`);
-            if (targetTabBtn) {
-                targetTabBtn.classList.add('active');
-            }
-
-            // 如果是统计分析标签页，处理section显示
-            if (tabId === 'statistics' && sectionId) {
-                // 隐藏所有统计section
-                document.querySelectorAll('[id$="-section"]').forEach(section => {
-                    section.style.display = 'none';
-                });
-                // 显示指定的section
-                const targetSection = document.getElementById(sectionId);
-                if (targetSection) {
-                    targetSection.style.display = 'block';
-                }
-            } else if (tabId === 'statistics') {
-                // 如果没有指定section，显示所有统计section
-                document.querySelectorAll('[id$="-section"]').forEach(section => {
-                    section.style.display = 'block';
-                });
-            }
+        // 子菜单快捷入口：统一跳转到运营管理页并定位对应标签
+        function switchTab(tabId, sectionId) {
+            location.href = 'tms-operation.html#' + (sectionId || tabId);
         }
 
-        // 滚动到指定区块
         function scrollToSection(sectionId) {
-            const section = document.getElementById(sectionId);
-            if (section) {
-                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            location.href = 'tms-operation.html#' + sectionId;
+        }
+
+        function renderDashboard() {
+            var S = window.TmsStore, U = window.TmsUI;
+            if (!S || !U) return;
+
+            var ov = S.overview();
+            var trend = S.orderTrend(7);
+            var dist = S.statusDistribution();
+            var exTypes = S.exceptionByType();
+
+            document.getElementById('dash-sub').textContent =
+                '数据截至 ' + U.fmt.dateTime(new Date()) + '，共 ' + ov.totalOrders + ' 笔订单、' +
+                ov.signedOrders + ' 笔已签收。';
+
+            U.kpis(document.getElementById('dash-kpis'), [
+                { label: '今日新增订单', value: ov.todayOrders, color: '#2f8f7c', sub: '当日创建，实时统计' },
+                { label: '在途运输', value: ov.inTransit, color: '#2196f3', sub: '运输中 / 派送中' },
+                { label: '待处理异常', value: ov.pendingExceptions, color: '#ff9800', sub: '待处理 + 处理中' },
+                { label: '近 7 日签收率', value: ov.signRate + '%', color: '#4caf50', sub: '按预计送达订单计算' },
+                { label: '今日收入', value: U.fmt.money(ov.revenueToday), color: '#667eea', sub: '财务收入流水合计' }
+            ]);
+
+            U.charts.line(document.getElementById('dash-trend'), {
+                labels: trend.map(function (d) { return d.label; }),
+                series: [
+                    { name: '新建订单', color: '#4ecdc4', data: trend.map(function (d) { return d.created; }) },
+                    { name: '签收订单', color: '#667eea', data: trend.map(function (d) { return d.signed; }) }
+                ],
+                height: 240
+            });
+
+            U.charts.donut(document.getElementById('dash-status'), {
+                data: dist.filter(function (d) { return d.value > 0; }),
+                height: 240
+            });
+
+            renderRecentOrders();
+            renderPendingExceptions(exTypes);
+        }
+
+        function renderRecentOrders() {
+            var S = window.TmsStore, U = window.TmsUI;
+            var rows = S.list('orders', { sort: { key: 'createdAt', dir: 'desc' }, pageSize: 6 }).rows;
+            var box = document.getElementById('dash-orders');
+            if (!rows.length) {
+                box.innerHTML = U.emptyState('暂无订单');
+                return;
             }
+            box.innerHTML = '<div class="dash-list">' + rows.map(function (o) {
+                return '<div class="dash-item">' +
+                    '<div class="dash-item-main">' +
+                    '<div class="dash-item-title"><span class="tms-link" data-order-link="' + U.esc(o.id) + '">' + U.esc(o.id) + '</span></div>' +
+                    '<div class="dash-item-sub">' + U.esc(o.customer) + ' · ' + U.esc(o.origin) + ' → ' + U.esc(o.destination) +
+                    ' · ' + U.fmt.money(o.freight) + '</div>' +
+                    '</div>' +
+                    '<div>' + U.statusBadge(o.status, 'order') + '</div>' +
+                    '</div>';
+            }).join('') + '</div>';
+        }
+
+        function renderPendingExceptions(exTypes) {
+            var S = window.TmsStore, U = window.TmsUI;
+            var rows = S.list('exceptions', { pageSize: 0 }).rows
+                .filter(function (x) { return x.status === 'pending' || x.status === 'processing'; })
+                .sort(function (a, b) { return new Date(b.occurredAt) - new Date(a.occurredAt); })
+                .slice(0, 6);
+            var box = document.getElementById('dash-exceptions');
+            if (!rows.length) {
+                box.innerHTML = U.emptyState('当前没有待处理异常');
+                return;
+            }
+            var head = '<div class="dash-item-sub" style="margin-bottom:.6rem">异常类型分布：' +
+                (exTypes.length ? exTypes.map(function (t) { return U.esc(t.label) + ' ' + t.value; }).join(' / ') : '暂无') +
+                '</div>';
+            box.innerHTML = head + '<div class="dash-list">' + rows.map(function (x) {
+                return '<div class="dash-item">' +
+                    '<div class="dash-item-main">' +
+                    '<div class="dash-item-title">' + U.esc(x.type) + ' · <span class="tms-link" data-order-link="' + U.esc(x.orderId) + '">' + U.esc(x.orderId) + '</span></div>' +
+                    '<div class="dash-item-sub">' + U.fmt.dateTime(x.occurredAt) + ' · ' +
+                    (x.handler ? '处理人 ' + U.esc(x.handler) : '未分派') + '</div>' +
+                    '</div>' +
+                    '<div>' + U.statusBadge(x.status, 'exception') + '</div>' +
+                    '</div>';
+            }).join('') + '</div>';
+        }
+
+        function openNewOrder() {
+            var U = window.TmsUI;
+            U.formModal({
+                title: '新建订单',
+                width: 640,
+                fields: [
+                    { key: 'customer', label: '客户名称', required: true, placeholder: '如：杭州云仓贸易' },
+                    { key: 'contact', label: '联系人', placeholder: '默认为客户名称' },
+                    { key: 'phone', label: '联系电话', placeholder: '手机或座机' },
+                    { key: 'origin', label: '始发地', type: 'select', required: true, options: ['北京', '上海', '广州', '深圳', '杭州', '南京'] },
+                    { key: 'destination', label: '目的地', type: 'select', required: true, options: ['北京', '上海', '广州', '深圳', '杭州', '南京'] },
+                    { key: 'goods', label: '货物名称', required: true, placeholder: '如：家电配件' },
+                    { key: 'weight', label: '重量（kg）', type: 'number', value: 100, min: 1 },
+                    { key: 'pieces', label: '件数', type: 'number', value: 10, min: 1 },
+                    { key: 'freight', label: '运费（元）', type: 'number', value: 500, min: 0, step: 0.01 }
+                ],
+                submitText: '创建订单',
+                onSubmit: function (v) {
+                    var order = window.TmsStore.createOrder(v);
+                    U.toast('订单 ' + order.id + ' 已创建，当前状态：待入库', 'success');
+                    renderDashboard();
+                }
+            });
         }
     </script>
 </body>

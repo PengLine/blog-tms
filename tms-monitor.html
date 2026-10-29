@@ -234,7 +234,56 @@
                 font-size: 1.2rem;
             }
         }
+
+        /* 监控页专用 */
+        .monitor-list {
+            display: flex;
+            flex-direction: column;
+            gap: .7rem;
+        }
+
+        .monitor-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            padding: .55rem 0;
+            border-bottom: 1px dashed #eef1f5;
+        }
+
+        .monitor-row:last-child {
+            border-bottom: 0;
+        }
+
+        .monitor-row .name {
+            font-size: .88rem;
+            color: #2f3b4a;
+            flex: 0 0 120px;
+        }
+
+        .monitor-row .bar {
+            flex: 1;
+            height: 8px;
+            background: #eef1f5;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .monitor-row .bar i {
+            display: block;
+            height: 100%;
+            background: #4ecdc4;
+            border-radius: 4px;
+        }
+
+        .monitor-row .val {
+            font-size: .82rem;
+            color: #7b8794;
+            flex: 0 0 70px;
+            text-align: right;
+        }
     </style>
+    <link rel="stylesheet" href="tms-ui.css?v=20261022d">
 </head>
 
 <body>
@@ -313,165 +362,177 @@
 
             <!-- 主内容 -->
             <section class="content">
-                <div class="view">
-                    <h2>系统监控</h2>
-                    <div class="monitor-stats">
-                        <div class="stat-card">
-                            <div style="font-size: 2rem; color: #96ceb4;">23</div>
-                            <div>在线用户</div>
+                <div class="tms-page">
+                    <div class="tms-page-head">
+                        <div>
+                            <h2>系统监控</h2>
+                            <p id="mon-sub">正在采集运行指标…</p>
                         </div>
-                        <div class="stat-card">
-                            <div style="font-size: 2rem; color: #ffd93d;">45%</div>
-                            <div>系统负载</div>
-                        </div>
-                        <div class="stat-card">
-                            <div style="font-size: 2rem; color: #4ecdc4;">120ms</div>
-                            <div>响应时间</div>
-                        </div>
-                        <div class="stat-card">
-                            <div style="font-size: 2rem; color: #4caf50;">99.9%</div>
-                            <div>系统可用率</div>
+                        <div class="tms-page-actions">
+                            <button class="tms-page-btn" id="mon-refresh">立即刷新</button>
                         </div>
                     </div>
-                    <div class="system-status">
-                        <h3>系统状态概览</h3>
-                        <div class="status-grid">
-                            <div class="status-item">
-                                <strong>数据库状态</strong>
-                                <div style="margin-top: 0.5rem; color: #4caf50;">正常运行</div>
-                            </div>
-                            <div class="status-item">
-                                <strong>API接口</strong>
-                                <div style="margin-top: 0.5rem; color: #4caf50;">全部可用</div>
-                            </div>
-                            <div class="status-item">
-                                <strong>系统运行时间</strong>
-                                <div style="margin-top: 0.5rem; color: #666;">12天5小时30分钟</div>
-                            </div>
-                            <div class="status-item">
-                                <strong>最近备份</strong>
-                                <div style="margin-top: 0.5rem; color: #666;">2024-01-17 00:00</div>
-                            </div>
-                            <div class="status-item">
-                                <strong>CPU使用率</strong>
-                                <div style="margin-top: 0.5rem; color: #ffd93d;">45%</div>
-                            </div>
-                            <div class="status-item">
-                                <strong>内存使用率</strong>
-                                <div style="margin-top: 0.5rem; color: #ffd93d;">68%</div>
-                            </div>
-                            <div class="status-item">
-                                <strong>磁盘空间</strong>
-                                <div style="margin-top: 0.5rem; color: #4caf50;">72%可用</div>
-                            </div>
-                            <div class="status-item">
-                                <strong>网络流量</strong>
-                                <div style="margin-top: 0.5rem; color: #666;">1.2 MB/s</div>
-                            </div>
+
+                    <div class="tms-kpis" id="mon-kpis"></div>
+
+                    <div class="tms-grid-2">
+                        <div class="tms-panel">
+                            <div class="tms-panel-head"><h3>近 7 日单量</h3></div>
+                            <div class="tms-panel-body"><div id="mon-trend"></div></div>
                         </div>
+                        <div class="tms-panel">
+                            <div class="tms-panel-head"><h3>异常类型分布</h3></div>
+                            <div class="tms-panel-body"><div id="mon-exception"></div></div>
+                        </div>
+                    </div>
+
+                    <div class="tms-grid-2">
+                        <div class="tms-panel">
+                            <div class="tms-panel-head"><h3>订单队列健康度</h3></div>
+                            <div class="tms-panel-body"><div class="monitor-list" id="mon-queue"></div></div>
+                        </div>
+                        <div class="tms-panel">
+                            <div class="tms-panel-head"><h3>扫描设备状态</h3></div>
+                            <div class="tms-panel-body"><div class="monitor-list" id="mon-devices"></div></div>
+                        </div>
+                    </div>
+
+                    <div class="tms-panel">
+                        <div class="tms-panel-head"><h3>运行环境</h3></div>
+                        <div class="tms-panel-body"><div id="mon-env"></div></div>
                     </div>
                 </div>
             </section>
         </main>
     </div>
 
-    <script src="common.js"></script>
+    <script src="common.js?v=20261022d"></script>
+    <script src="tms-store.js?v=20261022d"></script>
+    <script src="tms-ui.js?v=20261022d"></script>
+    <script src="tms-pages.js?v=20261022d"></script>
     <script>
-        // 系统监控页面逻辑
-        document.addEventListener('DOMContentLoaded', () => {
-            // 检查用户登录状态
-            checkLoginStatus('admin');
+        // 系统监控：订单/设备/异常指标来自 TmsStore，运行环境指标来自浏览器真实信息
+        var MON_START = Date.now();
 
-            // 绑定退出登录事件
-            document.getElementById('logout-btn').addEventListener('click', () => {
-                logout();
+        document.addEventListener('DOMContentLoaded', function () {
+            if (checkLoginStatus('admin') === undefined) return;
+            TmsUI.initShell();
+            renderMonitor();
+
+            document.getElementById('mon-refresh').addEventListener('click', function () {
+                renderMonitor();
+                TmsUI.toast('监控指标已刷新', 'success');
             });
 
-            // 模拟实时数据更新
-            setInterval(updateSystemStats, 5000);
-
-            // 显示当前用户名
-            displayCurrentUser();
-
-            // 绑定子菜单点击事件
-            document.querySelectorAll('.has-submenu > a').forEach(item => {
-                item.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const parentLi = this.parentElement;
-                    parentLi.classList.toggle('active');
-                });
-            });
-
-            function updateSystemStats() {
-                // 模拟随机数据更新
-                const onlineUsers = Math.floor(Math.random() * 10) + 20;
-                const systemLoad = Math.floor(Math.random() * 30) + 30;
-                const responseTime = Math.floor(Math.random() * 50) + 100;
-                const cpuUsage = Math.floor(Math.random() * 30) + 30;
-                const memoryUsage = Math.floor(Math.random() * 20) + 60;
-
-                // 更新显示
-                const statsCards = document.querySelectorAll('.monitor-stats .stat-card div:first-child');
-                if (statsCards[0]) statsCards[0].textContent = onlineUsers;
-                if (statsCards[1]) statsCards[1].textContent = `${systemLoad}%`;
-                if (statsCards[2]) statsCards[2].textContent = `${responseTime}ms`;
-
-                // 更新CPU和内存使用率
-                const statusItems = document.querySelectorAll('.status-item div:last-child');
-                if (statusItems[4]) statusItems[4].textContent = `${cpuUsage}%`;
-                if (statusItems[5]) statusItems[5].textContent = `${memoryUsage}%`;
-            }
+            TmsStore.subscribe(renderMonitor);
+            window.addEventListener('storage', renderMonitor);
+            setInterval(renderMonitor, 15000);
         });
 
-        // 切换标签页函数
-        function switchTab(tabId, sectionId = null) {
-            // 隐藏所有标签页内容
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.add('hidden');
-            });
-
-            // 移除所有标签页的活跃状态
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-
-            // 显示选中的标签页内容
-            const targetTab = document.getElementById(`${tabId}-tab`);
-            if (targetTab) {
-                targetTab.classList.remove('hidden');
-            }
-
-            // 标记选中的标签页为活跃状态
-            const targetTabBtn = document.querySelector(`.tab[data-tab="${tabId}"]`);
-            if (targetTabBtn) {
-                targetTabBtn.classList.add('active');
-            }
-
-            // 如果是统计分析标签页，处理section显示
-            if (tabId === 'statistics' && sectionId) {
-                // 隐藏所有统计section
-                document.querySelectorAll('[id$="-section"]').forEach(section => {
-                    section.style.display = 'none';
-                });
-                // 显示指定的section
-                const targetSection = document.getElementById(sectionId);
-                if (targetSection) {
-                    targetSection.style.display = 'block';
-                }
-            } else if (tabId === 'statistics') {
-                // 如果没有指定section，显示所有统计section
-                document.querySelectorAll('[id$="-section"]').forEach(section => {
-                    section.style.display = 'block';
-                });
-            }
+        // 子菜单快捷入口：统一跳转到运营管理页并定位对应标签
+        function switchTab(tabId, sectionId) {
+            location.href = 'tms-operation.html#' + (sectionId || tabId);
         }
 
-        // 滚动到指定区块
         function scrollToSection(sectionId) {
-            const section = document.getElementById(sectionId);
-            if (section) {
-                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            location.href = 'tms-operation.html#' + sectionId;
+        }
+
+        function renderMonitor() {
+            var S = window.TmsStore, U = window.TmsUI;
+            if (!S || !U) return;
+
+            var ov = S.overview();
+            var devices = S.list('devices', { pageSize: 0 }).rows;
+            var onlineDevices = devices.filter(function (d) { return d.status === 'online'; }).length;
+            var totalUsers = S.list('users', { pageSize: 0 }).total;
+            var activeUsers = ov.activeUsers;
+            var pendingOrders = S.list('orders', { pageSize: 0 }).rows.filter(function (o) {
+                return ['pending', 'inbound', 'sorted'].indexOf(o.status) > -1;
+            }).length;
+
+            document.getElementById('mon-sub').textContent =
+                '最近刷新 ' + U.fmt.time(new Date()) + '，每 15 秒自动更新；数据来自本地业务库。';
+
+            U.kpis(document.getElementById('mon-kpis'), [
+                { label: '在线用户', value: activeUsers + ' / ' + totalUsers, color: '#2f8f7c', sub: '账号状态为在职启用' },
+                { label: '待作业订单', value: pendingOrders, color: '#ff9800', sub: '待入库 / 已入库 / 已分拣' },
+                { label: '在途运输', value: ov.inTransit, color: '#2196f3', sub: '运输中 / 派送中' },
+                { label: '扫描设备在线', value: onlineDevices + ' / ' + devices.length, color: '#4caf50', sub: '其余为维修或离线' },
+                { label: '待处理异常', value: ov.pendingExceptions, color: '#ff6b6b', sub: '待处理 + 处理中' }
+            ]);
+
+            var trend = S.orderTrend(7);
+            U.charts.line(document.getElementById('mon-trend'), {
+                labels: trend.map(function (d) { return d.label; }),
+                series: [
+                    { name: '新建订单', color: '#4ecdc4', data: trend.map(function (d) { return d.created; }) },
+                    { name: '签收订单', color: '#667eea', data: trend.map(function (d) { return d.signed; }) }
+                ],
+                height: 230
+            });
+
+            U.charts.donut(document.getElementById('mon-exception'), {
+                data: S.exceptionByType(),
+                height: 230
+            });
+
+            renderQueue();
+            renderDevices(devices);
+            renderEnv();
+        }
+
+        function renderQueue() {
+            var S = window.TmsStore;
+            var dist = S.statusDistribution().filter(function (d) { return d.key !== 'cancelled'; });
+            var total = dist.reduce(function (s, d) { return s + d.value; }, 0) || 1;
+            document.getElementById('mon-queue').innerHTML = dist.map(function (d) {
+                var pct = Math.round(d.value / total * 100);
+                return '<div class="monitor-row">' +
+                    '<span class="name">' + TmsUI.esc(d.label) + '</span>' +
+                    '<span class="bar"><i style="width:' + pct + '%"></i></span>' +
+                    '<span class="val">' + d.value + ' 单</span>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function renderDevices(devices) {
+            var U = window.TmsUI;
+            var tone = { online: 'success', maintenance: 'warn', offline: 'danger' };
+            var label = { online: '在线', maintenance: '维修中', offline: '离线' };
+            document.getElementById('mon-devices').innerHTML = devices.map(function (d) {
+                return '<div class="monitor-row">' +
+                    '<span class="name">' + U.esc(d.name) + '</span>' +
+                    '<span class="tms-muted" style="flex:1">' + U.esc(d.location) + ' · 今日 ' + d.scansToday + ' 次</span>' +
+                    U.badge(label[d.status] || d.status, tone[d.status] || 'muted') +
+                    '</div>';
+            }).join('');
+        }
+
+        function renderEnv() {
+            var U = window.TmsUI;
+            var items = [];
+            var uptime = Math.floor((Date.now() - MON_START) / 1000);
+            items.push({ label: '页面会话时长', value: Math.floor(uptime / 60) + ' 分 ' + (uptime % 60) + ' 秒' });
+            items.push({ label: '数据库版本', value: TmsStore.DB_KEY });
+
+            var sizeKb = 0;
+            try {
+                sizeKb = Math.round((localStorage.getItem(TmsStore.DB_KEY) || '').length / 1024);
+            } catch (e) { }
+            items.push({ label: '业务库占用', value: sizeKb + ' KB' });
+
+            if (performance && performance.memory) {
+                items.push({ label: 'JS 堆内存', value: Math.round(performance.memory.usedJSHeapSize / 1048576) + ' MB' });
+            } else {
+                items.push({ label: 'JS 堆内存', value: '当前浏览器不支持' });
             }
+            items.push({ label: 'CPU 逻辑核心', value: (navigator.hardwareConcurrency || '未知') + ' 核' });
+            items.push({ label: '网络状态', value: navigator.onLine ? '已连接' : '已断开' });
+            items.push({ label: '屏幕分辨率', value: window.screen.width + ' × ' + window.screen.height });
+            items.push({ label: '浏览器', value: navigator.userAgent.split(' ').slice(-2).join(' ') });
+
+            document.getElementById('mon-env').innerHTML = U.detailGrid(items);
         }
     </script>
 </body>
