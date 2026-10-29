@@ -1,0 +1,794 @@
+/* ============================================================
+   TMS 共享 UI 样式
+   仅使用 tms- 前缀，避免与各页面自有样式冲突
+   ============================================================ */
+
+/* ---------- 页面骨架 ---------- */
+.tms-page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.tms-page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.tms-page-head h2 {
+    margin: 0 0 .35rem;
+    font-size: 1.5rem;
+    color: #2f3b4a;
+    border: 0;
+    padding: 0;
+}
+
+.tms-page-head p {
+    margin: 0;
+    color: #7b8794;
+    font-size: .9rem;
+}
+
+.tms-page-actions {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+
+/* ---------- KPI ---------- */
+.tms-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 1rem;
+}
+
+.tms-kpi {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.15rem 1.25rem;
+    box-shadow: 0 2px 12px rgba(38, 50, 70, .06);
+    border: 1px solid #eef1f5;
+}
+
+.tms-kpi-label {
+    font-size: .8rem;
+    color: #7b8794;
+    letter-spacing: .02em;
+}
+
+.tms-kpi-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: .35rem 0 .15rem;
+    line-height: 1.2;
+}
+
+.tms-kpi-sub {
+    font-size: .75rem;
+    color: #98a4b3;
+}
+
+/* ---------- 面板 ---------- */
+.tms-panel {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(38, 50, 70, .06);
+    border: 1px solid #eef1f5;
+    overflow: hidden;
+}
+
+.tms-panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #eef1f5;
+}
+
+.tms-panel-head h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #2f3b4a;
+}
+
+.tms-panel-body {
+    padding: 1.25rem;
+}
+
+.tms-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 1rem;
+}
+
+/* ---------- 工具栏 ---------- */
+.tms-toolbar {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    padding: .9rem 1rem;
+    border-bottom: 1px solid #eef1f5;
+    flex-wrap: wrap;
+}
+
+.tms-search {
+    position: relative;
+    flex: 1 1 240px;
+    max-width: 340px;
+}
+
+.tms-search input {
+    width: 100%;
+    padding: .55rem .8rem;
+    border: 1px solid #dde3ea;
+    border-radius: 8px;
+    font-size: .85rem;
+    outline: none;
+    transition: border .2s, box-shadow .2s;
+    background: #fff;
+}
+
+.tms-search input:focus {
+    border-color: #4ecdc4;
+    box-shadow: 0 0 0 3px rgba(78, 205, 196, .14);
+}
+
+.tms-filter {
+    padding: .55rem .7rem;
+    border: 1px solid #dde3ea;
+    border-radius: 8px;
+    font-size: .85rem;
+    background: #fff;
+    color: #4a5766;
+    outline: none;
+    max-width: 170px;
+}
+
+.tms-toolbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+}
+
+.tms-total {
+    font-size: .78rem;
+    color: #98a4b3;
+    white-space: nowrap;
+}
+
+/* ---------- 按钮 ---------- */
+.tms-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .3rem;
+    padding: .5rem .95rem;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: .85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all .18s ease;
+    background: #f2f5f8;
+    color: #4a5766;
+    white-space: nowrap;
+}
+
+.tms-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(38, 50, 70, .1);
+}
+
+.tms-btn:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.tms-btn-primary {
+    background: #4ecdc4;
+    color: #fff;
+}
+
+.tms-btn-primary:hover {
+    background: #3fbdb4;
+}
+
+.tms-btn-success {
+    background: #4caf50;
+    color: #fff;
+}
+
+.tms-btn-success:hover {
+    background: #43a047;
+}
+
+.tms-btn-warning {
+    background: #ff9800;
+    color: #fff;
+}
+
+.tms-btn-warning:hover {
+    background: #f08c00;
+}
+
+.tms-btn-danger {
+    background: #ff6b6b;
+    color: #fff;
+}
+
+.tms-btn-danger:hover {
+    background: #f25555;
+}
+
+.tms-btn-light {
+    background: #fff;
+    color: #4a5766;
+    border-color: #dde3ea;
+}
+
+.tms-btn-light:hover {
+    background: #f7f9fb;
+}
+
+.tms-btn-xs {
+    padding: .3rem .6rem;
+    font-size: .75rem;
+    border-radius: 6px;
+}
+
+/* ---------- 表格 ---------- */
+.tms-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.tms-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .85rem;
+    min-width: 720px;
+}
+
+.tms-table thead th {
+    background: #f7f9fb;
+    color: #7b8794;
+    font-weight: 600;
+    text-align: left;
+    padding: .75rem 1rem;
+    white-space: nowrap;
+    border-bottom: 1px solid #eef1f5;
+    font-size: .78rem;
+}
+
+.tms-table tbody td {
+    padding: .78rem 1rem;
+    border-bottom: 1px solid #f1f4f7;
+    color: #3d4b5c;
+    vertical-align: middle;
+}
+
+.tms-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.tms-table tbody tr:hover {
+    background: #fafcfd;
+}
+
+.tms-row-clickable {
+    cursor: pointer;
+}
+
+.tms-sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.tms-sortable:hover {
+    color: #4ecdc4;
+}
+
+.tms-actions-col,
+.tms-actions-cell {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.tms-actions-cell .tms-btn {
+    margin-left: .3rem;
+}
+
+.tms-empty {
+    text-align: center;
+    padding: 2.5rem 1rem !important;
+    color: #98a4b3;
+}
+
+/* ---------- 分页 ---------- */
+.tms-pagination {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .85rem 1rem;
+    border-top: 1px solid #eef1f5;
+    flex-wrap: wrap;
+}
+
+.tms-page-btn {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 .5rem;
+    border: 1px solid #dde3ea;
+    background: #fff;
+    color: #4a5766;
+    border-radius: 7px;
+    font-size: .8rem;
+    cursor: pointer;
+    transition: all .15s;
+}
+
+.tms-page-btn:hover:not(:disabled) {
+    border-color: #4ecdc4;
+    color: #2aa79e;
+}
+
+.tms-page-btn.active {
+    background: #4ecdc4;
+    border-color: #4ecdc4;
+    color: #fff;
+}
+
+.tms-page-btn:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
+.tms-page-info {
+    margin-left: auto;
+    font-size: .78rem;
+    color: #98a4b3;
+}
+
+/* ---------- 状态徽章 ---------- */
+.tms-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: .18rem .6rem;
+    border-radius: 20px;
+    font-size: .72rem;
+    font-weight: 600;
+    line-height: 1.6;
+    white-space: nowrap;
+}
+
+.tms-badge-success { background: #e8f6ec; color: #2e7d32; }
+.tms-badge-info { background: #e8f4fd; color: #1266a8; }
+.tms-badge-warn { background: #fff4e5; color: #b25c00; }
+.tms-badge-danger { background: #fdeaea; color: #c0392b; }
+.tms-badge-muted { background: #f0f2f5; color: #6b7785; }
+
+.tms-muted {
+    color: #98a4b3;
+}
+
+.tms-strong {
+    font-weight: 600;
+    color: #2f3b4a;
+}
+
+.tms-link {
+    color: #2aa79e;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+/* ---------- 图表 ---------- */
+.tms-chart {
+    width: 100%;
+}
+
+.tms-chart svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.tms-legend {
+    display: flex;
+    justify-content: center;
+    gap: 1.1rem;
+    flex-wrap: wrap;
+    font-size: .78rem;
+    color: #7b8794;
+    margin-top: .4rem;
+}
+
+.tms-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+}
+
+.tms-legend-item i {
+    width: 9px;
+    height: 9px;
+    border-radius: 3px;
+    display: inline-block;
+}
+
+.tms-legend-item b {
+    color: #3d4b5c;
+    margin-left: .15rem;
+}
+
+.tms-donut-wrap {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+
+.tms-donut-wrap .tms-chart {
+    flex: 1 1 280px;
+}
+
+.tms-donut-legend {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    font-size: .8rem;
+    color: #66727f;
+    min-width: 160px;
+}
+
+.tms-donut-legend .tms-legend-item i {
+    width: 10px;
+    height: 10px;
+}
+
+/* ---------- 弹窗 ---------- */
+.tms-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(25, 34, 45, .45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+    opacity: 0;
+    transition: opacity .18s ease;
+    padding: 1rem;
+}
+
+.tms-modal-overlay.show {
+    opacity: 1;
+}
+
+.tms-modal {
+    width: 100%;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(15, 25, 40, .25);
+    transform: translateY(12px) scale(.98);
+    transition: transform .18s ease;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.tms-modal-overlay.show .tms-modal {
+    transform: translateY(0) scale(1);
+}
+
+.tms-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.1rem 1.3rem;
+    border-bottom: 1px solid #eef1f5;
+}
+
+.tms-modal-head h3 {
+    margin: 0;
+    font-size: 1.05rem;
+    color: #2f3b4a;
+}
+
+.tms-modal-close {
+    border: 0;
+    background: transparent;
+    font-size: 1.4rem;
+    line-height: 1;
+    color: #98a4b3;
+    cursor: pointer;
+    padding: .2rem .4rem;
+    border-radius: 6px;
+}
+
+.tms-modal-close:hover {
+    background: #f2f5f8;
+    color: #4a5766;
+}
+
+.tms-modal-body {
+    padding: 1.3rem;
+    overflow-y: auto;
+}
+
+.tms-modal-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: .6rem;
+    padding: 1rem 1.3rem;
+    border-top: 1px solid #eef1f5;
+}
+
+.tms-confirm-text {
+    color: #4a5766;
+    font-size: .9rem;
+    line-height: 1.7;
+}
+
+/* ---------- 表单 ---------- */
+.tms-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.tms-field {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+}
+
+.tms-field.full {
+    grid-column: 1 / -1;
+}
+
+.tms-field label {
+    font-size: .8rem;
+    color: #5c6a79;
+    font-weight: 500;
+}
+
+.tms-field label em {
+    color: #ff6b6b;
+    font-style: normal;
+}
+
+.tms-field input,
+.tms-field select,
+.tms-field textarea {
+    width: 100%;
+    padding: .55rem .7rem;
+    border: 1px solid #dde3ea;
+    border-radius: 8px;
+    font-size: .85rem;
+    color: #3d4b5c;
+    background: #fff;
+    outline: none;
+    font-family: inherit;
+    transition: border .2s, box-shadow .2s;
+}
+
+.tms-field input:focus,
+.tms-field select:focus,
+.tms-field textarea:focus {
+    border-color: #4ecdc4;
+    box-shadow: 0 0 0 3px rgba(78, 205, 196, .14);
+}
+
+.tms-field small {
+    color: #98a4b3;
+    font-size: .72rem;
+}
+
+.tms-check {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    font-size: .85rem;
+    color: #4a5766;
+}
+
+.tms-form-error {
+    grid-column: 1 / -1;
+    background: #fdeaea;
+    color: #c0392b;
+    padding: .6rem .8rem;
+    border-radius: 8px;
+    font-size: .8rem;
+}
+
+@media (max-width: 560px) {
+    .tms-form {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ---------- 详情 ---------- */
+.tms-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: .9rem;
+}
+
+.tms-detail-item {
+    background: #f7f9fb;
+    border-radius: 9px;
+    padding: .7rem .85rem;
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+}
+
+.tms-detail-item span {
+    font-size: .72rem;
+    color: #98a4b3;
+}
+
+.tms-detail-item strong {
+    font-size: .88rem;
+    color: #2f3b4a;
+    font-weight: 600;
+    word-break: break-all;
+}
+
+.tms-timeline {
+    list-style: none;
+    margin: 1.2rem 0 0;
+    padding: 0 0 0 1rem;
+    border-left: 2px solid #eef1f5;
+}
+
+.tms-timeline li {
+    position: relative;
+    padding: 0 0 1rem 1rem;
+}
+
+.tms-timeline-dot {
+    position: absolute;
+    left: -1.43rem;
+    top: .2rem;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #4ecdc4;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 2px #d9f4f1;
+}
+
+.tms-timeline strong {
+    display: block;
+    font-size: .85rem;
+    color: #2f3b4a;
+}
+
+.tms-timeline p {
+    margin: .15rem 0 0;
+    font-size: .75rem;
+    color: #98a4b3;
+}
+
+/* ---------- Toast ---------- */
+.tms-toast-container {
+    position: fixed;
+    top: 1.2rem;
+    right: 1.2rem;
+    z-index: 5000;
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    pointer-events: none;
+}
+
+.tms-toast {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    min-width: 220px;
+    max-width: 380px;
+    background: #fff;
+    border-radius: 10px;
+    padding: .75rem 1rem;
+    box-shadow: 0 10px 30px rgba(20, 30, 45, .16);
+    font-size: .84rem;
+    color: #3d4b5c;
+    transform: translateX(20px);
+    opacity: 0;
+    transition: all .22s ease;
+    border-left: 3px solid #4ecdc4;
+}
+
+.tms-toast.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.tms-toast-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #4ecdc4;
+    flex: 0 0 auto;
+}
+
+.tms-toast-success { border-left-color: #4caf50; }
+.tms-toast-success .tms-toast-dot { background: #4caf50; }
+.tms-toast-error { border-left-color: #ff6b6b; }
+.tms-toast-error .tms-toast-dot { background: #ff6b6b; }
+.tms-toast-warning { border-left-color: #ff9800; }
+.tms-toast-warning .tms-toast-dot { background: #ff9800; }
+
+/* ---------- 导航角标 ---------- */
+.tms-nav-badge {
+    display: inline-block;
+    min-width: 18px;
+    height: 18px;
+    line-height: 18px;
+    padding: 0 5px;
+    margin-left: .4rem;
+    border-radius: 9px;
+    background: #ff6b6b;
+    color: #fff;
+    font-size: .68rem;
+    text-align: center;
+    vertical-align: middle;
+}
+
+/* ---------- 其他 ---------- */
+.tms-empty-state {
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: #98a4b3;
+    font-size: .85rem;
+}
+
+.tms-note {
+    background: #f2fbfa;
+    border: 1px solid #d5f2ee;
+    color: #2f7d75;
+    border-radius: 9px;
+    padding: .7rem .9rem;
+    font-size: .8rem;
+}
+
+.tms-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: .2rem .55rem;
+    border-radius: 6px;
+    background: #f2f5f8;
+    color: #5c6a79;
+    font-size: .75rem;
+    margin-right: .3rem;
+}
+
+.tms-progress {
+    height: 6px;
+    border-radius: 3px;
+    background: #eef1f5;
+    overflow: hidden;
+    min-width: 70px;
+}
+
+.tms-progress i {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    background: #4ecdc4;
+}
+
+.tms-inline-actions {
+    display: flex;
+    gap: .4rem;
+    flex-wrap: wrap;
+}

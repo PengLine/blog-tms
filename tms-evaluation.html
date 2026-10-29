@@ -261,6 +261,7 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="tms-ui.css?v=20261022d">
 </head>
 
 <body>
@@ -370,8 +371,19 @@
         </main>
     </div>
 
-    <script src="common.js"></script>
+    <script src="common.js?v=20261022d"></script>
+
+    <script src="tms-store.js?v=20261022d"></script>
+    <script src="tms-ui.js?v=20261022d"></script>
+    <script src="tms-pages.js?v=20261022d"></script>
     <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            if (checkLoginStatus('admin') === undefined) return;
+            TmsUI.initShell();
+            TmsPages.render('evaluation', document.querySelector('.content'));
+        });
+    </script>
+    <script type="text/plain" data-legacy="1">
         // 子菜单切换功能
         document.addEventListener('DOMContentLoaded', function () {
             const submenuItems = document.querySelectorAll('.has-submenu');

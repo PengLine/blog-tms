@@ -339,6 +339,7 @@
             background: #f57c00;
         }
     </style>
+    <link rel="stylesheet" href="tms-ui.css?v=20261022d">
 </head>
 
 <body>
@@ -417,13 +418,20 @@
 
             <!-- 主内容 -->
             <section class="content">
-                <div class="view">
-                    <h2>运营管理</h2>
-                    <p>管理系统的运营配置和业务规则。</p>
+                <div class="tms-page">
+                    <div class="tms-page-head">
+                        <div>
+                            <h2>运营管理</h2>
+                            <p>派送地址、运营统计、考核指标与改单记录均接入共享业务数据。</p>
+                        </div>
+                        <div class="tms-page-actions">
+                            <button class="tms-page-btn" id="op-refresh">刷新数据</button>
+                        </div>
+                    </div>
 
-                    <!-- 标签页导航 -->
-                    <div class="tabs"
-                        style="display: flex; margin-bottom: 2rem; background: white; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);">
+                    <div class="tms-kpis" id="op-kpis"></div>
+
+                    <div class="tabs" id="op-tabs">
                         <div class="tab active" data-tab="overview">运营概览</div>
                         <div class="tab" data-tab="delivery-address">派送地址管理</div>
                         <div class="tab" data-tab="statistics">统计分析</div>
@@ -431,952 +439,473 @@
                         <div class="tab" data-tab="records">记录查询</div>
                     </div>
 
-                    <!-- 运营概览标签页 -->
                     <div id="overview-tab" class="tab-content">
-                        <!-- 运营统计 -->
-                        <div class="operation-stats">
-                            <div class="stat-card">
-                                <div class="number">15</div>
-                                <div class="label">运营策略</div>
+                        <div class="tms-grid-2">
+                            <div class="tms-panel">
+                                <div class="tms-panel-head"><h3>近 7 日签收率</h3></div>
+                                <div class="tms-panel-body"><div id="op-sign-chart"></div></div>
                             </div>
-                            <div class="stat-card">
-                                <div class="number">8</div>
-                                <div class="label">路由规则</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="number">5</div>
-                                <div class="label">价格方案</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="number">3</div>
-                                <div class="label">促销活动</div>
+                            <div class="tms-panel">
+                                <div class="tms-panel-head"><h3>今日作业进度</h3></div>
+                                <div class="tms-panel-body"><div class="tms-detail-grid" id="op-progress"></div></div>
                             </div>
                         </div>
-
-                        <!-- 运营策略列表 -->
-                        <div style="margin-bottom: 2rem;">
-                            <h3>运营策略</h3>
-                            <table class="operation-table">
-                                <thead>
-                                    <tr>
-                                        <th>策略ID</th>
-                                        <th>策略名称</th>
-                                        <th>适用范围</th>
-                                        <th>生效时间</th>
-                                        <th>失效时间</th>
-                                        <th>当前状态</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>OP-20260120001</td>
-                                        <td>春节运输保障</td>
-                                        <td>全国</td>
-                                        <td>2026-01-20</td>
-                                        <td>2026-02-20</td>
-                                        <td><span class="operation-status active">生效中</span></td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                            <button class="action-btn suspend btn btn-danger">暂停</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>OP-20260120002</td>
-                                        <td>特惠运输</td>
-                                        <td>华东地区</td>
-                                        <td>2026-01-15</td>
-                                        <td>2026-01-31</td>
-                                        <td><span class="operation-status active">生效中</span></td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                            <button class="action-btn suspend btn btn-danger">暂停</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>OP-20260120003</td>
-                                        <td>大件运输</td>
-                                        <td>全国</td>
-                                        <td>2026-01-01</td>
-                                        <td>2026-12-31</td>
-                                        <td><span class="operation-status pending">待生效</span></td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                            <button class="action-btn activate btn btn-success">激活</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <!-- 路由规则列表 -->
-                        <div>
-                            <h3>路由规则</h3>
-                            <table class="operation-table">
-                                <thead>
-                                    <tr>
-                                        <th>规则ID</th>
-                                        <th>起点</th>
-                                        <th>终点</th>
-                                        <th>优先级</th>
-                                        <th>运输方式</th>
-                                        <th>预计时效</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>RR-20260120001</td>
-                                        <td>北京</td>
-                                        <td>上海</td>
-                                        <td>高</td>
-                                        <td>航空运输</td>
-                                        <td>1天</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>RR-20260120002</td>
-                                        <td>上海</td>
-                                        <td>广州</td>
-                                        <td>中</td>
-                                        <td>公路运输</td>
-                                        <td>2天</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>RR-20260120003</td>
-                                        <td>广州</td>
-                                        <td>深圳</td>
-                                        <td>高</td>
-                                        <td>公路运输</td>
-                                        <td>半天</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div class="tms-panel" style="margin-top:1rem">
+                            <div class="tms-panel-head"><h3>运营待办</h3></div>
+                            <div class="tms-panel-body"><div class="tms-detail-grid" id="op-todos"></div></div>
                         </div>
                     </div>
 
-                    <!-- 派送地址管理标签页 -->
                     <div id="delivery-address-tab" class="tab-content hidden">
-                        <h3>派送地址管理</h3>
-                        <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
-                            <button class="action-btn view btn btn-primary"
-                                onclick="openAddressMaintenance()">地址维护</button>
-                            <button class="action-btn edit btn btn-warning" onclick="openAddressAudit()">地址审核</button>
-                        </div>
-
-                        <!-- 地址列表 -->
-                        <table class="operation-table">
-                            <thead>
-                                <tr>
-                                    <th>地址ID</th>
-                                    <th>详细地址</th>
-                                    <th>所属区域</th>
-                                    <th>负责人</th>
-                                    <th>状态</th>
-                                    <th>审核状态</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>ADDR-001</td>
-                                    <td>北京市朝阳区建国路88号</td>
-                                    <td>朝阳区</td>
-                                    <td>张师傅</td>
-                                    <td>启用</td>
-                                    <td>已审核</td>
-                                    <td class="operation-actions">
-                                        <button class="action-btn view btn btn-primary">查看</button>
-                                        <button class="action-btn edit btn btn-warning">编辑</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>ADDR-002</td>
-                                    <td>上海市浦东新区陆家嘴环路1000号</td>
-                                    <td>浦东新区</td>
-                                    <td>李师傅</td>
-                                    <td>启用</td>
-                                    <td>已审核</td>
-                                    <td class="operation-actions">
-                                        <button class="action-btn view btn btn-primary">查看</button>
-                                        <button class="action-btn edit btn btn-warning">编辑</button>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>ADDR-003</td>
-                                    <td>广州市天河区天河路385号</td>
-                                    <td>天河区</td>
-                                    <td>王师傅</td>
-                                    <td>待启用</td>
-                                    <td>待审核</td>
-                                    <td class="operation-actions">
-                                        <button class="action-btn view btn btn-primary">查看</button>
-                                        <button class="action-btn edit btn btn-warning">审核</button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                        <div class="tms-panel" id="op-address"></div>
                     </div>
 
-                    <!-- 统计分析标签页 -->
                     <div id="statistics-tab" class="tab-content hidden">
-                        <h3>运营统计分析</h3>
-
-                        <!-- 统计卡片 -->
-                        <div class="operation-stats">
-                            <div class="stat-card">
-                                <div class="number">98.5%</div>
-                                <div class="label">签收率</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="number">99.2%</div>
-                                <div class="label">入库扫描率</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="number">98.8%</div>
-                                <div class="label">出库扫描率</div>
-                            </div>
-                            <div class="stat-card">
-                                <div class="number">97.5%</div>
-                                <div class="label">派送扫描率</div>
-                            </div>
+                        <div class="tms-panel">
+                            <div class="tms-panel-head"><h3>近 7 日运营日报</h3></div>
+                            <div id="op-daily"></div>
                         </div>
-
-                        <!-- 签收率统计 -->
-                        <div id="sign-rate-section" style="margin-bottom: 2rem;">
-                            <h4>签收率统计</h4>
-                            <table class="operation-table">
-                                <thead>
-                                    <tr>
-                                        <th>日期</th>
-                                        <th>应签收数</th>
-                                        <th>实际签收数</th>
-                                        <th>签收率</th>
-                                        <th>未签收原因</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>2026-01-28</td>
-                                        <td>520</td>
-                                        <td>512</td>
-                                        <td>98.46%</td>
-                                        <td>联系不上收件人(5), 拒收(3)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-27</td>
-                                        <td>485</td>
-                                        <td>479</td>
-                                        <td>98.76%</td>
-                                        <td>联系不上收件人(3), 拒收(2), 地址错误(1)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-26</td>
-                                        <td>510</td>
-                                        <td>505</td>
-                                        <td>99.02%</td>
-                                        <td>联系不上收件人(2), 拒收(2), 地址错误(1)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div class="tms-panel" id="sign-rate-section" style="margin-top:1rem">
+                            <div class="tms-panel-head"><h3>签收率</h3></div>
+                            <div id="op-sign-rate"></div>
                         </div>
-
-                        <!-- 入库扫描率统计 -->
-                        <div id="inbound-scan-section" style="margin-bottom: 2rem;">
-                            <h4>入库扫描率统计</h4>
-                            <table class="operation-table">
-                                <thead>
-                                    <tr>
-                                        <th>日期</th>
-                                        <th>应入库数</th>
-                                        <th>实际扫描数</th>
-                                        <th>入库扫描率</th>
-                                        <th>未扫描原因</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>2026-01-28</td>
-                                        <td>650</td>
-                                        <td>645</td>
-                                        <td>99.23%</td>
-                                        <td>系统故障(3), 人工遗漏(2)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-27</td>
-                                        <td>620</td>
-                                        <td>616</td>
-                                        <td>99.35%</td>
-                                        <td>系统故障(2), 人工遗漏(2)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-26</td>
-                                        <td>635</td>
-                                        <td>631</td>
-                                        <td>99.37%</td>
-                                        <td>系统故障(1), 人工遗漏(3)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div class="tms-panel" id="inbound-scan-section" style="margin-top:1rem">
+                            <div class="tms-panel-head"><h3>入库扫描率</h3></div>
+                            <div id="op-inbound-scan"></div>
                         </div>
-
-                        <!-- 出库扫描率统计 -->
-                        <div id="outbound-scan-section" style="margin-bottom: 2rem;">
-                            <h4>出库扫描率统计</h4>
-                            <table class="operation-table">
-                                <thead>
-                                    <tr>
-                                        <th>日期</th>
-                                        <th>应出库数</th>
-                                        <th>实际扫描数</th>
-                                        <th>出库扫描率</th>
-                                        <th>未扫描原因</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>2026-01-28</td>
-                                        <td>580</td>
-                                        <td>573</td>
-                                        <td>98.79%</td>
-                                        <td>系统故障(4), 人工遗漏(3)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-27</td>
-                                        <td>565</td>
-                                        <td>559</td>
-                                        <td>98.94%</td>
-                                        <td>系统故障(3), 人工遗漏(3)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-26</td>
-                                        <td>575</td>
-                                        <td>569</td>
-                                        <td>98.96%</td>
-                                        <td>系统故障(2), 人工遗漏(4)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div class="tms-panel" id="outbound-scan-section" style="margin-top:1rem">
+                            <div class="tms-panel-head"><h3>出库扫描率</h3></div>
+                            <div id="op-outbound-scan"></div>
                         </div>
-
-                        <!-- 派送扫描率统计 -->
-                        <div id="delivery-scan-section" style="margin-bottom: 2rem;">
-                            <h4>派送扫描率统计</h4>
-                            <table class="operation-table">
-                                <thead>
-                                    <tr>
-                                        <th>日期</th>
-                                        <th>应派送数</th>
-                                        <th>实际扫描数</th>
-                                        <th>派送扫描率</th>
-                                        <th>未扫描原因</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>2026-01-28</td>
-                                        <td>495</td>
-                                        <td>483</td>
-                                        <td>97.58%</td>
-                                        <td>设备故障(6), 网络问题(4), 人工遗漏(2)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-27</td>
-                                        <td>470</td>
-                                        <td>461</td>
-                                        <td>98.09%</td>
-                                        <td>设备故障(4), 网络问题(3), 人工遗漏(2)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-26</td>
-                                        <td>485</td>
-                                        <td>473</td>
-                                        <td>97.53%</td>
-                                        <td>设备故障(5), 网络问题(4), 人工遗漏(3)</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div class="tms-panel" id="delivery-scan-section" style="margin-top:1rem">
+                            <div class="tms-panel-head"><h3>派送扫描率</h3></div>
+                            <div id="op-delivery-scan"></div>
                         </div>
-
-                        <!-- 漏拣统计 -->
-                        <div id="miss-sort-section" style="margin-bottom: 2rem;">
-                            <h4>漏拣统计</h4>
-                            <table class="operation-table">
-                                <thead>
-                                    <tr>
-                                        <th>日期</th>
-                                        <th>漏拣件数</th>
-                                        <th>总拣货数</th>
-                                        <th>漏拣率</th>
-                                        <th>责任人员</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>2026-01-28</td>
-                                        <td>5</td>
-                                        <td>1200</td>
-                                        <td>0.42%</td>
-                                        <td>拣货组A</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-27</td>
-                                        <td>3</td>
-                                        <td>1150</td>
-                                        <td>0.26%</td>
-                                        <td>拣货组B</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-26</td>
-                                        <td>4</td>
-                                        <td>1180</td>
-                                        <td>0.34%</td>
-                                        <td>拣货组C</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div class="tms-panel" id="miss-sort-section" style="margin-top:1rem">
+                            <div class="tms-panel-head"><h3>漏拣统计</h3></div>
+                            <div id="op-miss-sort"></div>
                         </div>
-
-                        <!-- 叉车货统计 -->
-                        <div id="forklift-section">
-                            <h4>叉车货统计</h4>
-                            <table class="operation-table">
-                                <thead>
-                                    <tr>
-                                        <th>日期</th>
-                                        <th>叉车编号</th>
-                                        <th>操作次数</th>
-                                        <th>总重量(吨)</th>
-                                        <th>操作员</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>2026-01-28</td>
-                                        <td>FC-001</td>
-                                        <td>120</td>
-                                        <td>58.5</td>
-                                        <td>赵师傅</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-28</td>
-                                        <td>FC-002</td>
-                                        <td>95</td>
-                                        <td>42.3</td>
-                                        <td>钱师傅</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-27</td>
-                                        <td>FC-001</td>
-                                        <td>110</td>
-                                        <td>52.8</td>
-                                        <td>赵师傅</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-27</td>
-                                        <td>FC-002</td>
-                                        <td>90</td>
-                                        <td>39.6</td>
-                                        <td>钱师傅</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div class="tms-panel" id="forklift-section" style="margin-top:1rem">
+                            <div class="tms-panel-head"><h3>叉车货统计</h3></div>
+                            <div id="op-forklift"></div>
                         </div>
                     </div>
 
-                    <!-- 考核管理标签页 -->
                     <div id="evaluation-tab" class="tab-content hidden">
-                        <h3>考核管理</h3>
-
-                        <!-- 签收考核 -->
-                        <div style="margin-bottom: 2rem;">
-                            <h4>签收考核</h4>
-                            <table class="operation-table">
-                                <thead>
-                                    <tr>
-                                        <th>考核周期</th>
-                                        <th>派送员</th>
-                                        <th>应签收数</th>
-                                        <th>实际签收数</th>
-                                        <th>签收率</th>
-                                        <th>考核结果</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>2026-01-21至2026-01-27</td>
-                                        <td>张师傅</td>
-                                        <td>150</td>
-                                        <td>148</td>
-                                        <td>98.67%</td>
-                                        <td>优秀</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-21至2026-01-27</td>
-                                        <td>李师傅</td>
-                                        <td>135</td>
-                                        <td>132</td>
-                                        <td>97.78%</td>
-                                        <td>良好</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-21至2026-01-27</td>
-                                        <td>王师傅</td>
-                                        <td>142</td>
-                                        <td>138</td>
-                                        <td>97.18%</td>
-                                        <td>良好</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-21至2026-01-27</td>
-                                        <td>赵师傅</td>
-                                        <td>128</td>
-                                        <td>124</td>
-                                        <td>96.88%</td>
-                                        <td>合格</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>2026-01-21至2026-01-27</td>
-                                        <td>钱师傅</td>
-                                        <td>130</td>
-                                        <td>125</td>
-                                        <td>96.15%</td>
-                                        <td>合格</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <!-- 考核指标 -->
-                        <div>
-                            <h4>考核指标设置</h4>
-                            <table class="operation-table">
-                                <thead>
-                                    <tr>
-                                        <th>指标名称</th>
-                                        <th>目标值</th>
-                                        <th>权重</th>
-                                        <th>考核周期</th>
-                                        <th>状态</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>签收率</td>
-                                        <td>≥98%</td>
-                                        <td>30%</td>
-                                        <td>周</td>
-                                        <td>启用</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>扫描率</td>
-                                        <td>≥99%</td>
-                                        <td>25%</td>
-                                        <td>周</td>
-                                        <td>启用</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>准时率</td>
-                                        <td>≥95%</td>
-                                        <td>20%</td>
-                                        <td>周</td>
-                                        <td>启用</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>投诉率</td>
-                                        <td>≤1%</td>
-                                        <td>25%</td>
-                                        <td>周</td>
-                                        <td>启用</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>漏拣率</td>
-                                        <td>≤0.5%</td>
-                                        <td>15%</td>
-                                        <td>周</td>
-                                        <td>启用</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>破损率</td>
-                                        <td>≤0.3%</td>
-                                        <td>15%</td>
-                                        <td>周</td>
-                                        <td>启用</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn edit btn btn-warning">编辑</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                        <div class="tms-panel" id="op-metrics"></div>
+                        <div class="tms-panel" id="op-evaluations" style="margin-top:1rem"></div>
                     </div>
 
-                    <!-- 记录查询标签页 -->
                     <div id="records-tab" class="tab-content hidden">
-                        <h3>记录查询</h3>
-
-                        <!-- 改单记录 -->
-                        <div style="margin-bottom: 2rem;">
-                            <h4>改单记录</h4>
-                            <table class="operation-table">
-                                <thead>
-                                    <tr>
-                                        <th>改单ID</th>
-                                        <th>原订单号</th>
-                                        <th>改单原因</th>
-                                        <th>改单内容</th>
-                                        <th>操作人</th>
-                                        <th>操作时间</th>
-                                        <th>操作</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>MOD-001</td>
-                                        <td>ORD-20260128001</td>
-                                        <td>地址变更</td>
-                                        <td>收货地址变更</td>
-                                        <td>客服小王</td>
-                                        <td>2026-01-28 10:30</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>MOD-002</td>
-                                        <td>ORD-20260128002</td>
-                                        <td>联系人变更</td>
-                                        <td>收货人电话变更</td>
-                                        <td>客服小李</td>
-                                        <td>2026-01-28 14:20</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>MOD-003</td>
-                                        <td>ORD-20260128003</td>
-                                        <td>货物变更</td>
-                                        <td>货物数量变更</td>
-                                        <td>客服小张</td>
-                                        <td>2026-01-28 16:45</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>MOD-004</td>
-                                        <td>ORD-20260127001</td>
-                                        <td>地址变更</td>
-                                        <td>收货地址变更</td>
-                                        <td>客服小王</td>
-                                        <td>2026-01-27 09:15</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>MOD-005</td>
-                                        <td>ORD-20260127002</td>
-                                        <td>货物变更</td>
-                                        <td>货物规格变更</td>
-                                        <td>客服小李</td>
-                                        <td>2026-01-27 11:30</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>MOD-006</td>
-                                        <td>ORD-20260127003</td>
-                                        <td>联系人变更</td>
-                                        <td>收货人姓名变更</td>
-                                        <td>客服小张</td>
-                                        <td>2026-01-27 15:20</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>MOD-007</td>
-                                        <td>ORD-20260126001</td>
-                                        <td>地址变更</td>
-                                        <td>收货地址变更</td>
-                                        <td>客服小王</td>
-                                        <td>2026-01-26 10:45</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td>MOD-008</td>
-                                        <td>ORD-20260126002</td>
-                                        <td>货物变更</td>
-                                        <td>货物数量变更</td>
-                                        <td>客服小李</td>
-                                        <td>2026-01-26 14:10</td>
-                                        <td class="operation-actions">
-                                            <button class="action-btn view btn btn-primary">查看</button>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                        <div class="tms-panel" id="op-records"></div>
                     </div>
                 </div>
             </section>
         </main>
     </div>
 
-    <script src="common.js"></script>
+    <script src="common.js?v=20261022d"></script>
+    <script src="tms-store.js?v=20261022d"></script>
+    <script src="tms-ui.js?v=20261022d"></script>
     <script>
-        // 运营管理页面逻辑
-        document.addEventListener('DOMContentLoaded', () => {
-            // 检查用户登录状态
-            checkLoginStatus('admin');
+        // 运营管理：概览、派送地址、统计、考核、改单记录均基于 TmsStore
+        var OP_TABLES = [];
 
-            // 绑定退出登录事件
-            document.getElementById('logout-btn').addEventListener('click', () => {
-                logout();
+        document.addEventListener('DOMContentLoaded', function () {
+            if (checkLoginStatus('admin') === undefined) return;
+            TmsUI.initShell();
+            bindOpTabs();
+            initOperationTables();
+            renderOperation();
+
+            document.getElementById('op-refresh').addEventListener('click', function () {
+                renderOperation();
+                OP_TABLES.forEach(function (t) { if (t && t.refresh) t.refresh(); });
+                TmsUI.toast('运营数据已刷新', 'success');
             });
 
-            // 显示用户信息
-            displayCurrentUser();
-
-            // 绑定标签页切换事件
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.addEventListener('click', () => {
-                    const tabId = tab.getAttribute('data-tab');
-                    switchTab(tabId);
-                });
-            });
-
-            // 子菜单展开/折叠功能
-            const operationMenu = document.querySelector('.has-submenu');
-            if (operationMenu) {
-                const menuLink = operationMenu.querySelector('a');
-                menuLink.addEventListener('click', (e) => {
-                    e.preventDefault(); // 阻止默认跳转
-                    operationMenu.classList.toggle('active');
-                });
-
-                // 默认展开运营管理子菜单
-                operationMenu.classList.add('active');
-            }
-
-            // 运营管理相关函数
-            // 查看策略详情
-            document.querySelectorAll('.action-btn.view').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const row = e.target.closest('tr');
-                    const id = row.cells[0].textContent;
-                    const name = row.cells[1].textContent;
-                    alert(`查看 ${name} (${id}) 的详细信息`);
-                });
-            });
-
-            // 编辑策略
-            document.querySelectorAll('.action-btn.edit').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const row = e.target.closest('tr');
-                    const id = row.cells[0].textContent;
-                    const name = row.cells[1].textContent;
-                    alert(`编辑 ${name} (${id})`);
-                    // 这里可以添加实际的编辑逻辑
-                });
-            });
-
-            // 激活策略
-            document.querySelectorAll('.action-btn.activate').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const row = e.target.closest('tr');
-                    const id = row.cells[0].textContent;
-                    const name = row.cells[1].textContent;
-                    alert(`激活策略 ${name} (${id})`);
-                    // 这里可以添加实际的激活逻辑
-                });
-            });
-
-            // 暂停策略
-            document.querySelectorAll('.action-btn.suspend').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    const row = e.target.closest('tr');
-                    const id = row.cells[0].textContent;
-                    const name = row.cells[1].textContent;
-                    alert(`暂停策略 ${name} (${id})`);
-                    // 这里可以添加实际的暂停逻辑
-                });
-            });
+            TmsStore.subscribe(renderOperation);
+            applyInitialHash();
         });
 
-        // 切换标签页函数
-        function switchTab(tabId, sectionId = null) {
-            // 隐藏所有标签页内容
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.add('hidden');
-            });
-
-            // 移除所有标签页的活跃状态
-            document.querySelectorAll('.tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-
-            // 显示选中的标签页内容
-            const targetTab = document.getElementById(`${tabId}-tab`);
-            if (targetTab) {
-                targetTab.classList.remove('hidden');
-            }
-
-            // 标记选中的标签页为活跃状态
-            const targetTabBtn = document.querySelector(`.tab[data-tab="${tabId}"]`);
-            if (targetTabBtn) {
-                targetTabBtn.classList.add('active');
-            }
-
-            // 如果是统计分析标签页，处理section显示
-            if (tabId === 'statistics' && sectionId) {
-                // 隐藏所有统计section
-                document.querySelectorAll('[id$="-section"]').forEach(section => {
-                    section.style.display = 'none';
+        function bindOpTabs() {
+            document.querySelectorAll('#op-tabs .tab').forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    switchTab(this.dataset.tab);
                 });
-                // 显示指定的section
-                const targetSection = document.getElementById(sectionId);
-                if (targetSection) {
-                    targetSection.style.display = 'block';
+            });
+        }
+
+        function switchTab(tabId, sectionId) {
+            document.querySelectorAll('#op-tabs .tab').forEach(function (t) {
+                t.classList.toggle('active', t.dataset.tab === tabId);
+            });
+            document.querySelectorAll('.tab-content').forEach(function (c) { c.classList.add('hidden'); });
+            var target = document.getElementById(tabId + '-tab');
+            if (target) target.classList.remove('hidden');
+            if (sectionId) {
+                var section = document.getElementById(sectionId);
+                if (section) {
+                    setTimeout(function () { section.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
                 }
-            } else if (tabId === 'statistics') {
-                // 如果没有指定section，显示所有统计section
-                document.querySelectorAll('[id$="-section"]').forEach(section => {
-                    section.style.display = 'block';
-                });
             }
         }
 
-        // 打开地址维护
-        function openAddressMaintenance() {
-            alert('打开地址维护界面');
-        }
-
-        // 打开地址审核
-        function openAddressAudit() {
-            alert('打开地址审核界面');
-        }
-
-        // 滚动到指定区块
         function scrollToSection(sectionId) {
-            const section = document.getElementById(sectionId);
-            if (section) {
-                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            var section = document.getElementById(sectionId);
+            if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function applyInitialHash() {
+            var hash = (location.hash || '').replace('#', '');
+            if (!hash) return;
+            if (/-section$/.test(hash)) {
+                switchTab('statistics', hash);
+            } else if (hash === 'delivery-address' || hash === 'statistics' || hash === 'evaluation' || hash === 'records' || hash === 'overview') {
+                switchTab(hash);
+            } else if (hash === 'evaluation-index') {
+                switchTab('evaluation');
             }
+        }
+
+        function renderOperation() {
+            var S = window.TmsStore, U = window.TmsUI;
+            if (!S || !U) return;
+            var today = S.dailyStats(1)[0] || {};
+            var ov = S.overview();
+            var lowStock = S.list('inventory', { pageSize: 0 }).rows.filter(function (m) { return m.status === 'low'; }).length;
+            var pendingFin = S.list('finances', { filters: { status: 'pending' }, pageSize: 0 }).total;
+            var changes = S.list('changeRecords', { pageSize: 0 }).total;
+
+            U.kpis(document.getElementById('op-kpis'), [
+                { label: '今日签收率', value: (today.signRate || 0) + '%', color: '#4caf50', sub: '实签 / 应签' },
+                { label: '入库扫描率', value: (today.inboundRate || 0) + '%', color: '#2196f3', sub: '今日入库扫描覆盖率' },
+                { label: '出库扫描率', value: (today.outboundRate || 0) + '%', color: '#667eea', sub: '今日出库扫描覆盖率' },
+                { label: '派送扫描率', value: (today.deliveryRate || 0) + '%', color: '#ff9800', sub: '今日派送扫描覆盖率' },
+                { label: '改单记录', value: changes, color: '#2f8f7c', sub: '累计订单变更' },
+                { label: '待处理异常', value: ov.pendingExceptions, color: '#ff6b6b', sub: '待处理 + 处理中' }
+            ]);
+
+            var week = S.dailyStats(7);
+            U.charts.line(document.getElementById('op-sign-chart'), {
+                labels: week.map(function (d) { return d.label; }),
+                series: [{ name: '签收率', color: '#4ecdc4', data: week.map(function (d) { return d.signRate; }) }],
+                height: 230,
+                area: true
+            });
+
+            document.getElementById('op-progress').innerHTML = U.detailGrid([
+                { label: '应签收', value: (today.expectedSign || 0) + ' 单' },
+                { label: '实际签收', value: (today.actualSign || 0) + ' 单' },
+                { label: '入库扫描', value: (today.inboundScanned || 0) + ' 单' },
+                { label: '出库扫描', value: (today.outboundScanned || 0) + ' 单' },
+                { label: '派送扫描', value: (today.deliveryScanned || 0) + ' 单' },
+                { label: '叉车作业', value: (today.forkliftOps || 0) + ' 次 / ' + (today.forkliftTons || 0) + ' 吨' }
+            ]);
+
+            document.getElementById('op-todos').innerHTML = U.detailGrid([
+                { label: '待处理异常', value: '<span class="tms-link" onclick="location.href=\'tms-exception.html\'">' + ov.pendingExceptions + ' 条</span>' },
+                { label: '库存偏低物料', value: '<span class="tms-link" onclick="location.href=\'tms-warehouse.html\'">' + lowStock + ' 项</span>' },
+                { label: '待结算财务', value: '<span class="tms-link" onclick="location.href=\'tms-finance.html\'">' + pendingFin + ' 笔</span>' },
+                { label: '待受理工单', value: '<span class="tms-link" onclick="location.href=\'tms-service.html\'">' + ov.pendingTickets + ' 单</span>' }
+            ]);
+        }
+
+        function initOperationTables() {
+            var U = window.TmsUI, S = window.TmsStore;
+
+            OP_TABLES.push(U.table(document.getElementById('op-address'), {
+                entity: 'deliveryAddresses',
+                pageSize: 8,
+                searchPlaceholder: '搜索地址 / 区域 / 负责人',
+                searchFields: ['id', 'detail', 'area', 'manager'],
+                defaultSort: { key: 'id', dir: 'asc' },
+                filters: [
+                    { key: 'status', label: '全部状态', options: [{ value: 'active', label: '启用' }, { value: 'inactive', label: '停用' }] },
+                    { key: 'audit', label: '全部审核', options: [{ value: 'approved', label: '已审核' }, { value: 'pending', label: '待审核' }] }
+                ],
+                columns: [
+                    { key: 'id', label: '地址ID', width: '110px' },
+                    { key: 'detail', label: '详细地址' },
+                    { key: 'area', label: '所属区域' },
+                    { key: 'manager', label: '负责人' },
+                    { key: 'status', label: '状态', render: function (r) { return U.badge(r.status === 'active' ? '启用' : '停用', r.status === 'active' ? 'success' : 'muted'); } },
+                    { key: 'audit', label: '审核', render: function (r) { return U.badge(r.audit === 'approved' ? '已审核' : '待审核', r.audit === 'approved' ? 'success' : 'warn'); } }
+                ],
+                toolbar: [{ text: '新增地址', className: 'tms-btn tms-btn-primary', onClick: function () { openAddressForm(); } }],
+                actions: [
+                    {
+                        label: '审核', className: 'tms-btn-light', show: function (r) { return r.audit !== 'approved'; },
+                        onClick: function (row) {
+                            S.update('deliveryAddresses', row.id, { audit: 'approved' });
+                            U.toast('地址已审核通过', 'success');
+                        }
+                    },
+                    { label: '编辑', onClick: function (row) { openAddressForm(row); } },
+                    {
+                        label: '删除', className: 'tms-btn-danger', onClick: function (row) {
+                            U.confirm({ title: '删除地址', message: '确定删除「' + row.detail + '」吗？', okText: '删除', danger: true }).then(function (ok) {
+                                if (!ok) return;
+                                S.remove('deliveryAddresses', row.id);
+                                U.toast('地址已删除', 'success');
+                            });
+                        }
+                    }
+                ]
+            }));
+
+            var week = S.dailyStats(7);
+            OP_TABLES.push(U.table(document.getElementById('op-daily'), {
+                rows: function () {
+                    return S.dailyStats(7).slice().reverse().map(function (d) {
+                        return {
+                            id: d.date, label: d.label, expectedSign: d.expectedSign, actualSign: d.actualSign,
+                            signRate: d.signRate, inboundRate: d.inboundRate, outboundRate: d.outboundRate,
+                            deliveryRate: d.deliveryRate, missRate: d.missRate, forkliftOps: d.forkliftOps,
+                            forkliftTons: d.forkliftTons
+                        };
+                    });
+                },
+                pageSize: 0,
+                search: false,
+                columns: [
+                    { key: 'label', label: '日期', width: '80px' },
+                    { key: 'expectedSign', label: '应签收', align: 'right' },
+                    { key: 'actualSign', label: '实签收', align: 'right' },
+                    { key: 'signRate', label: '签收率', align: 'right', render: function (r) { return r.signRate + '%'; } },
+                    { key: 'inboundRate', label: '入库扫描率', align: 'right', render: function (r) { return r.inboundRate + '%'; } },
+                    { key: 'outboundRate', label: '出库扫描率', align: 'right', render: function (r) { return r.outboundRate + '%'; } },
+                    { key: 'deliveryRate', label: '派送扫描率', align: 'right', render: function (r) { return r.deliveryRate + '%'; } },
+                    { key: 'missRate', label: '漏拣率', align: 'right', render: function (r) { return r.missRate + '%'; } },
+                    { key: 'forkliftTons', label: '叉车吨位', align: 'right', render: function (r) { return r.forkliftTons + ' 吨'; } }
+                ]
+            }));
+
+            addMetricTable('op-sign-rate', '日期', '签收率', function (d) { return d.signRate + '%'; }, true);
+            addMetricTable('op-inbound-scan', '日期', '入库扫描率', function (d) { return d.inboundRate + '%'; }, true);
+            addMetricTable('op-outbound-scan', '日期', '出库扫描率', function (d) { return d.outboundRate + '%'; }, true);
+            addMetricTable('op-delivery-scan', '日期', '派送扫描率', function (d) { return d.deliveryRate + '%'; }, true);
+            addMetricTable('op-miss-sort', '日期', '漏拣率', function (d) { return d.missRate + '%'; }, true);
+            addMetricTable('op-forklift', '日期', '叉车作业量', function (d) { return d.forkliftOps + ' 次 / ' + d.forkliftTons + ' 吨'; }, false);
+
+            function addMetricTable(containerId, label, metricLabel, renderValue) {
+                OP_TABLES.push(U.table(document.getElementById(containerId), {
+                    rows: function () {
+                        return S.dailyStats(7).slice().reverse().map(function (d) {
+                            return { id: d.date, label: d.label, value: renderValue(d) };
+                        });
+                    },
+                    pageSize: 0,
+                    search: false,
+                    columns: [
+                        { key: 'label', label: label, width: '120px' },
+                        { key: 'value', label: metricLabel, render: function (r) { return r.value; } }
+                    ]
+                }));
+            }
+
+            OP_TABLES.push(U.table(document.getElementById('op-metrics'), {
+                entity: 'evalMetrics',
+                pageSize: 8,
+                searchPlaceholder: '搜索指标名称',
+                searchFields: ['id', 'name', 'target', 'period'],
+                defaultSort: { key: 'id', dir: 'asc' },
+                filters: [{ key: 'status', label: '全部状态', options: [{ value: 'active', label: '启用' }, { value: 'inactive', label: '停用' }] }],
+                columns: [
+                    { key: 'id', label: '指标ID', width: '100px' },
+                    { key: 'name', label: '考核指标' },
+                    { key: 'target', label: '目标值' },
+                    { key: 'weight', label: '权重', render: function (r) { return r.weight + '%'; } },
+                    { key: 'period', label: '周期' },
+                    { key: 'status', label: '状态', render: function (r) { return U.badge(r.status === 'active' ? '启用' : '停用', r.status === 'active' ? 'success' : 'muted'); } }
+                ],
+                toolbar: [{ text: '新增指标', className: 'tms-btn tms-btn-primary', onClick: function () { openMetricForm(); } }],
+                actions: [
+                    { label: '编辑', onClick: function (row) { openMetricForm(row); } },
+                    {
+                        label: '删除', className: 'tms-btn-danger', onClick: function (row) {
+                            U.confirm({ title: '删除指标', message: '确定删除考核指标「' + row.name + '」吗？', okText: '删除', danger: true }).then(function (ok) {
+                                if (!ok) return;
+                                S.remove('evalMetrics', row.id);
+                                U.toast('指标已删除', 'success');
+                            });
+                        }
+                    }
+                ]
+            }));
+
+            OP_TABLES.push(U.table(document.getElementById('op-evaluations'), {
+                entity: 'evaluations',
+                pageSize: 8,
+                searchPlaceholder: '搜索员工 / 部门 / 岗位',
+                searchFields: ['employee', 'department', 'position', 'period'],
+                defaultSort: { key: 'score', dir: 'desc' },
+                filters: [{ key: 'grade', label: '全部等级', options: ['A', 'B', 'C', 'D'] }],
+                columns: [
+                    { key: 'period', label: '考核周期', width: '100px' },
+                    { key: 'employee', label: '员工' },
+                    { key: 'department', label: '部门' },
+                    { key: 'signRate', label: '签收率', render: function (r) { return r.signRate + '%'; } },
+                    { key: 'onTimeRate', label: '准时率', render: function (r) { return r.onTimeRate + '%'; } },
+                    { key: 'satisfaction', label: '满意度', render: function (r) { return Number(r.satisfaction).toFixed(2); } },
+                    { key: 'score', label: '得分' },
+                    { key: 'grade', label: '等级', render: function (r) { return U.badge(r.grade, r.grade === 'A' ? 'success' : (r.grade === 'B' ? 'info' : (r.grade === 'C' ? 'warn' : 'danger'))); } }
+                ],
+                toolbar: [{ text: '发起考核', className: 'tms-btn tms-btn-primary', onClick: openEvaluationForm }],
+                actions: [
+                    {
+                        label: '详情', onClick: function (row) {
+                            var m = U.detailModal('考核详情', U.detailGrid([
+                                { label: '考核周期', value: U.esc(row.period) },
+                                { label: '员工', value: U.esc(row.employee) },
+                                { label: '部门', value: U.esc(row.department) },
+                                { label: '岗位', value: U.esc(row.position) },
+                                { label: '签收率', value: row.signRate + '%' },
+                                { label: '准时率', value: row.onTimeRate + '%' },
+                                { label: '满意度', value: Number(row.satisfaction).toFixed(2) },
+                                { label: '综合得分', value: row.score + '（' + row.grade + '）' },
+                                { label: '评语', value: U.esc(row.comment) }
+                            ]));
+                            m.el.querySelectorAll('[data-act="close"]').forEach(function (b) { b.addEventListener('click', m.close); });
+                        }
+                    }
+                ]
+            }));
+
+            OP_TABLES.push(U.table(document.getElementById('op-records'), {
+                entity: 'changeRecords',
+                pageSize: 8,
+                searchPlaceholder: '搜索订单号 / 原因 / 操作人',
+                searchFields: ['id', 'orderId', 'reason', 'content', 'operator'],
+                defaultSort: { key: 'operatedAt', dir: 'desc' },
+                columns: [
+                    { key: 'id', label: '记录ID', width: '110px' },
+                    { key: 'orderId', label: '订单号' },
+                    { key: 'reason', label: '变更原因' },
+                    { key: 'content', label: '变更内容' },
+                    { key: 'operator', label: '操作人', width: '90px' },
+                    { key: 'operatedAt', label: '操作时间', width: '150px', render: function (r) { return U.fmt.dateTime(r.operatedAt); } }
+                ],
+                toolbar: [{ text: '登记改单', className: 'tms-btn tms-btn-primary', onClick: openChangeForm }],
+                actions: [
+                    {
+                        label: '删除', className: 'tms-btn-danger', onClick: function (row) {
+                            U.confirm({ title: '删除记录', message: '确定删除改单记录「' + row.id + '」吗？', okText: '删除', danger: true }).then(function (ok) {
+                                if (!ok) return;
+                                S.remove('changeRecords', row.id);
+                                U.toast('记录已删除', 'success');
+                            });
+                        }
+                    }
+                ]
+            }));
+        }
+
+        function openAddressForm(row) {
+            var U = window.TmsUI;
+            U.formModal({
+                title: row ? '编辑派送地址' : '新增派送地址',
+                width: 620,
+                values: row || { status: 'active', audit: 'pending' },
+                fields: [
+                    { key: 'detail', label: '详细地址', required: true, full: true, placeholder: '省市区 + 街道门牌' },
+                    { key: 'area', label: '所属区域', required: true, placeholder: '如：北京-朝阳' },
+                    { key: 'manager', label: '负责人', required: true },
+                    { key: 'status', label: '状态', type: 'select', options: [{ value: 'active', label: '启用' }, { value: 'inactive', label: '停用' }] },
+                    { key: 'audit', label: '审核状态', type: 'select', options: [{ value: 'approved', label: '已审核' }, { value: 'pending', label: '待审核' }] }
+                ],
+                submitText: row ? '保存修改' : '新增地址',
+                onSubmit: function (v) {
+                    if (row) window.TmsStore.update('deliveryAddresses', row.id, v);
+                    else window.TmsStore.create('deliveryAddresses', v);
+                }
+            });
+        }
+
+        function openMetricForm(row) {
+            var U = window.TmsUI;
+            U.formModal({
+                title: row ? '编辑考核指标' : '新增考核指标',
+                width: 560,
+                values: row || { period: '月度', status: 'active', weight: 10 },
+                fields: [
+                    { key: 'name', label: '指标名称', required: true },
+                    { key: 'target', label: '目标值', required: true, placeholder: '如：≥ 95%' },
+                    { key: 'weight', label: '权重（%）', type: 'number', required: true, min: 1, max: 100 },
+                    { key: 'period', label: '考核周期', type: 'select', options: ['月度', '季度', '年度'] },
+                    { key: 'status', label: '状态', type: 'select', options: [{ value: 'active', label: '启用' }, { value: 'inactive', label: '停用' }] }
+                ],
+                submitText: row ? '保存修改' : '新增指标',
+                onSubmit: function (v) {
+                    if (row) window.TmsStore.update('evalMetrics', row.id, v);
+                    else window.TmsStore.create('evalMetrics', v);
+                }
+            });
+        }
+
+        function openEvaluationForm() {
+            var U = window.TmsUI, S = window.TmsStore;
+            var employees = S.list('employees', { pageSize: 0 }).rows;
+            U.formModal({
+                title: '发起考核',
+                width: 640,
+                values: { period: '2026-10', signRate: 95, onTimeRate: 92, satisfaction: 4.6, score: 90 },
+                fields: [
+                    { key: 'period', label: '考核周期', required: true, placeholder: '如：2026-10' },
+                    {
+                        key: 'employee', label: '考核员工', type: 'select', required: true,
+                        options: employees.map(function (e) { return { value: e.name, label: e.name + ' · ' + e.department }; })
+                    },
+                    { key: 'signRate', label: '签收率（%）', type: 'number', required: true, min: 0, max: 100 },
+                    { key: 'onTimeRate', label: '准时率（%）', type: 'number', required: true, min: 0, max: 100 },
+                    { key: 'satisfaction', label: '满意度（分）', type: 'number', required: true, min: 0, max: 5, step: 0.1 },
+                    { key: 'score', label: '综合得分', type: 'number', required: true, min: 0, max: 100 }
+                ],
+                submitText: '提交考核',
+                onSubmit: function (v) {
+                    var emp = employees.find(function (e) { return e.name === v.employee; }) || {};
+                    var grade = v.score >= 90 ? 'A' : (v.score >= 80 ? 'B' : (v.score >= 70 ? 'C' : 'D'));
+                    S.create('evaluations', {
+                        period: v.period, employee: v.employee, department: emp.department || '-',
+                        position: emp.position || '-', signRate: v.signRate, onTimeRate: v.onTimeRate,
+                        satisfaction: v.satisfaction, score: v.score, grade: grade,
+                        comment: grade === 'A' ? '表现优秀，各项指标领先' : (grade === 'B' ? '整体良好，个别指标需提升' : '需加强时效与服务质量')
+                    });
+                    U.toast('考核记录已生成', 'success');
+                }
+            });
+        }
+
+        function openChangeForm() {
+            var U = window.TmsUI, S = window.TmsStore;
+            var orders = S.list('orders', { sort: { key: 'createdAt', dir: 'desc' }, pageSize: 80 }).rows;
+            var now = new Date();
+            var pad = function (n) { return String(n).padStart(2, '0'); };
+            var defaultTime = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) +
+                'T' + pad(now.getHours()) + ':' + pad(now.getMinutes());
+            U.formModal({
+                title: '登记改单',
+                width: 640,
+                fields: [
+                    {
+                        key: 'orderId', label: '订单号', type: 'select', required: true,
+                        options: orders.map(function (o) { return { value: o.id, label: o.id + ' · ' + o.customer }; })
+                    },
+                    {
+                        key: 'reason', label: '变更原因', type: 'select', required: true,
+                        options: ['客户修改收货地址', '客户要求改约时间', '货物信息录入错误', '运费结算方式调整']
+                    },
+                    { key: 'content', label: '变更内容', type: 'textarea', required: true, full: true, rows: 3 },
+                    { key: 'operator', label: '操作人', required: true, value: (getCurrentUser() || {}).username || '运营管理员' },
+                    { key: 'operatedAt', label: '操作时间', type: 'datetime-local', value: defaultTime }
+                ],
+                submitText: '保存记录',
+                onSubmit: function (v) {
+                    v.operatedAt = v.operatedAt ? new Date(v.operatedAt).toISOString() : new Date().toISOString();
+                    S.create('changeRecords', v);
+                    U.toast('改单记录已保存', 'success');
+                }
+            });
         }
     </script>
 </body>
