@@ -13,8 +13,8 @@
 (function (global) {
     'use strict';
 
-    var DB_KEY = 'tmsDB_v2';
-    var DB_VERSION = 2;
+    var DB_KEY = 'tmsDB_v3';
+    var DB_VERSION = 3;
 
     /* ============================== 基础工具 ============================== */
 
@@ -111,7 +111,12 @@
         inventory: { normal: '正常', low: '库存偏低', out: '缺货' },
         capacity: { available: '可用', busy: '满载', expired: '已失效' },
         policy: { active: '生效中', suspended: '已暂停', expired: '已失效' },
-        gateway: { active: '启用', inactive: '停用' }
+        gateway: { active: '启用', inactive: '停用' },
+        receivable: { unpaid: '未回款', partial: '部分回款', paid: '已回款', overdue: '已逾期', void: '已作废' },
+        bill: { draft: '草稿', confirmed: '已确认', settled: '已结清', disputed: '争议中' },
+        payable: { pending: '待结算', settled: '已结算' },
+        rate: { active: '生效中', inactive: '已停用' },
+        route: { active: '启用', inactive: '停用' }
     };
 
     var CUSTOMERS = ['杭州云帆电商', '上海优选商贸', '北京恒通科技', '广州南粤百货', '深圳蓝海数码',
@@ -165,6 +170,48 @@
         { id: 'area-7', name: '杭州西湖区' }, { id: 'area-8', name: '南京鼓楼区' }
     ];
 
+    // 偏远/超区城市：收取偏远附加费
+    var REMOTE_CITIES = ['西安', '成都', '武汉'];
+
+    // 服务等级 / 付款方式
+    var SERVICE_LEVELS = ['标准', '加急', '经济', '冷链'];
+    var PAYMENT_METHODS = ['现付', '到付', '月结'];
+
+    // 客户分层与协议折扣（月结大客户享受协议价与账期）
+    var CUSTOMER_LEVELS = {
+        '杭州云帆电商': { level: 'KA', discount: 0.12, settleCycle: 30 },
+        '上海优选商贸': { level: 'KA', discount: 0.10, settleCycle: 30 },
+        '北京恒通科技': { level: 'A', discount: 0.06, settleCycle: 45 },
+        '广州南粤百货': { level: 'A', discount: 0.06, settleCycle: 30 },
+        '深圳蓝海数码': { level: 'B', discount: 0.03, settleCycle: 30 },
+        '南京金陵食品': { level: 'B', discount: 0.03, settleCycle: 30 },
+        '成都天府家居': { level: 'B', discount: 0.02, settleCycle: 60 },
+        '武汉长江医药': { level: 'A', discount: 0.05, settleCycle: 45 },
+        '西安丝路文化': { level: 'C', discount: 0, settleCycle: 30 },
+        '苏州锦绣纺织': { level: 'C', discount: 0, settleCycle: 30 }
+    };
+
+    // 轨迹节点字典（比状态更细，带标准时限 stdHours）
+    var TRACE_NODES = [
+        { code: 'GOT', name: '揽收', stdHours: 4 },
+        { code: 'INBOUND', name: '入库', stdHours: 6 },
+        { code: 'SORTING', name: '分拣', stdHours: 8 },
+        { code: 'LOADING', name: '装车', stdHours: 4 },
+        { code: 'DEPARTURE', name: '发车', stdHours: 2 },
+        { code: 'TRANSIT', name: '干线在途', stdHours: 24 },
+        { code: 'ARRIVED', name: '到达', stdHours: 6 },
+        { code: 'DELIVERING', name: '派送', stdHours: 12 },
+        { code: 'SIGNED', name: '签收', stdHours: 0 },
+        { code: 'RETURNED', name: '退回', stdHours: 0 },
+        { code: 'INTERCEPT', name: '拦截', stdHours: 0 },
+        { code: 'OVERAREA', name: '超区', stdHours: 0 },
+        { code: 'PROBLEM', name: '问题件', stdHours: 0 }
+    ];
+    var TRACE_NODE_MAP = {};
+    TRACE_NODES.forEach(function (n) { TRACE_NODE_MAP[n.code] = n; });
+    // 订单阶段索引 → 轨迹节点
+    var STAGE_NODE = ['GOT', 'INBOUND', 'SORTING', 'DEPARTURE', 'ARRIVED', 'DELIVERING', 'SIGNED'];
+
     /* ============================== 初始化 ============================== */
 
     var db = null;
@@ -213,6 +260,205 @@
         return 'WB' + pad(hash(orderId) % 10000000000, 10).slice(0, 10) + pad((hash(orderId + 'wb') % 10000), 4);
     }
 
+    /* ============================== 计费引擎 ============================== */
+
+    // 客户协议折扣（月结大客户在协议价基础上再让 2%）
+    function discountRateFor(customer, paymentMethod) {
+        var lv = CUSTOMER_LEVELS[customer];
+        var rate = lv ? lv.discount : 0;
+        if (paymentMethod === '月结' && lv) rate = Math.min(0.2, rate + 0.02);
+        return Math.round(rate * 1000) / 1000;
+    }
+
+    function settleCycleFor(customer) {
+        var lv = CUSTOMER_LEVELS[customer];
+        return lv ? lv.settleCycle : 30;
+    }
+
+    // 构造运价模板（全国兵底 + 主要干线 × 服务等级）
+    function buildRateCards() {
+        var cards = [];
+        var seq = 0;
+        var lanes = [['全国', '全国'], ['北京', '上海'], ['上海', '广州'], ['广州', '深圳'],
+            ['杭州', '南京'], ['成都', '武汉'], ['深圳', '北京'], ['西安', '成都'], ['苏州', '上海']];
+        var serviceCfg = {
+            '标准': { first: 12, cont: 3, ratio: 8000, fuel: 0.10, min: 15, remote: 8 },
+            '加急': { first: 18, cont: 5, ratio: 6000, fuel: 0.15, min: 25, remote: 12 },
+            '经济': { first: 9, cont: 2, ratio: 10000, fuel: 0.08, min: 12, remote: 6 },
+            '冷链': { first: 25, cont: 7, ratio: 6000, fuel: 0.18, min: 40, remote: 15 }
+        };
+        lanes.forEach(function (lane) {
+            var isNational = lane[0] === '全国';
+            SERVICE_LEVELS.forEach(function (svc) {
+                var cfg = serviceCfg[svc];
+                var factor = isNational ? 1 : 1.15;
+                seq++;
+                cards.push({
+                    id: 'RC-' + pad(seq, 3),
+                    name: lane[0] + '→' + lane[1] + ' · ' + svc + '价',
+                    origin: lane[0], destination: lane[1], service: svc,
+                    firstWeight: 1, firstPrice: money(cfg.first * factor),
+                    continueUnit: 1, continuePrice: money(cfg.cont * factor),
+                    throwRatio: cfg.ratio, fuelRate: cfg.fuel, minimum: money(cfg.min * factor),
+                    remoteFee: money(cfg.remote), insuredRate: 0.006, codRate: 0.03,
+                    status: 'active', updatedAt: at(-1, 10, 0)
+                });
+            });
+        });
+        return cards;
+    }
+
+    // 选最匹配的运价卡：精确线路+服务 > 精确线路(标准) > 全国+服务 > 全国+标准
+    function pickRateCard(cards, origin, destination, service) {
+        service = service || '标准';
+        function find(o, d, s) {
+            for (var i = 0; i < cards.length; i++) {
+                if (cards[i].origin === o && cards[i].destination === d && cards[i].service === s) return cards[i];
+            }
+            return null;
+        }
+        return find(origin, destination, service)
+            || find(origin, destination, '标准')
+            || find('全国', '全国', service)
+            || find('全国', '全国', '标准')
+            || cards[0];
+    }
+
+    /**
+     * 计费试算核心：输入计费要素，输出完整费用明细
+     * @param {object} params {origin,destination,service,weight,volume,dims,declaredValue,isInsured,paymentMethod,customer}
+     * @param {Array} [cards] 指定运价卡（种子内传入局部数组，运行时默认 db.rateCards）
+     */
+    function calcFreight(params, cards) {
+        var list = cards || (db && db.rateCards) || [];
+        var origin = params.origin || '全国';
+        var destination = params.destination || '全国';
+        var service = params.service || '标准';
+        var weight = Number(params.weight) || 0;
+        var card = pickRateCard(list, origin, destination, service) || {};
+        var ratio = Number(card.throwRatio) || 8000;
+        var firstWeight = Number(card.firstWeight) || 1;
+
+        // 体积重：优先用尺寸(LxWxH cm)，否则用体积(m3)
+        var volumetric = 0;
+        if (params.dims) {
+            var parts = String(params.dims).toLowerCase().split(/[x*×]/);
+            if (parts.length === 3) volumetric = (Number(parts[0]) * Number(parts[1]) * Number(parts[2])) / ratio;
+        }
+        if (!volumetric && Number(params.volume)) volumetric = (Number(params.volume) * 1000000) / ratio;
+        volumetric = money(volumetric);
+
+        var chargeable = Math.max(weight, volumetric, firstWeight);
+
+        var firstFee = money(card.firstPrice || 0);
+        var continueFee = 0;
+        if (chargeable > firstWeight) {
+            var steps = Math.ceil((chargeable - firstWeight) / (Number(card.continueUnit) || 1));
+            continueFee = money(steps * (Number(card.continuePrice) || 0));
+        }
+        var base = firstFee + continueFee;
+        var minimumApplied = false;
+        if (base < (Number(card.minimum) || 0)) { base = Number(card.minimum); minimumApplied = true; }
+        base = money(base);
+
+        var fuelFee = money(base * (Number(card.fuelRate) || 0));
+        var remoteFee = REMOTE_CITIES.indexOf(destination) > -1 ? money(card.remoteFee || 0) : 0;
+        var insured = params.isInsured || Number(params.declaredValue) > 0;
+        var insuredFee = insured ? money((Number(params.declaredValue) || 0) * (Number(card.insuredRate) || 0)) : 0;
+        var codFee = params.paymentMethod === '到付' ? money(base * (Number(card.codRate) || 0.03)) : 0;
+
+        var subtotal = money(base + fuelFee + remoteFee + insuredFee + codFee);
+        var discountRate = discountRateFor(params.customer, params.paymentMethod);
+        var discount = money(subtotal * discountRate);
+        var total = money(subtotal - discount);
+
+        return {
+            cardId: card.id || '', cardName: card.name || '', service: service,
+            actualWeight: money(weight), volumetricWeight: volumetric, chargeableWeight: money(chargeable),
+            firstFee: firstFee, continueFee: continueFee, minimumApplied: minimumApplied,
+            fuelFee: fuelFee, remoteFee: remoteFee, insuredFee: insuredFee, codFee: codFee,
+            discountRate: discountRate, discount: discount, total: total,
+            breakdown: { 首重: firstFee, 续重: continueFee, 燃油: fuelFee, 偏远: remoteFee, 保价: insuredFee, 到付: codFee, 折扣: -discount }
+        };
+    }
+
+    /* ============================== 路由与轨迹 ============================== */
+
+    // 构造多段路由（含全国兵底线路）
+    function buildRoutes() {
+        var defs = [
+            ['北京', '上海', '高', '陆运'], ['上海', '广州', '高', '空运'], ['广州', '深圳', '中', '陆运'],
+            ['杭州', '南京', '中', '陆运'], ['成都', '武汉', '低', '陆运'], ['深圳', '北京', '高', '空运'],
+            ['西安', '成都', '低', '陆运'], ['苏州', '上海', '中', '陆运'], ['全国', '全国', '中', '陆运']
+        ];
+        var trunkMap = { '陆运': 24, '空运': 12 };
+        return defs.map(function (d, i) {
+            var isNation = d[0] === '全国';
+            var mode = d[3];
+            var trunk = trunkMap[mode] || 24;
+            var segments = isNation ? [
+                { seq: 1, from: '揽收网点', to: '始发分拨', mode: '陆运', stdHours: 6 },
+                { seq: 2, from: '始发分拨', to: '目的分拨', mode: mode, stdHours: trunk },
+                { seq: 3, from: '目的分拨', to: '派送网点', mode: '陆运', stdHours: 12 }
+            ] : [
+                { seq: 1, from: d[0], to: d[0] + '分拨中心', mode: '陆运', stdHours: 6 },
+                { seq: 2, from: d[0] + '分拨中心', to: d[1] + '分拨中心', mode: mode, stdHours: trunk },
+                { seq: 3, from: d[1] + '分拨中心', to: d[1] + '网点', mode: '陆运', stdHours: 8 },
+                { seq: 4, from: d[1] + '网点', to: '签收', mode: '陆运', stdHours: 12 }
+            ];
+            var total = segments.reduce(function (s, x) { return s + x.stdHours; }, 0);
+            return {
+                id: 'ROUTE-' + pad(i + 1, 3), origin: d[0], destination: d[1], mode: mode, priority: d[2],
+                segments: segments, totalStdHours: total, status: 'active', deviationCount: 0
+            };
+        });
+    }
+
+    function findRoute(database, origin, destination) {
+        var list = (database || db).routes || [];
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].origin === origin && list[i].destination === destination) return list[i];
+        }
+        for (var j = 0; j < list.length; j++) { if (list[j].origin === '全国') return list[j]; }
+        return list[0] || null;
+    }
+
+    // 按起终点匹配路由，写入 planSegments 与逐段 deadline
+    function planRoute(order, database) {
+        var route = findRoute(database, order.origin, order.destination);
+        if (!route) return;
+        order.routeId = route.id;
+        var start = new Date(order.createdAt).getTime();
+        var acc = 0;
+        order.planSegments = route.segments.map(function (s) {
+            acc += s.stdHours;
+            return {
+                seq: s.seq, from: s.from, to: s.to, mode: s.mode, stdHours: s.stdHours,
+                deadline: new Date(start + acc * 3600000).toISOString()
+            };
+        });
+    }
+
+    // 根据订单阶段 progression 生成轨迹明细（带节点、地点、超时/偏差标记）
+    function buildTraces(order, progression, statusIndex, rng) {
+        var traces = [];
+        var scanLocs = [order.origin + '揽收点', order.origin + '分拨中心', order.origin + '分拨中心',
+            order.origin + '→' + order.destination, order.destination + '中转', order.destination + '网点', order.receiverAddress];
+        for (var i = 0; i <= statusIndex && i < STAGE_NODE.length; i++) {
+            var node = TRACE_NODE_MAP[STAGE_NODE[i]] || { name: '节点', stdHours: 0 };
+            var opTime = progression[i] || order.createdAt;
+            var deadline = new Date(new Date(opTime).getTime() + (node.stdHours || 24) * 3600000).toISOString();
+            var overtime = i > 0 && i < 6 && statusIndex < 6 && rng() < 0.14;
+            var deviant = i >= 2 && i <= 4 && statusIndex >= 3 && statusIndex < 6 && rng() < 0.07;
+            traces.push({
+                node: STAGE_NODE[i], nodeName: node.name, code: STAGE_NODE[i],
+                location: scanLocs[i], opTime: opTime, deadline: deadline,
+                isOvertime: overtime, isDeviant: deviant
+            });
+        }
+        return traces;
+    }
+
     /* ============================== 种子数据 ============================== */
 
     function seed() {
@@ -227,6 +473,12 @@
         var tickets = [];
         var claims = [];
         var orders = [];
+        var receivables = [];
+        var payables = [];
+        var bills = [];
+        var rateCards = buildRateCards();
+        var routes = buildRoutes();
+        var tracePool = []; // 汇总全部轨迹（供轨迹中心检索）
 
         // 员工
         var employees = NAMES.slice(0, 20).map(function (name, i) {
@@ -438,9 +690,21 @@
                 var createdHour = randInt(7, 20);
                 var createdAt = at(day, createdHour, randInt(0, 59));
                 var weight = randInt(5, 200) / 10;
-                var amount = money(weight * randInt(3, 9) + 8);
+                var pieces = randInt(1, 6);
+                var service = pick(SERVICE_LEVELS);
+                var lv = CUSTOMER_LEVELS[customer];
+                var paymentMethod = (lv && (lv.level === 'KA' || lv.level === 'A')) ? '月结' : pick(PAYMENT_METHODS);
+                var dimL = randInt(20, 60), dimW = randInt(20, 50), dimH = randInt(10, 40);
+                var dims = dimL + 'x' + dimW + 'x' + dimH;
+                var declared = rand() < 0.35 ? randInt(5, 60) * 100 : 0;
                 var orderId = buildOrderId(origin, customer, new Date(createdAt).getTime(), orderSeq);
                 var waybillNo = buildWaybill(orderId);
+                var charge = calcFreight({
+                    origin: origin, destination: destination, service: service, weight: weight,
+                    dims: dims, declaredValue: declared, isInsured: declared > 0,
+                    paymentMethod: paymentMethod, customer: customer
+                }, rateCards);
+                var amount = charge.total;
 
                 var expectedAt = new Date(createdAt);
                 expectedAt.setDate(expectedAt.getDate() + randInt(1, 3));
@@ -480,8 +744,20 @@
                     phone: '13' + pad(randInt(100000000, 999999999), 9).slice(0, 9),
                     goods: goods,
                     weight: weight,
-                    pieces: randInt(1, 6),
+                    pieces: pieces,
+                    service: service,
+                    orderType: 'forward',
+                    dims: dims,
+                    volume: money(dimL * dimW * dimH / 1000000),
+                    volumetricWeight: charge.volumetricWeight,
+                    chargeableWeight: charge.chargeableWeight,
+                    declaredValue: declared,
+                    isInsured: declared > 0,
+                    paymentMethod: paymentMethod,
+                    settleCycle: settleCycleFor(customer),
                     freight: amount,
+                    freightBreakdown: charge,
+                    rateCardId: charge.cardId,
                     origin: origin,
                     destination: destination,
                     senderAddress: origin + '市' + ['朝阳区', '浦东新区', '天河区', '南山区', '西湖区', '鼓楼区'][orderSeq % 6] + '物流园 ' + randInt(1, 30) + ' 号',
@@ -492,8 +768,27 @@
                     signedAt: signedAt,
                     updatedAt: timeline[timeline.length - 1].time,
                     timeline: timeline,
-                    remark: ''
+                    remark: '',
+                    receivableStatus: '',
+                    routeId: '',
+                    planSegments: [],
+                    traces: [],
+                    slaDeadline: expectedAt.toISOString()
                 };
+                // 路由计划 + 轨迹明细（取消件不生成）
+                if (!cancelled) {
+                    planRoute(order, { routes: routes });
+                    order.traces = buildTraces(order, progression, statusIndex, rand);
+                    order.traces.forEach(function (tr) {
+                        tracePool.push({
+                            id: 'TRC-S' + pad(tracePool.length + 1, 5),
+                            orderId: orderId, waybillNo: waybillNo, customer: customer,
+                            origin: origin, destination: destination, status: ORDER_FLOW[statusIndex].key,
+                            node: tr.node, nodeName: tr.nodeName, location: tr.location,
+                            opTime: tr.opTime, deadline: tr.deadline, isOvertime: tr.isOvertime, isDeviant: tr.isDeviant
+                        });
+                    });
+                }
                 orders.push(order);
 
                 if (cancelled) continue;
@@ -549,13 +844,14 @@
                 // 运输任务
                 if (statusIndex >= 3) {
                     var trStatus = statusIndex === 6 ? 'completed' : (statusIndex === 5 ? 'delivering' : (statusIndex === 4 ? 'arrived' : 'shipping'));
+                    var carrierName = CARRIERS[orderSeq % CARRIERS.length];
                     transport.push({
                         id: counterSeed('transports', 'TR', orderSeq),
                         orderId: orderId,
                         waybillNo: waybillNo,
                         origin: origin,
                         destination: destination,
-                        carrier: CARRIERS[orderSeq % CARRIERS.length],
+                        carrier: carrierName,
                         vehicleId: vehicles[orderSeq % vehicles.length].id,
                         driver: vehicles[orderSeq % vehicles.length].driver,
                         departAt: progression[3],
@@ -564,37 +860,92 @@
                         status: trStatus,
                         progress: statusIndex === 6 ? 100 : randInt(30, 90)
                     });
+                    // 成本应付：向承运商结算干线运费（按收入约 60% 估算）
+                    var settled = statusIndex === 6 && rand() < 0.7;
+                    payables.push({
+                        id: counterSeed('payables', 'PAY', orderSeq * 2),
+                        target: carrierName, targetType: 'carrier', category: '干线运费',
+                        refId: orderId, amount: money(amount * 0.6),
+                        period: dateKey(new Date(progression[3])),
+                        status: settled ? 'settled' : 'pending',
+                        settledAt: settled ? (signedAt || nowIso()) : ''
+                    });
                 }
 
                 // 异常记录
                 if (rand() < 0.22) {
                     var exStatus = day <= -3 ? 'resolved' : (day <= -1 ? (rand() < 0.5 ? 'processing' : 'resolved') : 'pending');
+                    var exType = pick(['延迟送达', '货物损坏', '信息不符', '地址错误', '丢件', '拒收']);
+                    var exParty = pick(['承运商', '网点', '司机', '仓库', '客户']);
+                    var exDeduction = exStatus === 'resolved' && exParty !== '客户' ? money(randInt(50, 600)) : 0;
                     exceptions.push({
                         id: counterSeed('exceptions', 'EX', orderSeq),
                         orderId: orderId,
                         waybillNo: waybillNo,
-                        type: pick(['延迟送达', '货物损坏', '信息不符', '地址错误', '丢件', '拒收']),
+                        type: exType,
                         description: pick(['运输途中车辆故障导致延误', '外包装破损，内件疑似受损', '收件人信息与订单不一致', '收货地址无法定位', '派送后未找到包裹', '收件人拒绝签收']),
                         occurredAt: progression[Math.min(statusIndex, 5)] || createdAt,
                         status: exStatus,
                         handler: exStatus === 'pending' ? '' : NAMES[orderSeq % 10],
                         resolution: exStatus === 'resolved' ? '已与客户协商完成处理' : '',
-                        resolvedAt: exStatus === 'resolved' ? at(day + 1, 16, 0) : ''
+                        resolvedAt: exStatus === 'resolved' ? at(day + 1, 16, 0) : '',
+                        level: pick(['一级', '二级', '三级']),
+                        slaDeadline: new Date(new Date(progression[Math.min(statusIndex, 5)] || createdAt).getTime() + 4 * 3600000).toISOString(),
+                        escalated: exStatus !== 'resolved' && rand() < 0.2,
+                        responsibleParty: exStatus === 'pending' ? '' : exParty,
+                        responsible: exStatus === 'pending' ? '' : NAMES[(orderSeq + 2) % NAMES.length],
+                        solution: exStatus === 'resolved' ? pick(['补发', '改派', '理赔', '退回']) : '',
+                        rootCause: exStatus === 'resolved' ? pick(['操作不规范', '系统对接异常', '天气原因', '客户原因', '包装不合格']) : '',
+                        deductionAmount: exDeduction,
+                        linkedClaimId: '',
+                        linkedTicketId: '',
+                        flow: exStatus === 'pending' ? [] : [
+                            { time: progression[Math.min(statusIndex, 5)] || createdAt, actor: '系统', action: '异常上报' },
+                            { time: at(day + 1, 10, 0), actor: NAMES[orderSeq % 10], action: '受理并定责：' + exParty }
+                        ]
                     });
+                    // 定责扣款→生成成本应付
+                    if (exDeduction > 0) {
+                        payables.push({
+                            id: counterSeed('payables', 'PAY', 1000 + orderSeq * 2),
+                            target: exParty === '司机' ? vehicles[orderSeq % vehicles.length].driver : exParty,
+                            targetType: exParty === '司机' ? 'driver' : (exParty === '承运商' ? 'carrier' : 'branch'),
+                            category: '异常扣款', refId: orderId, amount: exDeduction,
+                            period: dateKey(new Date(at(day + 1, 16, 0))), status: 'pending', settledAt: ''
+                        });
+                    }
                 }
 
-                // 收入流水
+                // 签收→按付款方式生成应收/流水
                 if (statusIndex === 6) {
-                    finances.push({
-                        id: counterSeed('finances', 'FIN', orderSeq * 2),
-                        type: 'income',
-                        category: '运费收入',
-                        orderId: orderId,
-                        amount: amount,
-                        status: 'settled',
-                        date: signedAt,
-                        remark: customer + ' 运费结算'
-                    });
+                    if (paymentMethod === '月结') {
+                        // 月结：挂应收，收入待回款才置已结算；较早签收的部分置为逾期以丰富账龄
+                        var aged = day <= -6;
+                        var dueMs = new Date(signedAt).getTime() + (aged ? randInt(2, 5) * 86400000 : settleCycleFor(customer) * 86400000);
+                        var dueDate = new Date(dueMs);
+                        var recStatus = dueDate < new Date() ? 'overdue' : (rand() < 0.28 ? 'partial' : 'unpaid');
+                        order.receivableStatus = recStatus;
+                        receivables.push({
+                            id: counterSeed('receivables', 'REC', orderSeq), orderId: orderId, customer: customer, amount: amount,
+                            paymentMethod: paymentMethod, settleCycle: settleCycleFor(customer),
+                            issuedAt: signedAt, dueDate: dueDate.toISOString(), status: recStatus,
+                            billId: '', period: dateKey(new Date(signedAt)).slice(0, 7)
+                        });
+                        finances.push({
+                            id: counterSeed('finances', 'FIN', orderSeq * 2),
+                            type: 'income', category: '运费收入（月结）', orderId: orderId,
+                            amount: amount, status: 'pending', date: signedAt,
+                            remark: customer + ' 月结挂账，待回款'
+                        });
+                    } else {
+                        order.receivableStatus = 'paid';
+                        finances.push({
+                            id: counterSeed('finances', 'FIN', orderSeq * 2),
+                            type: 'income', category: '运费收入',
+                            orderId: orderId, amount: amount, status: 'settled',
+                            date: signedAt, remark: customer + ' ' + paymentMethod + ' 运费结算'
+                        });
+                    }
                 }
             }
         }
@@ -608,6 +959,33 @@
                 date: at(-f, 18, 0), remark: f % 2 === 0 ? '干线车辆加油' : '临时装卸人员工资'
             });
         }
+
+        // 按客户 + 账期聚合生成月度账单，并回写 receivable.billId
+        var billGroups = {};
+        receivables.forEach(function (r) {
+            var key = r.customer + '#' + r.period;
+            if (!billGroups[key]) billGroups[key] = { customer: r.customer, period: r.period, rows: [] };
+            billGroups[key].rows.push(r);
+        });
+        var billSeq = 0;
+        Object.keys(billGroups).forEach(function (key) {
+            var g = billGroups[key];
+            billSeq++;
+            var total = money(g.rows.reduce(function (s, r) { return s + Number(r.amount); }, 0));
+            var paidRows = g.rows.filter(function (r) { return r.status === 'paid'; });
+            var overdueRows = g.rows.filter(function (r) { return r.status === 'overdue'; });
+            var received = money(paidRows.reduce(function (s, r) { return s + Number(r.amount); }, 0));
+            var bStatus = overdueRows.length ? 'disputed' : (received >= total && total > 0 ? 'settled' : (g.rows.some(function (r) { return r.status === 'partial' || r.status === 'paid'; }) ? 'confirmed' : 'draft'));
+            var billId = counterSeed('bills', 'BILL', billSeq);
+            bills.push({
+                id: billId,
+                billNo: 'BILL' + g.period.replace('-', '') + pad(billSeq, 3),
+                customer: g.customer, period: g.period, itemCount: g.rows.length,
+                totalAmount: total, receivedAmount: received, status: bStatus,
+                dueDate: g.rows[0].dueDate, createdAt: g.rows[0].issuedAt
+            });
+            g.rows.forEach(function (r) { r.billId = billId; });
+        });
 
         // 服务工单
         for (var t = 0; t < 15; t++) {
@@ -727,7 +1105,9 @@
             sorting: orders.length, loading: orders.length, scans: orders.length * 10,
             transports: orders.length, exceptions: orders.length, finances: orders.length * 2,
             tickets: 15, claims: 9, adminRecords: 12, evaluations: 12,
-            serviceTickets: 15, employees: 20, orders: orders.length
+            serviceTickets: 15, employees: 20, orders: orders.length,
+            rateCards: rateCards.length, routes: routes.length,
+            receivables: receivables.length, payables: payables.length, bills: bills.length
         };
 
         return {
@@ -748,6 +1128,8 @@
             devices: devices,
             policies: policies,
             routingRules: routingRules,
+            rateCards: rateCards,
+            routes: routes,
             deliveryAddresses: addresses,
             timingRules: timingRules,
             changeRecords: changeRecords,
@@ -760,8 +1142,12 @@
             sortingTasks: sorting,
             loadingTasks: loading,
             scans: scans.sort(function (a, b) { return new Date(b.scannedAt) - new Date(a.scannedAt); }),
+            traces: tracePool.sort(function (a, b) { return new Date(b.opTime) - new Date(a.opTime); }),
             exceptions: exceptions.sort(function (a, b) { return new Date(b.occurredAt) - new Date(a.occurredAt); }),
             finances: finances.sort(function (a, b) { return new Date(b.date) - new Date(a.date); }),
+            receivables: receivables.sort(function (a, b) { return new Date(b.issuedAt) - new Date(a.issuedAt); }),
+            payables: payables.sort(function (a, b) { return new Date(b.period) - new Date(a.period); }),
+            bills: bills.sort(function (a, b) { return b.period.localeCompare(a.period); }),
             serviceTickets: tickets.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); }),
             claims: claims.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); })
         };
@@ -886,7 +1272,8 @@
             deliveryAddresses: 'ADDR', timingRules: 'TMR', changeRecords: 'CHG',
             evalMetrics: 'KPI', evaluations: 'EV', employees: 'EMP', sortingTasks: 'SRT',
             loadingTasks: 'LOD', scans: 'SC', users: 'user', roles: 'role',
-            permissions: 'perm', departments: 'dept'
+            permissions: 'perm', departments: 'dept',
+            rateCards: 'RC', routes: 'ROUTE', receivables: 'REC', payables: 'PAY', bills: 'BILL'
         };
         var record = Object.assign({}, data);
         if (!record.id) {
@@ -1046,6 +1433,67 @@
         }
     }
 
+    // 订单阶段 → 轨迹节点码
+    var STATUS_NODE = { pending: 'GOT', inbound: 'INBOUND', sorted: 'SORTING', shipping: 'DEPARTURE', arrived: 'ARRIVED', delivering: 'DELIVERING', signed: 'SIGNED' };
+
+    function traceLocation(order, status) {
+        if (status === 'inbound' || status === 'sorted' || status === 'shipping') return order.origin + '分拨中心';
+        if (status === 'arrived' || status === 'delivering') return order.destination + '网点';
+        if (status === 'signed') return order.receiverAddress;
+        return order.origin + '揽收点';
+    }
+
+    // 写入一条轨迹（同时追加到 order.traces 与全局 db.traces）
+    function addTrace(order, nodeCode, time, actor, flags) {
+        if (!db.traces) db.traces = [];
+        if (!order.traces) order.traces = [];
+        var node = TRACE_NODE_MAP[nodeCode] || { name: nodeCode, stdHours: 0 };
+        var status = order.status;
+        var t = time || nowIso();
+        var deadline = node.stdHours ? new Date(new Date(t).getTime() + node.stdHours * 3600000).toISOString() : t;
+        var loc = traceLocation(order, status);
+        var rec = {
+            id: counterNext('traces', 'TRC'),
+            orderId: order.id, waybillNo: order.waybillNo, customer: order.customer,
+            origin: order.origin, destination: order.destination, status: status,
+            node: nodeCode, nodeName: node.name, location: loc, opTime: t, deadline: deadline,
+            isOvertime: !!(flags && flags.isOvertime), isDeviant: !!(flags && flags.isDeviant), actor: actor || '系统'
+        };
+        order.traces.push({ node: nodeCode, nodeName: node.name, location: loc, opTime: t, deadline: deadline, isOvertime: rec.isOvertime, isDeviant: rec.isDeviant });
+        db.traces.unshift(rec);
+        if (db.traces.length > 2000) db.traces.length = 2000;
+    }
+
+    // 签收后结算：月结挂应收，现付/到付直接确认收入
+    function ensureSettlement(order) {
+        var method = order.paymentMethod || '现付';
+        if (method === '月结') {
+            var exists = (db.receivables || []).some(function (r) { return r.orderId === order.id; });
+            if (!exists) {
+                var cycle = settleCycleFor(order.customer);
+                var base = order.signedAt || nowIso();
+                var due = new Date(new Date(base).getTime() + cycle * 86400000);
+                create('receivables', {
+                    orderId: order.id, customer: order.customer, amount: order.freight,
+                    paymentMethod: method, settleCycle: cycle, issuedAt: base, dueDate: due.toISOString(),
+                    status: 'unpaid', billId: '', period: dateKey(new Date(base)).slice(0, 7)
+                });
+                order.receivableStatus = 'unpaid';
+                var incomeExists = db.finances.some(function (f) { return f.orderId === order.id && f.type === 'income'; });
+                if (!incomeExists) {
+                    db.finances.unshift({
+                        id: counterNext('finances', 'FIN'), type: 'income', category: '运费收入（月结）',
+                        orderId: order.id, amount: order.freight, status: 'pending', date: base,
+                        remark: order.customer + ' 月结挂账，待回款', createdAt: nowIso()
+                    });
+                }
+            }
+        } else {
+            order.receivableStatus = 'paid';
+            ensureIncome(order);
+        }
+    }
+
     function applyOrderStatus(order, nextStatus, actor, time) {
         var currentIndex = statusIndex(order.status);
         var nextIndex = statusIndex(nextStatus);
@@ -1060,6 +1508,8 @@
             time: order.updatedAt,
             actor: actor || '系统'
         });
+        var nodeCode = STATUS_NODE[nextStatus];
+        if (nodeCode) addTrace(order, nodeCode, order.updatedAt, actor);
 
         if (nextStatus === 'inbound') {
             addScanRecord(order, '入库扫描', order.updatedAt, actor);
@@ -1081,6 +1531,7 @@
             var tr = ensureTransport(order);
             tr.status = 'shipping';
             tr.departAt = order.updatedAt;
+            if (!order.planSegments || !order.planSegments.length) planRoute(order, db);
             addScanRecord(order, '出库扫描', order.updatedAt, actor);
             var vehicle = db.vehicles.find(function (v) { return v.id === tr.vehicleId; });
             if (vehicle) { vehicle.status = 'transporting'; vehicle.lastUpdate = order.updatedAt; }
@@ -1100,7 +1551,7 @@
             var tr4 = db.transports.find(function (t) { return t.orderId === order.id; });
             if (tr4) tr4.status = 'completed';
             addScanRecord(order, '签收扫描', order.updatedAt, actor);
-            ensureIncome(order);
+            ensureSettlement(order);
             var vehicle4 = tr4 ? db.vehicles.find(function (v) { return v.id === tr4.vehicleId; }) : null;
             if (vehicle4) { vehicle4.status = 'online'; vehicle4.lastUpdate = order.updatedAt; }
         }
@@ -1130,6 +1581,18 @@
         var customer = data.customer || '散客';
         var id = buildOrderId(origin, customer, Date.now(), seq);
         var expectedAt = data.expectedAt || new Date(Date.now() + 2 * 86400000).toISOString();
+        var destination = data.destination || '上海';
+        var paymentMethod = data.paymentMethod || '现付';
+        var service = data.service || '标准';
+        // 未显式传运费则调用计费引擎试算（与报价页/新单一致）
+        var charge = null;
+        if (data.freight == null || data.freight === '') {
+            charge = calcFreight({
+                origin: origin, destination: destination, service: service, weight: Number(data.weight) || 1,
+                dims: data.dims, volume: data.volume, declaredValue: Number(data.declaredValue) || 0,
+                isInsured: !!data.isInsured, paymentMethod: paymentMethod, customer: customer
+            }, db.rateCards);
+        }
         var order = Object.assign({
             id: id,
             waybillNo: buildWaybill(id),
@@ -1139,11 +1602,24 @@
             goods: data.goods || '日用百货',
             weight: Number(data.weight) || 1,
             pieces: Number(data.pieces) || 1,
-            freight: Number(data.freight) || 0,
+            service: service,
+            orderType: data.orderType || 'forward',
+            dims: data.dims || '',
+            volume: Number(data.volume) || 0,
+            declaredValue: Number(data.declaredValue) || 0,
+            isInsured: !!data.isInsured,
+            paymentMethod: paymentMethod,
+            settleCycle: settleCycleFor(customer),
+            freight: charge ? charge.total : (Number(data.freight) || 0),
+            freightBreakdown: charge || null,
+            rateCardId: charge ? charge.cardId : '',
+            volumetricWeight: charge ? charge.volumetricWeight : 0,
+            chargeableWeight: charge ? charge.chargeableWeight : (Number(data.weight) || 0),
+            receivableStatus: '', routeId: '', planSegments: [], traces: [], slaDeadline: expectedAt,
             origin: origin,
-            destination: data.destination || '上海',
+            destination: destination,
             senderAddress: data.senderAddress || origin,
-            receiverAddress: data.receiverAddress || data.destination || '上海',
+            receiverAddress: data.receiverAddress || destination,
             status: 'pending',
             createdAt: createdAt,
             expectedAt: expectedAt,
@@ -1154,6 +1630,8 @@
         }, data, { id: id, waybillNo: buildWaybill(id), createdAt: createdAt, status: 'pending', timeline: [{ status: 'pending', label: '订单创建', time: createdAt, actor: '运营管理员' }] });
         db.orders.unshift(order);
         ensureSortingTask(order);
+        planRoute(order, db);
+        addTrace(order, 'GOT', createdAt, data.actor || '运营管理员');
         if (opts.autoInbound) applyOrderStatus(order, 'inbound', '系统', nowIso());
         persist();
         return order;
@@ -1164,19 +1642,94 @@
         var order = get('orders', orderId);
         if (!order) return false;
         if (order.status === 'signed') return false;
+        var hadTransport = (db.transports || []).some(function (t) { return t.orderId === orderId; });
         order.status = 'cancelled';
         order.updatedAt = nowIso();
+        if (hadTransport) order.orderType = 'intercept'; // 已发运→拦截件
         order.remark = reason || order.remark || '订单取消';
-        order.timeline.push({ status: 'cancelled', label: '已取消', time: order.updatedAt, actor: '运营管理员' });
+        if (!order.timeline) order.timeline = [];
+        order.timeline.push({ status: 'cancelled', label: hadTransport ? '已拦截取消' : '已取消', time: order.updatedAt, actor: '运营管理员' });
+        addTrace(order, hadTransport ? 'INTERCEPT' : 'RETURNED', order.updatedAt, '运营管理员');
+        // 联动：作废未核销应收 + 冲销挂账收入 + 释放车辆
+        var rec = (db.receivables || []).find(function (r) { return r.orderId === orderId && r.status !== 'paid'; });
+        if (rec) rec.status = 'void';
+        var inc = db.finances.find(function (f) { return f.orderId === orderId && f.type === 'income' && f.status === 'pending'; });
+        if (inc) { inc.status = 'void'; inc.remark = '订单取消冲销'; }
+        var tr = (db.transports || []).find(function (t) { return t.orderId === orderId; });
+        if (tr) {
+            tr.status = 'cancelled';
+            var veh = db.vehicles.find(function (v) { return v.id === tr.vehicleId; });
+            if (veh && veh.status === 'transporting') { veh.status = 'online'; veh.lastUpdate = order.updatedAt; }
+        }
         persist();
         return true;
+    }
+
+    // 改单：改址/改约/改重/改线路，涉计费要素变化自动重算并留痕
+    function changeOrder(orderId, patch, options) {
+        ensureInit();
+        var order = get('orders', orderId);
+        if (!order) return { ok: false, message: '订单不存在' };
+        if (order.status === 'signed' || order.status === 'cancelled') return { ok: false, message: '已签收/已取消订单不可改单' };
+        var opts = options || {};
+        var before = { receiverAddress: order.receiverAddress, expectedAt: order.expectedAt, weight: order.weight, destination: order.destination };
+        var contentParts = [];
+        var routeChanged = false;
+        if (patch.receiverAddress && patch.receiverAddress !== before.receiverAddress) { order.receiverAddress = patch.receiverAddress; contentParts.push('收货地址改为 ' + patch.receiverAddress); }
+        if (patch.expectedAt && patch.expectedAt !== before.expectedAt) { order.expectedAt = patch.expectedAt; order.slaDeadline = patch.expectedAt; contentParts.push('约定时间改为 ' + patch.expectedAt); }
+        if (patch.destination && patch.destination !== before.destination) { order.destination = patch.destination; contentParts.push('目的地改为 ' + patch.destination); routeChanged = true; }
+        var weightChanged = patch.weight != null && Number(patch.weight) !== Number(before.weight);
+        if (weightChanged) { order.weight = Number(patch.weight); contentParts.push('重量改为 ' + patch.weight + 'kg'); }
+        if (patch.service) order.service = patch.service;
+        if (patch.paymentMethod) order.paymentMethod = patch.paymentMethod;
+        var needRecalc = weightChanged || routeChanged || patch.service || patch.paymentMethod;
+        if (needRecalc) {
+            var charge = calcFreight({
+                origin: order.origin, destination: order.destination, service: order.service, weight: order.weight,
+                dims: order.dims, volume: order.volume, declaredValue: order.declaredValue, isInsured: order.isInsured,
+                paymentMethod: order.paymentMethod, customer: order.customer
+            }, db.rateCards);
+            order.freight = charge.total; order.freightBreakdown = charge; order.rateCardId = charge.cardId;
+            order.volumetricWeight = charge.volumetricWeight; order.chargeableWeight = charge.chargeableWeight;
+            if (routeChanged) planRoute(order, db);
+            contentParts.push('重算运费为 ' + charge.total + ' 元');
+        }
+        order.updatedAt = nowIso();
+        if (!order.timeline) order.timeline = [];
+        order.timeline.push({ status: order.status, label: '改单', time: order.updatedAt, actor: opts.actor || '运营管理员' });
+        var rec = create('changeRecords', { orderId: order.id, reason: patch.changeReason || '客户改单', content: contentParts.join('；') || '信息修正', operator: opts.actor || '运营管理员', operatedAt: order.updatedAt });
+        persist();
+        return { ok: true, order: order, change: rec };
+    }
+
+    // 拒收/退货→正向件置退回，生成逆向件（退回始发）
+    function createReverseOrder(orderId, reason) {
+        ensureInit();
+        var order = get('orders', orderId);
+        if (!order) return { ok: false, message: '订单不存在' };
+        order.status = 'cancelled';
+        order.updatedAt = nowIso();
+        order.remark = reason || '客户拒收/退货';
+        if (!order.timeline) order.timeline = [];
+        order.timeline.push({ status: 'cancelled', label: '退回', time: order.updatedAt, actor: '运营管理员' });
+        addTrace(order, 'RETURNED', order.updatedAt, '运营管理员');
+        var reverse = createOrder({
+            origin: order.destination, destination: order.origin,
+            customer: order.customer, contact: order.contact, phone: order.phone,
+            goods: order.goods, weight: order.weight, pieces: order.pieces,
+            service: order.service, paymentMethod: '现付', orderType: 'reverse',
+            senderAddress: order.receiverAddress, receiverAddress: order.senderAddress,
+            remark: '逆向退货件 · 原单 ' + order.id
+        }, {});
+        persist();
+        return { ok: true, reverse: reverse, forward: order };
     }
 
     function removeOrder(orderId) {
         ensureInit();
         var ok = remove('orders', orderId);
         if (ok) {
-            ['transports', 'sortingTasks', 'loadingTasks', 'exceptions', 'scans'].forEach(function (entity) {
+            ['transports', 'sortingTasks', 'loadingTasks', 'exceptions', 'scans', 'traces', 'receivables'].forEach(function (entity) {
                 db[entity] = (db[entity] || []).filter(function (row) { return row.orderId !== orderId; });
             });
             persist();
@@ -1194,45 +1747,152 @@
             description: data.description || '',
             occurredAt: data.occurredAt || nowIso(),
             status: 'pending',
-            handler: '',
-            resolution: '',
-            resolvedAt: ''
+            handler: '', resolution: '', resolvedAt: '',
+            level: data.level || '三级',
+            slaDeadline: new Date(Date.now() + 4 * 3600000).toISOString(),
+            escalated: false, responsibleParty: '', responsible: '', solution: '', rootCause: '',
+            deductionAmount: 0, linkedClaimId: '', linkedTicketId: '',
+            flow: [{ time: nowIso(), actor: data.actor || '系统', action: '异常上报' }]
         });
         return record;
     }
 
     function processException(id, handler) {
         ensureInit();
-        var row = update('exceptions', id, { status: 'processing', handler: handler || '运营管理员' });
-        if (row && row.orderId) {
+        var row = get('exceptions', id);
+        if (!row) return null;
+        if (!row.flow) row.flow = [];
+        row.flow.push({ time: nowIso(), actor: handler || '运营管理员', action: '受理工单' });
+        var updated = update('exceptions', id, { status: 'processing', handler: handler || '运营管理员', flow: row.flow });
+        if (row.orderId) {
             var order = get('orders', row.orderId);
             if (order) { order.remark = '存在处理中异常：' + row.type; order.updatedAt = nowIso(); }
         }
-        persist();
-        return row;
+        return updated;
+    }
+
+    // 定责：指定责任方与扣款金额，同步生成成本应付
+    function assignResponsibility(id, data) {
+        ensureInit();
+        var row = get('exceptions', id);
+        if (!row) return null;
+        if (!row.flow) row.flow = [];
+        var party = data.party || '承运商';
+        var deduction = Number(data.deduction) || 0;
+        row.flow.push({ time: nowIso(), actor: data.actor || '运营管理员', action: '定责：' + party + (deduction ? '（扣款 ' + deduction + ' 元）' : '') });
+        update('exceptions', id, { responsibleParty: party, responsible: data.responsible || row.responsible || '待指派', deductionAmount: deduction, flow: row.flow });
+        if (deduction > 0 && party !== '客户') {
+            create('payables', {
+                target: party === '司机' ? (data.responsible || '司机') : party,
+                targetType: party === '司机' ? 'driver' : (party === '承运商' ? 'carrier' : 'branch'),
+                category: '异常扣款', refId: row.orderId || row.id, amount: deduction,
+                period: dateKey(new Date()), status: 'pending', settledAt: ''
+            });
+        }
+        return get('exceptions', id);
+    }
+
+    // 闭环：填写处理方案/根因，可按需联动理赔，并补生成责任方扣款应付
+    function closeException(id, data) {
+        ensureInit();
+        var opts = data || {};
+        var row = get('exceptions', id);
+        if (!row) return null;
+        if (!row.flow) row.flow = [];
+        row.flow.push({ time: nowIso(), actor: opts.actor || '运营管理员', action: '闭环：' + (opts.solution || '处理完成') });
+        update('exceptions', id, {
+            status: 'resolved', resolution: opts.resolution || '已处理完成', resolvedAt: nowIso(),
+            handler: row.handler || opts.actor || '运营管理员', solution: opts.solution || row.solution || '改派',
+            rootCause: opts.rootCause || row.rootCause || '', flow: row.flow
+        });
+        if (row.responsibleParty && row.responsibleParty !== '客户' && Number(row.deductionAmount) > 0) {
+            var hasPay = (db.payables || []).some(function (p) { return p.refId === (row.orderId || row.id) && p.category === '异常扣款'; });
+            if (!hasPay) {
+                create('payables', { target: row.responsibleParty, targetType: row.responsibleParty === '司机' ? 'driver' : (row.responsibleParty === '承运商' ? 'carrier' : 'branch'), category: '异常扣款', refId: row.orderId || row.id, amount: Number(row.deductionAmount), period: dateKey(new Date()), status: 'pending', settledAt: '' });
+            }
+        }
+        if (opts.createClaim) {
+            var claim = createClaim({ orderId: row.orderId, type: row.type, amount: opts.claimAmount || 0, reason: opts.resolution || row.description });
+            update('exceptions', id, { linkedClaimId: claim ? claim.id : '' });
+        }
+        return get('exceptions', id);
+    }
+
+    function escalateException(id) {
+        ensureInit();
+        var row = get('exceptions', id);
+        if (!row) return null;
+        if (!row.flow) row.flow = [];
+        row.flow.push({ time: nowIso(), actor: '系统', action: '超时升级至运营主管' });
+        return update('exceptions', id, { escalated: true, level: '一级', flow: row.flow });
     }
 
     function resolveException(id, resolution, options) {
-        ensureInit();
+        // 保留旧签名兼容：内部转 closeException
         var opts = options || {};
-        var row = get('exceptions', id);
-        if (!row) return null;
-        update('exceptions', id, {
-            status: 'resolved',
-            resolution: resolution || '已处理完成',
-            resolvedAt: nowIso(),
-            handler: row.handler || '运营管理员'
+        return closeException(id, {
+            resolution: resolution, solution: opts.solution, rootCause: opts.rootCause,
+            createClaim: opts.createClaim, claimAmount: opts.claimAmount
         });
-        if (opts.createClaim) {
-            createClaim({
-                orderId: row.orderId,
-                type: row.type,
-                amount: opts.claimAmount || 0,
-                reason: resolution || row.description
-            });
-        }
+    }
+
+    /* ============================== 应收与账单 ============================== */
+
+    function markReceivablePaid(id) {
+        ensureInit();
+        var r = get('receivables', id);
+        if (!r) return null;
+        update('receivables', id, { status: 'paid', paidAt: nowIso() });
+        var order = r.orderId ? get('orders', r.orderId) : null;
+        if (order) order.receivableStatus = 'paid';
+        var inc = db.finances.find(function (f) { return f.type === 'income' && f.orderId === r.orderId && f.status === 'pending'; });
+        if (inc) { inc.status = 'settled'; inc.date = nowIso(); inc.remark = (r.customer || '') + ' 月结回款核销'; }
         persist();
-        return get('exceptions', id);
+        return get('receivables', id);
+    }
+
+    // 按客户+账期将未归账单的应收聚合为月度账单
+    function generateBills(period, customer) {
+        ensureInit();
+        var rows = (db.receivables || []).filter(function (r) {
+            return r.status !== 'void' && !r.billId && (!period || r.period === period) && (!customer || r.customer === customer);
+        });
+        var byKey = {};
+        rows.forEach(function (r) { var k = r.customer + '#' + r.period; (byKey[k] = byKey[k] || []).push(r); });
+        var created = [];
+        Object.keys(byKey).forEach(function (k) {
+            var g = byKey[k];
+            var total = money(g.reduce(function (s, r) { return s + Number(r.amount); }, 0));
+            var bill = create('bills', {
+                billNo: 'BILL' + g[0].period.replace('-', '') + pad((db.meta.counters.bills || 0) % 1000, 3),
+                customer: g[0].customer, period: g[0].period, itemCount: g.length,
+                totalAmount: total, receivedAmount: 0, status: 'draft', dueDate: g[0].dueDate
+            });
+            g.forEach(function (r) { r.billId = bill.id; });
+            created.push(bill);
+        });
+        persist();
+        return created;
+    }
+
+    /* ============================== 轨迹超时/偏差 ============================== */
+
+    function checkTracesOvertime(autoException) {
+        ensureInit();
+        var now = Date.now();
+        var flagged = 0;
+        (db.traces || []).forEach(function (tr) {
+            if (tr.isOvertime || !tr.deadline || tr.node === 'SIGNED') return;
+            var order = get('orders', tr.orderId);
+            if (!order || order.status === 'signed' || order.status === 'cancelled') return;
+            if (new Date(tr.deadline).getTime() < now) { tr.isOvertime = true; flagged++; }
+        });
+        if (flagged && autoException) {
+            var worst = (db.traces || []).filter(function (t) { return t.isOvertime; }).sort(function (a, b) { return new Date(a.deadline) - new Date(b.deadline); })[0];
+            if (worst && worst.orderId) createException({ orderId: worst.orderId, type: '延迟送达', description: '节点[' + worst.nodeName + ']超过标准时限未更新，系统自动预警', level: '二级' });
+        }
+        if (flagged) persist();
+        return flagged;
     }
 
     function createTicket(data) {
@@ -1376,7 +2036,10 @@
             revenueToday: money(revenueToday),
             totalOrders: db.orders.length,
             signedOrders: db.orders.filter(function (o) { return o.status === 'signed'; }).length,
-            pendingTickets: db.serviceTickets.filter(function (t) { return t.status === 'pending'; }).length
+            pendingTickets: db.serviceTickets.filter(function (t) { return t.status === 'pending'; }).length,
+            overdueReceivable: money((db.receivables || []).filter(function (r) { return r.status === 'overdue' || (r.status !== 'paid' && r.status !== 'void' && r.dueDate && new Date(r.dueDate) < today); }).reduce(function (s, r) { return s + Number(r.amount || 0); }, 0)),
+            overtimeTraces: (db.traces || []).filter(function (t) { return t.isOvertime; }).length,
+            escalatedExceptions: (db.exceptions || []).filter(function (e) { return e.escalated && e.status !== 'resolved'; }).length
         };
     }
 
@@ -1554,12 +2217,94 @@
         };
     }
 
+    /* ============================== 新链路统计 ============================== */
+
+    // 计费试算（对外）
+    function quote(params) {
+        ensureInit();
+        return calcFreight(params || {}, db.rateCards);
+    }
+
+    // 应收汇总：总额/逾期/回款率/账龄分布
+    function billingSummary() {
+        ensureInit();
+        var now = new Date();
+        var rows = (db.receivables || []).filter(function (r) { return r.status !== 'void'; });
+        var total = 0, overdue = 0, received = 0;
+        var aging = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
+        rows.forEach(function (r) {
+            var amt = Number(r.amount || 0);
+            if (r.status === 'paid') { received += amt; return; }
+            total += amt;
+            var due = r.dueDate ? new Date(r.dueDate) : now;
+            var daysOver = Math.floor((now - due) / 86400000);
+            if (daysOver > 0) overdue += amt;
+            var bucket = daysOver <= 0 ? '0-30' : (daysOver <= 30 ? '0-30' : (daysOver <= 60 ? '31-60' : (daysOver <= 90 ? '61-90' : '90+')));
+            aging[bucket] = money(aging[bucket] + amt);
+        });
+        var receivableAll = money(total);
+        var collectionRate = (receivableAll + received) ? Math.round(received / (receivableAll + received) * 100) : 100;
+        return { totalReceivable: receivableAll, overdue: money(overdue), received: money(received), collectionRate: collectionRate, aging: aging, count: rows.length };
+    }
+
+    function payableSummary(period) {
+        ensureInit();
+        var rows = (db.payables || []).filter(function (p) { return !period || p.period === period; });
+        var pending = rows.filter(function (p) { return p.status === 'pending'; });
+        var settled = rows.filter(function (p) { return p.status === 'settled'; });
+        return {
+            total: money(rows.reduce(function (s, p) { return s + Number(p.amount || 0); }, 0)),
+            pending: money(pending.reduce(function (s, p) { return s + Number(p.amount || 0); }, 0)),
+            settled: money(settled.reduce(function (s, p) { return s + Number(p.amount || 0); }, 0)),
+            pendingCount: pending.length, count: rows.length
+        };
+    }
+
+    function routeStats() {
+        ensureInit();
+        var routes = db.routes || [];
+        var avg = routes.length ? Math.round(routes.reduce(function (s, r) { return s + Number(r.totalStdHours || 0); }, 0) / routes.length) : 0;
+        var deviation = (db.traces || []).filter(function (t) { return t.isDeviant; });
+        var devOrders = {};
+        deviation.forEach(function (t) { devOrders[t.orderId] = 1; });
+        return { total: routes.length, avgStdHours: avg, deviationTraces: deviation.length, deviationOrders: Object.keys(devOrders).length };
+    }
+
+    function traceOvertimeStats() {
+        ensureInit();
+        var overtime = (db.traces || []).filter(function (t) { return t.isOvertime; });
+        var deviant = (db.traces || []).filter(function (t) { return t.isDeviant; });
+        var byLane = {};
+        overtime.forEach(function (t) { var k = t.origin + '→' + t.destination; byLane[k] = (byLane[k] || 0) + 1; });
+        var top = Object.keys(byLane).map(function (k) { return { label: k, value: byLane[k] }; }).sort(function (a, b) { return b.value - a.value; }).slice(0, 6);
+        return { overtime: overtime.length, deviant: deviant.length, top: top, escalated: (db.exceptions || []).filter(function (e) { return e.escalated && e.status !== 'resolved'; }).length };
+    }
+
+    function orderLifecycleStats() {
+        ensureInit();
+        var orders = db.orders || [];
+        var cancelled = orders.filter(function (o) { return o.status === 'cancelled'; }).length;
+        var reverse = orders.filter(function (o) { return o.orderType === 'reverse'; }).length;
+        var intercept = orders.filter(function (o) { return o.orderType === 'intercept'; }).length;
+        var signed = orders.filter(function (o) { return o.status === 'signed'; }).length;
+        return {
+            total: orders.length, signed: signed, cancelled: cancelled, reverse: reverse, intercept: intercept,
+            cancelRate: orders.length ? Math.round(cancelled / orders.length * 1000) / 10 : 0,
+            reverseRate: orders.length ? Math.round(reverse / orders.length * 1000) / 10 : 0
+        };
+    }
+
     /* ============================== 对外暴露 ============================== */
 
     var api = {
         DB_KEY: DB_KEY,
         ORDER_FLOW: ORDER_FLOW,
         labels: STATUS_LABELS,
+        dict: {
+            cities: CITIES, customers: CUSTOMERS, goods: GOODS, carriers: CARRIERS,
+            serviceLevels: SERVICE_LEVELS, paymentMethods: PAYMENT_METHODS, remoteCities: REMOTE_CITIES,
+            customerLevels: CUSTOMER_LEVELS, traceNodes: TRACE_NODES, orderFlow: ORDER_FLOW
+        },
         init: init,
         reset: reset,
         list: list,
@@ -1584,6 +2329,19 @@
         updateTransportStatus: updateTransportStatus,
         completeSorting: completeSorting,
         completeLoading: completeLoading,
+        // 生命周期 / 异常闭环 / 应收
+        changeOrder: changeOrder,
+        createReverseOrder: createReverseOrder,
+        assignResponsibility: assignResponsibility,
+        closeException: closeException,
+        escalateException: escalateException,
+        markReceivablePaid: markReceivablePaid,
+        generateBills: generateBills,
+        checkTracesOvertime: checkTracesOvertime,
+        planRoute: planRoute,
+        // 计费
+        quote: quote,
+        calcFreight: calcFreight,
         // 统计
         overview: overview,
         orderTrend: orderTrend,
@@ -1595,6 +2353,11 @@
         financeSummary: financeSummary,
         financeTrend: financeTrend,
         employeeStats: employeeStats,
+        billingSummary: billingSummary,
+        payableSummary: payableSummary,
+        routeStats: routeStats,
+        traceOvertimeStats: traceOvertimeStats,
+        orderLifecycleStats: orderLifecycleStats,
         // 工具
         dateKey: dateKey,
         dateTimeKey: dateTimeKey,

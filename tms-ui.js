@@ -63,7 +63,9 @@
         approved: 'success', rejected: 'danger', paid: 'success',
         settled: 'success', void: 'muted', normal: 'success', low: 'warn', out: 'danger',
         available: 'success', busy: 'warn', expired: 'muted',
-        suspended: 'danger', on_leave: 'warn', resigned: 'muted'
+        suspended: 'danger', on_leave: 'warn', resigned: 'muted',
+        unpaid: 'warn', partial: 'info', overdue: 'danger',
+        draft: 'muted', confirmed: 'info', disputed: 'danger'
     };
 
     function statusBadge(status, entity) {
