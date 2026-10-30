@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: dev
 nodes_managed: true
-exported_at: "2026-10-30T04:11:06Z"
+exported_at: "2026-10-30T06:38:17Z"
 modules:
     "":
-        dir_name: TMS 多角色前端根聚合层
-        title: TMS 多角色前端根聚合层
+        dir_name: TMS 运输管理系统根入口与共享运行时
+        title: TMS 运输管理系统根入口与共享运行时
         scope:
             - readme
             - update_all_auth.py
@@ -90,8 +90,8 @@ modules:
         related_to:
             - path: client_ui
     tms_admin:
-        dir_name: TMS 管理端运营后台（多页面装配层）
-        title: TMS 管理端运营后台（多页面装配层）
+        dir_name: TMS 运营管理后台（多业务页装配层）
+        title: TMS 运营管理后台（多业务页装配层）
         scope:
             - tms-administration.html
             - tms-architecture.html
@@ -132,8 +132,8 @@ modules:
         depends_on: []
         related_to: []
     tms_admin/administration_support:
-        dir_name: TMS 管理端辅助页面（行政管理_架构介绍_异常管理）
-        title: TMS 管理端辅助页面（行政管理/架构介绍/异常管理）
+        dir_name: TMS 管理端辅助页面（行政管理_异常管理_架构说明）
+        title: TMS 管理端辅助页面（行政管理/异常管理/架构说明）
         scope:
             - tms-administration.html
             - tms-architecture.html
@@ -143,8 +143,8 @@ modules:
         depends_on: []
         related_to: []
     tms_admin/finance_claims:
-        dir_name: 财务、理赔与考核评级管理页面
-        title: 财务、理赔与考核评级管理页面
+        dir_name: TMS 运营管理后台财务、理赔与考核页面
+        title: TMS 运营管理后台财务、理赔与考核页面
         scope:
             - tms-finance.html
             - tms-claim.html
@@ -154,8 +154,8 @@ modules:
         depends_on: []
         related_to: []
     tms_admin/hr_user_management:
-        dir_name: 人事与用户_车辆管理页面
-        title: 人事与用户/车辆管理页面
+        dir_name: 人事_用户权限_车辆管理页面
+        title: 人事/用户权限/车辆管理页面
         scope:
             - tms-hr.html
             - tms-user.html
@@ -165,8 +165,8 @@ modules:
         depends_on: []
         related_to: []
     tms_admin/material_warehouse:
-        dir_name: 仓储与运力管理页面（物料_仓库_运力）
-        title: 仓储与运力管理页面（物料/仓库/运力）
+        dir_name: 运营管理后台：物料_仓储_运力三页视图
+        title: 运营管理后台：物料/仓储/运力三页视图
         scope:
             - tms-material.html
             - tms-warehouse.html
@@ -176,8 +176,8 @@ modules:
         depends_on: []
         related_to: []
     tms_admin/monitoring_geofence:
-        dir_name: 监控、电子围栏与扫描管理页面
-        title: 监控、电子围栏与扫描管理页面
+        dir_name: 系统监控与电子围栏运营页面
+        title: 系统监控与电子围栏运营页面
         scope:
             - tms-monitor.html
             - tms-geofence.html
@@ -187,8 +187,8 @@ modules:
         depends_on: []
         related_to: []
     tms_admin/operations_performance:
-        dir_name: 运营、绩效与时效管理页面
-        title: 运营、绩效与时效管理页面
+        dir_name: TMS 运营管理、员工绩效与时效监控页面
+        title: TMS 运营管理、员工绩效与时效监控页面
         scope:
             - tms-operation.html
             - tms-performance.html
@@ -198,8 +198,8 @@ modules:
         depends_on: []
         related_to: []
     tms_admin/transport_sorting:
-        dir_name: 运输_分拣_装卸运营页面
-        title: 运输/分拣/装卸运营页面
+        dir_name: TMS 运营管理端运输_分拣_装卸页面
+        title: TMS 运营管理端运输/分拣/装卸页面
         scope:
             - tms-transport.html
             - tms-sorting.html
