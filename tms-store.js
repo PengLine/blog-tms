@@ -131,6 +131,9 @@
         '陈晨', '刘洋', '黄磊', '林静', '何军', '高敏', '罗强', '梁雪',
         '谢峰', '韩梅', '唐杰', '冯丽', '邓超', '曹阳', '彭飞', '许娜'];
 
+    // 派送员候选（从员工名单派生）
+    var COURIERS = NAMES.slice(0, 12);
+
     var DEPARTMENTS = [
         { id: 'dept-1', name: '总部', parentId: '', description: '公司总部' },
         { id: 'dept-2', name: '运营部', parentId: 'dept-1', description: '负责公司运营管理' },
@@ -176,6 +179,10 @@
     // 服务等级 / 付款方式
     var SERVICE_LEVELS = ['标准', '加急', '经济', '冷链'];
     var PAYMENT_METHODS = ['现付', '到付', '月结'];
+
+    // 代收货款（COD）上划商家时的服务费率与最低服务费
+    var COD_SERVICE_RATE = 0.02;
+    var COD_MIN_SERVICE = 2;
 
     // 客户分层与协议折扣（月结大客户享受协议价与账期）
     var CUSTOMER_LEVELS = {
@@ -476,6 +483,8 @@
         var receivables = [];
         var payables = [];
         var bills = [];
+        var rechecks = []; // 磅重/体积计费复核审计
+        var codRecords = []; // 代收货款（COD）台账
         var rateCards = buildRateCards();
         var routes = buildRoutes();
         var tracePool = []; // 汇总全部轨迹（供轨迹中心检索）
@@ -694,6 +703,7 @@
                 var service = pick(SERVICE_LEVELS);
                 var lv = CUSTOMER_LEVELS[customer];
                 var paymentMethod = (lv && (lv.level === 'KA' || lv.level === 'A')) ? '月结' : pick(PAYMENT_METHODS);
+                var codAmt = paymentMethod === '到付' ? money(randInt(120, 3600)) : 0; // 代收货款本金
                 var dimL = randInt(20, 60), dimW = randInt(20, 50), dimH = randInt(10, 40);
                 var dims = dimL + 'x' + dimW + 'x' + dimH;
                 var declared = rand() < 0.35 ? randInt(5, 60) * 100 : 0;
@@ -773,6 +783,9 @@
                     routeId: '',
                     planSegments: [],
                     traces: [],
+                    codAmount: codAmt,
+                    courier: (!cancelled && statusIndex >= 5) ? COURIERS[orderSeq % COURIERS.length] : '',
+                    pod: null,
                     slaDeadline: expectedAt.toISOString()
                 };
                 // 路由计划 + 轨迹明细（取消件不生成）
@@ -906,9 +919,14 @@
                     });
                     // 定责扣款→生成成本应付
                     if (exDeduction > 0) {
+                        var dedTarget = exParty === '司机' ? vehicles[orderSeq % vehicles.length].driver
+                            : exParty === '承运商' ? CARRIERS[orderSeq % CARRIERS.length]
+                            : exParty === '仓库' ? CITIES[(orderSeq + 3) % CITIES.length] + '分拨中心'
+                            : exParty === '网点' ? CITIES[orderSeq % CITIES.length] + '营业网点'
+                            : exParty;
                         payables.push({
                             id: counterSeed('payables', 'PAY', 1000 + orderSeq * 2),
-                            target: exParty === '司机' ? vehicles[orderSeq % vehicles.length].driver : exParty,
+                            target: dedTarget,
                             targetType: exParty === '司机' ? 'driver' : (exParty === '承运商' ? 'carrier' : 'branch'),
                             category: '异常扣款', refId: orderId, amount: exDeduction,
                             period: dateKey(new Date(at(day + 1, 16, 0))), status: 'pending', settledAt: ''
@@ -939,12 +957,44 @@
                         });
                     } else {
                         order.receivableStatus = 'paid';
+                        order.pod = {
+                            receiver: pick(['本人签收', '家人代收', '前台代收', '门卫代收', '同事代收']),
+                            receiverPhone: order.phone, podNote: '电子回单已上传', podPhoto: rand() < 0.7,
+                            signedAt: signedAt, operator: order.courier || NAMES[orderSeq % NAMES.length]
+                        };
                         finances.push({
                             id: counterSeed('finances', 'FIN', orderSeq * 2),
                             type: 'income', category: '运费收入',
                             orderId: orderId, amount: amount, status: 'settled',
                             date: signedAt, remark: customer + ' ' + paymentMethod + ' 运费结算'
                         });
+                        // 到付代收货款：签收时向收件人收取货款，形成待上划商家的负债
+                        if (paymentMethod === '到付' && codAmt > 0) {
+                            var csFee = money(Math.max(codAmt * COD_SERVICE_RATE, COD_MIN_SERVICE));
+                            var csNet = money(codAmt - csFee);
+                            var csRemitted = rand() < 0.5;
+                            var csAt = csRemitted ? at(day + 2, 15, 0) : '';
+                            codRecords.push({
+                                id: counterSeed('codRecords', 'COD', codRecords.length + 1),
+                                orderId: orderId, waybillNo: waybillNo, shipper: customer, consignee: order.contact,
+                                goodsValue: codAmt, serviceFee: csFee, netPayable: csNet,
+                                collectedAt: signedAt, courier: order.courier || NAMES[orderSeq % NAMES.length],
+                                remitStatus: csRemitted ? 'remitted' : 'pending', remittedAt: csAt, remark: '',
+                                createdAt: signedAt
+                            });
+                            if (csRemitted) {
+                                finances.push({
+                                    id: counterSeed('finances', 'FIN', 3000 + codRecords.length),
+                                    type: 'expense', category: '代收货款上划', orderId: orderId, amount: csNet,
+                                    status: 'settled', date: csAt, remark: '代收货款上划给' + customer
+                                });
+                                finances.push({
+                                    id: counterSeed('finances', 'FIN', 4000 + codRecords.length),
+                                    type: 'income', category: '代收款服务费', orderId: orderId, amount: csFee,
+                                    status: 'settled', date: csAt, remark: '代收货款服务费收入'
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -986,6 +1036,40 @@
             });
             g.rows.forEach(function (r) { r.billId = billId; });
         });
+
+        // 计费复核（磅重/体积差异）审计样本：到货复磅与下单不符，多退少补
+        var recheckPool = orders.filter(function (o) {
+            return (o.status === 'signed' || o.status === 'arrived' || o.status === 'delivering') && o.orderType !== 'reverse';
+        });
+        for (var rci = 0; rci < recheckPool.length && rechecks.length < 6; rci += 3) {
+            var ro = recheckPool[rci];
+            if (!ro) break;
+            var overPct = randInt(-12, 20) / 100;               // -12% ~ +20% 差异
+            var rDelta = money(ro.freight * overPct);
+            if (Math.abs(rDelta) < 2) continue;
+            var auditedWeight = money(Math.max(0.2, ro.weight * (1 + overPct)));
+            var auditedFreight = money(ro.freight + rDelta);
+            var rkSeq = rechecks.length + 1;
+            rechecks.push({
+                id: counterSeed('rechecks', 'CHK', rkSeq),
+                orderId: ro.id, waybillNo: ro.waybillNo, customer: ro.customer,
+                originalWeight: ro.weight, auditedWeight: auditedWeight,
+                originalChargeable: ro.chargeableWeight || ro.weight, auditedChargeable: auditedWeight,
+                originalFreight: ro.freight, auditedFreight: auditedFreight,
+                delta: rDelta, type: rDelta > 0 ? '补收' : '退费',
+                reason: pick(['到货复磅重量偏大', '体积测量与下单不符', '客户少报重量', '包装增加体积', '实际件数多于申报']),
+                operator: NAMES[rkSeq % 10], auditedAt: ro.signedAt || at(-(rkSeq), 14, 0),
+                createdAt: ro.signedAt || at(-(rkSeq), 14, 0)
+            });
+            finances.push({
+                id: counterSeed('finances', 'FIN', 2000 + rkSeq),
+                type: rDelta > 0 ? 'income' : 'expense',
+                category: rDelta > 0 ? '运费复核补收' : '运费复核退费',
+                orderId: ro.id, amount: Math.abs(rDelta), status: 'settled',
+                date: ro.signedAt || at(-(rkSeq), 14, 0),
+                remark: '计费复核差异' + (rDelta > 0 ? '向客户补收' : '退还客户') + ' ' + Math.abs(rDelta) + ' 元'
+            });
+        }
 
         // 服务工单
         for (var t = 0; t < 15; t++) {
@@ -1148,6 +1232,8 @@
             receivables: receivables.sort(function (a, b) { return new Date(b.issuedAt) - new Date(a.issuedAt); }),
             payables: payables.sort(function (a, b) { return new Date(b.period) - new Date(a.period); }),
             bills: bills.sort(function (a, b) { return b.period.localeCompare(a.period); }),
+            rechecks: rechecks.sort(function (a, b) { return new Date(b.auditedAt) - new Date(a.auditedAt); }),
+            codRecords: codRecords.sort(function (a, b) { return new Date(b.collectedAt) - new Date(a.collectedAt); }),
             serviceTickets: tickets.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); }),
             claims: claims.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); })
         };
@@ -1273,7 +1359,7 @@
             evalMetrics: 'KPI', evaluations: 'EV', employees: 'EMP', sortingTasks: 'SRT',
             loadingTasks: 'LOD', scans: 'SC', users: 'user', roles: 'role',
             permissions: 'perm', departments: 'dept',
-            rateCards: 'RC', routes: 'ROUTE', receivables: 'REC', payables: 'PAY', bills: 'BILL'
+            rateCards: 'RC', routes: 'ROUTE', receivables: 'REC', payables: 'PAY', bills: 'BILL', rechecks: 'CHK', codRecords: 'COD'
         };
         var record = Object.assign({}, data);
         if (!record.id) {
@@ -1491,6 +1577,11 @@
         } else {
             order.receivableStatus = 'paid';
             ensureIncome(order);
+            // 到付代收货款：签收时形成待上划商家的代收台账
+            if (method === '到付' && Number(order.codAmount) > 0) {
+                var existsCod = (db.codRecords || []).some(function (c) { return c.orderId === order.id; });
+                if (!existsCod) createCODRecord(order);
+            }
         }
     }
 
@@ -1627,7 +1718,7 @@
             updatedAt: createdAt,
             timeline: [{ status: 'pending', label: '订单创建', time: createdAt, actor: '运营管理员' }],
             remark: data.remark || ''
-        }, data, { id: id, waybillNo: buildWaybill(id), createdAt: createdAt, status: 'pending', timeline: [{ status: 'pending', label: '订单创建', time: createdAt, actor: '运营管理员' }] });
+        }, data, { id: id, waybillNo: buildWaybill(id), createdAt: createdAt, status: 'pending', codAmount: Number(data.codAmount) || 0, timeline: [{ status: 'pending', label: '订单创建', time: createdAt, actor: '运营管理员' }] });
         db.orders.unshift(order);
         ensureSortingTask(order);
         planRoute(order, db);
@@ -1875,6 +1966,175 @@
         return created;
     }
 
+    /* ============================== 成本应付与计费复核 ============================== */
+
+    // 应付结算：置已结算并生成一笔支出流水（与承运商/司机/网点结算）
+    function settlePayable(id) {
+        ensureInit();
+        var p = get('payables', id);
+        if (!p) return null;
+        if (p.status === 'settled') return p;
+        update('payables', id, { status: 'settled', settledAt: nowIso() });
+        create('finances', {
+            type: 'expense', category: p.category,
+            orderId: /^HL/.test(p.refId || '') ? p.refId : '',
+            amount: p.amount, status: 'settled', date: nowIso(),
+            remark: '应付结算：' + p.target + '（' + p.category + '）'
+        });
+        return get('payables', id);
+    }
+
+    // 应付按分类/对象类型汇总（供应付结算页图表）
+    function payableBreakdown() {
+        ensureInit();
+        var rows = db.payables || [];
+        var byCat = {}, byType = {};
+        var typeLabel = { carrier: '承运商', driver: '司机', branch: '网点' };
+        rows.forEach(function (p) {
+            byCat[p.category] = (byCat[p.category] || 0) + Number(p.amount || 0);
+            var tl = typeLabel[p.targetType] || p.targetType || '其他';
+            byType[tl] = (byType[tl] || 0) + Number(p.amount || 0);
+        });
+        return {
+            byCategory: Object.keys(byCat).map(function (k) { return { label: k, value: money(byCat[k]) }; }).sort(function (a, b) { return b.value - a.value; }),
+            byTargetType: Object.keys(byType).map(function (k) { return { label: k, value: money(byType[k]) }; }).sort(function (a, b) { return b.value - a.value; })
+        };
+    }
+
+    // 计费复核：到货实际磅重/体积与下单不符→重算、多退少补、审计留痕
+    function recheckWeight(orderId, data) {
+        ensureInit();
+        var order = get('orders', orderId);
+        if (!order) return { ok: false, message: '订单不存在' };
+        if (order.status === 'cancelled') return { ok: false, message: '已取消订单不可复核' };
+        var opts = data || {};
+        var originalWeight = Number(order.weight) || 0;
+        var originalChargeable = Number(order.chargeableWeight) || originalWeight;
+        var originalFreight = Number(order.freight) || 0;
+        var newWeight = Number(opts.actualWeight) || originalWeight;
+        var dims = opts.dims || order.dims || '';
+        var charge = calcFreight({
+            origin: order.origin, destination: order.destination, service: order.service, weight: newWeight,
+            dims: dims, volume: order.volume, declaredValue: order.declaredValue, isInsured: order.isInsured,
+            paymentMethod: order.paymentMethod, customer: order.customer
+        }, db.rateCards);
+        var delta = money(charge.total - originalFreight);
+        // 回写订单计费要素
+        order.weight = newWeight;
+        if (dims) order.dims = dims;
+        order.freight = charge.total; order.freightBreakdown = charge; order.rateCardId = charge.cardId;
+        order.volumetricWeight = charge.volumetricWeight; order.chargeableWeight = charge.chargeableWeight;
+        order.auditedAt = nowIso(); order.updatedAt = nowIso();
+        if (!order.timeline) order.timeline = [];
+        order.timeline.push({
+            status: order.status,
+            label: '计费复核' + (Math.abs(delta) < 0.01 ? '（无差异）' : (delta > 0 ? '（补收 ' + delta + '）' : '（退费 ' + Math.abs(delta) + '）')),
+            time: order.updatedAt, actor: opts.operator || '运营管理员'
+        });
+        var rec = create('rechecks', {
+            orderId: order.id, waybillNo: order.waybillNo, customer: order.customer,
+            originalWeight: originalWeight, auditedWeight: newWeight,
+            originalChargeable: originalChargeable, auditedChargeable: charge.chargeableWeight,
+            originalFreight: originalFreight, auditedFreight: charge.total,
+            delta: delta, type: Math.abs(delta) < 0.01 ? '一致' : (delta > 0 ? '补收' : '退费'),
+            reason: opts.reason || '到货复磅', operator: opts.operator || '运营管理员', auditedAt: order.updatedAt
+        });
+        // 财务多退少补 + 同步未回款应收真实金额
+        if (Math.abs(delta) >= 0.01) {
+            create('finances', {
+                type: delta > 0 ? 'income' : 'expense',
+                category: delta > 0 ? '运费复核补收' : '运费复核退费',
+                orderId: order.id, amount: Math.abs(delta), status: 'settled', date: order.updatedAt,
+                remark: '计费复核：' + (delta > 0 ? '向客户补收' : '退还客户') + ' ' + money(Math.abs(delta)) + ' 元'
+            });
+            var rece = (db.receivables || []).find(function (r) { return r.orderId === order.id && r.status !== 'paid' && r.status !== 'void'; });
+            if (rece) rece.amount = charge.total;
+        }
+        persist();
+        return { ok: true, recheck: rec, delta: delta, order: order };
+    }
+
+    /* ============================== 末端派送 / POD 回单 / 代收货款 ============================== */
+
+    // 生成代收货款台账记录（签收时向收件人收取货款，形成待上划商家的负债）
+    function createCODRecord(order) {
+        var gv = Number(order.codAmount) || 0;
+        var serviceFee = money(Math.max(gv * COD_SERVICE_RATE, COD_MIN_SERVICE));
+        var net = money(gv - serviceFee);
+        return create('codRecords', {
+            orderId: order.id, waybillNo: order.waybillNo, shipper: order.customer,
+            consignee: (order.pod && order.pod.receiver) || order.contact || '收货人',
+            goodsValue: gv, serviceFee: serviceFee, netPayable: net,
+            collectedAt: order.signedAt || nowIso(), courier: order.courier || '',
+            remitStatus: 'pending', remittedAt: '', remark: ''
+        });
+    }
+
+    // 派送派单：为已到件分配派送员并转入派送中
+    function assignDelivery(orderId, data) {
+        ensureInit();
+        var o = get('orders', orderId);
+        if (!o) return { ok: false, message: '订单不存在' };
+        if (o.status === 'cancelled') return { ok: false, message: '订单已取消' };
+        if (o.status === 'signed') return { ok: false, message: '订单已签收' };
+        if (o.status === 'delivering') return { ok: false, message: '该订单已在派送中' };
+        if (statusIndex(o.status) < statusIndex('arrived')) return { ok: false, message: '订单需先到达目的分拨才可派送' };
+        var opts = data || {};
+        var tr = (db.transports || []).find(function (t) { return t.orderId === orderId; });
+        if (opts.courier) o.courier = opts.courier;
+        if (opts.deliveryEta) o.deliveryEta = opts.deliveryEta;
+        if (tr && opts.courier) tr.driver = opts.courier;
+        persist();
+        var res = advanceOrder(orderId, opts.operator || '运营管理员');
+        if (res.ok && tr) tr.status = 'delivering';
+        return res;
+    }
+
+    // POD 回单签收：录入签收人/回单备注/代收确认，推进至已签收（联动结算与代收货款）
+    function confirmPOD(orderId, data) {
+        ensureInit();
+        var o = get('orders', orderId);
+        if (!o) return { ok: false, message: '订单不存在' };
+        if (o.status === 'cancelled') return { ok: false, message: '订单已取消' };
+        if (o.status === 'signed') return { ok: false, message: '订单已签收' };
+        if (o.status !== 'delivering') return { ok: false, message: '需先进入派送中才能签收' };
+        var opts = data || {};
+        o.pod = {
+            receiver: opts.receiver || '本人签收',
+            receiverPhone: opts.receiverPhone || o.phone || '',
+            podNote: opts.note || '', podPhoto: !!opts.photo,
+            signedAt: nowIso(), operator: opts.operator || o.courier || '派送员',
+            codCollected: o.paymentMethod === '到付' && Number(o.codAmount) > 0
+        };
+        persist();
+        return advanceOrder(orderId, opts.operator || o.courier || '派送员');
+    }
+
+    // 代收货款上划：将待上划净额结算给商家，并确认服务费收入
+    function remitCOD(id, operator) {
+        ensureInit();
+        var r = get('codRecords', id);
+        if (!r) return null;
+        if (r.remitStatus === 'remitted') return r;
+        update('codRecords', id, { remitStatus: 'remitted', remittedAt: nowIso(), operator: operator || '财务结算' });
+        create('finances', { type: 'expense', category: '代收货款上划', orderId: r.orderId, amount: r.netPayable, status: 'settled', date: nowIso(), remark: '代收货款上划给' + r.shipper + '（' + r.waybillNo + '）' });
+        if (Number(r.serviceFee) > 0) create('finances', { type: 'income', category: '代收款服务费', orderId: r.orderId, amount: r.serviceFee, status: 'settled', date: nowIso(), remark: '代收货款服务费收入' });
+        return get('codRecords', id);
+    }
+
+    // 代收货款汇总（供 COD 页 KPI）
+    function codSummary() {
+        ensureInit();
+        var rows = db.codRecords || [];
+        var gmv = 0, pending = 0, remitted = 0, service = 0, pendingCount = 0;
+        rows.forEach(function (r) {
+            gmv += Number(r.goodsValue || 0);
+            if (r.remitStatus === 'remitted') { remitted += Number(r.netPayable || 0); service += Number(r.serviceFee || 0); }
+            else { pending += Number(r.netPayable || 0); pendingCount++; }
+        });
+        return { goodsTotal: money(gmv), pendingRemit: money(pending), remittedTotal: money(remitted), serviceIncome: money(service), count: rows.length, pendingCount: pendingCount };
+    }
+
     /* ============================== 轨迹超时/偏差 ============================== */
 
     function checkTracesOvertime(autoException) {
@@ -2038,6 +2298,7 @@
             signedOrders: db.orders.filter(function (o) { return o.status === 'signed'; }).length,
             pendingTickets: db.serviceTickets.filter(function (t) { return t.status === 'pending'; }).length,
             overdueReceivable: money((db.receivables || []).filter(function (r) { return r.status === 'overdue' || (r.status !== 'paid' && r.status !== 'void' && r.dueDate && new Date(r.dueDate) < today); }).reduce(function (s, r) { return s + Number(r.amount || 0); }, 0)),
+            pendingPayable: money((db.payables || []).filter(function (p) { return p.status === 'pending'; }).reduce(function (s, p) { return s + Number(p.amount || 0); }, 0)),
             overtimeTraces: (db.traces || []).filter(function (t) { return t.isOvertime; }).length,
             escalatedExceptions: (db.exceptions || []).filter(function (e) { return e.escalated && e.status !== 'resolved'; }).length
         };
@@ -2303,7 +2564,7 @@
         dict: {
             cities: CITIES, customers: CUSTOMERS, goods: GOODS, carriers: CARRIERS,
             serviceLevels: SERVICE_LEVELS, paymentMethods: PAYMENT_METHODS, remoteCities: REMOTE_CITIES,
-            customerLevels: CUSTOMER_LEVELS, traceNodes: TRACE_NODES, orderFlow: ORDER_FLOW
+            customerLevels: CUSTOMER_LEVELS, traceNodes: TRACE_NODES, orderFlow: ORDER_FLOW, couriers: COURIERS
         },
         init: init,
         reset: reset,
@@ -2337,6 +2598,13 @@
         escalateException: escalateException,
         markReceivablePaid: markReceivablePaid,
         generateBills: generateBills,
+        settlePayable: settlePayable,
+        payableBreakdown: payableBreakdown,
+        recheckWeight: recheckWeight,
+        assignDelivery: assignDelivery,
+        confirmPOD: confirmPOD,
+        remitCOD: remitCOD,
+        codSummary: codSummary,
         checkTracesOvertime: checkTracesOvertime,
         planRoute: planRoute,
         // 计费

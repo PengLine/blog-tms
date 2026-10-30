@@ -1,23 +1,40 @@
 # -*- coding: utf-8 -*-
 """
-生成 6 个新增业务页面（订单/运价/应收/路由/轨迹/异常工单），
-并向所有含“运输管理”锚点的 tms-*.html 侧边栏注入 6 条新导航。
+生成新增业务页面（订单/运价/应收/应付/计费复核/路由/轨迹/异常工单），
+并向所有含“运输管理”锚点的 tms-*.html 侧边栏注入新导航。
+对已注入旧 6 条的页面做第二轮增量（在应收后补插应付/复核）。
 一次性构建脚本，可安全重复运行（新页面整体重写；注入幂等）。
 """
 import os
 import re
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-CACHE = "v=20261022d"
+CACHE = "v=20261030c"
 
-# 需要在“运输管理”之后注入的 6 条新导航（缩进与各页 ul 一致）
+# 需要在“运输管理”之后注入的新导航（缩进与各页 ul 一致）
 NAV_NEW = [
     '                        <li><a href="tms-order.html">订单管理</a></li>',
     '                        <li><a href="tms-rate.html">运价管理</a></li>',
     '                        <li><a href="tms-receivable.html">应收结算</a></li>',
+    '                        <li><a href="tms-payable.html">应付结算</a></li>',
+    '                        <li><a href="tms-audit.html">计费复核</a></li>',
     '                        <li><a href="tms-route.html">路由管理</a></li>',
     '                        <li><a href="tms-tracking.html">轨迹中心</a></li>',
     '                        <li><a href="tms-workflow.html">异常工单</a></li>',
+    '                        <li><a href="tms-delivery.html">派送管理</a></li>',
+    '                        <li><a href="tms-cod.html">代收货款</a></li>',
+]
+
+# 第二轮增量：已含“应收结算”但尚未插入应付/复核的页面，在应收后补插以下两条
+NAV_E2 = [
+    '                        <li><a href="tms-payable.html">应付结算</a></li>',
+    '                        <li><a href="tms-audit.html">计费复核</a></li>',
+]
+
+# 第三轮增量：已含旧导航但尚未插入派送/代收货款的页面，在“异常工单”后补插以下两条
+NAV_F2 = [
+    '                        <li><a href="tms-delivery.html">派送管理</a></li>',
+    '                        <li><a href="tms-cod.html">代收货款</a></li>',
 ]
 
 # 新页面（id, 标题）
@@ -25,10 +42,21 @@ PAGES = [
     ("order", "订单管理"),
     ("rate", "运价管理"),
     ("receivable", "应收结算"),
+    ("payable", "应付结算"),
+    ("audit", "计费复核"),
     ("route", "路由管理"),
     ("tracking", "轨迹中心"),
     ("workflow", "异常工单闭环"),
+    ("delivery", "派送管理"),
+    ("cod", "代收货款"),
 ]
+
+# 自建完整导航的新页面（注入时跳过）
+SELF_PAGES = {
+    "tms-order.html", "tms-rate.html", "tms-receivable.html", "tms-payable.html",
+    "tms-audit.html", "tms-route.html", "tms-tracking.html", "tms-workflow.html",
+    "tms-delivery.html", "tms-cod.html",
+}
 
 # 复用各管理页一致的基础外壳样式（重置 + header + sidebar + nav + content + 响应式）
 SHELL_CSS = """        /* 基础样式重置 */
@@ -315,36 +343,51 @@ def generate_pages():
 
 
 def inject_nav():
-    anchor_re = re.compile(r'^(.*<li><a href="tms-transport\.html"(?: class="active")?>运输管理</a></li>.*)$', re.M)
+    transport_re = re.compile(r'^(.*<li><a href="tms-transport\.html"(?: class="active")?>运输管理</a></li>.*)$', re.M)
+    recv_re = re.compile(r'^(.*<li><a href="tms-receivable\.html">应收结算</a></li>.*)$', re.M)
+    flow_re = re.compile(r'^(.*<li><a href="tms-workflow\.html">异常工单</a></li>.*)$', re.M)
+
+    def insert_after(regex, content, block):
+        def repl(m):
+            line = m.group(1)
+            indent = " " * (len(line) - len(line.lstrip()))
+            return line + "\n" + "\n".join(indent + s.strip() for s in block)
+        new_content, n = regex.subn(repl, content, count=1)
+        return new_content, n
+
     for name in sorted(os.listdir(ROOT)):
         if not (name.startswith("tms-") and name.endswith(".html")):
             continue
-        if name in ("tms-order.html", "tms-rate.html", "tms-receivable.html",
-                    "tms-route.html", "tms-tracking.html", "tms-workflow.html"):
+        if name in SELF_PAGES:
             continue  # 新页面已含完整导航
         path = os.path.join(ROOT, name)
         with open(path, "r", encoding="utf-8") as f:
             content = f.read()
-        if "tms-order.html" in content:
-            print("skip (already injected)", name)
-            continue
-        if "tms-transport.html\">运输管理" not in content and "tms-transport.html\" class=\"active\">运输管理" not in content:
-            print("skip (no anchor)", name)
-            continue
+        actions = []
 
-        def repl(m):
-            line = m.group(1)
-            indent = " " * (len(line) - len(line.lstrip()))
-            block = "\n" + "\n".join(indent + s.strip() for s in NAV_NEW)
-            return line + block
-
-        new_content, n = anchor_re.subn(repl, content, count=1)
-        if n:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(new_content)
-            print("injected", name)
+        if "tms-order.html" not in content:
+            # 全量注入（含 10 条）到“运输管理”之后
+            content, n = insert_after(transport_re, content, NAV_NEW)
+            if n:
+                actions.append("full")
         else:
-            print("no match", name)
+            # 增量补齐：缺应付/复核 → 正在“应收结算”后补插
+            if "tms-payable.html" not in content:
+                content, n = insert_after(recv_re, content, NAV_E2)
+                if n:
+                    actions.append("E2:payable/audit")
+            # 增量补齐：缺派送/代收 → 在“异常工单”后补插
+            if "tms-delivery.html" not in content:
+                content, n = insert_after(flow_re, content, NAV_F2)
+                if n:
+                    actions.append("F2:delivery/cod")
+
+        if actions:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print("injected (" + ", ".join(actions) + ")", name)
+        else:
+            print("skip", name)
 
 
 if __name__ == "__main__":

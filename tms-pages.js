@@ -51,7 +51,7 @@
             { label: '服务等级', value: U.esc(order.service || '标准') },
             { label: '货物', value: U.esc(order.goods) },
             { label: '实际重量', value: U.esc(order.weight) + ' kg' },
-            { label: '计费重量', value: (order.chargeableWeight || order.weight) + ' kg' + (order.volumetricWeight ? '（体积重 ' + order.volumetricWeight + '）' : '') },
+            { label: '计费重量', value: (order.chargeableWeight || order.weight) + ' kg' + (order.volumetricWeight ? '（体积重 ' + Math.round(Number(order.volumetricWeight) * 10) / 10 + ' kg）' : '') },
             { label: '件数', value: U.esc(order.pieces) + ' 件' },
             { label: '运费', value: U.fmt.money(order.freight) },
             { label: '付款方式', value: U.esc(order.paymentMethod || '现付') },
@@ -76,6 +76,18 @@
                     { label: '协议折扣', value: bd.discount ? '-' + U.fmt.money(bd.discount) + '（' + Math.round(bd.discountRate * 100) + '%）' : '无' },
                     { label: '合计', value: '<span class="tms-strong">' + U.fmt.money(bd.total) + '</span>' }
                 ]);
+        }
+        var podItems = [];
+        if (Number(order.codAmount) > 0) podItems.push({ label: '代收货款', value: U.fmt.money(order.codAmount) + (order.paymentMethod === '到付' ? '（到付代收）' : '') });
+        podItems.push({ label: '派送员', value: order.courier ? U.esc(order.courier) : '<span class="tms-muted">未派单</span>' });
+        if (order.pod) {
+            podItems.push({ label: '签收人', value: U.esc(order.pod.receiver || '-') });
+            podItems.push({ label: '回单时间', value: U.fmt.dateTime(order.pod.signedAt) });
+            podItems.push({ label: '回单照片', value: order.pod.podPhoto ? U.badge('已上传', 'success') : U.badge('无', 'muted') });
+            if (order.pod.podNote) podItems.push({ label: '回单备注', value: U.esc(order.pod.podNote) });
+        }
+        if (order.courier || order.pod) {
+            html += '<div class="tms-panel-head" style="padding:1rem 0 .5rem;border:0"><h3>派送与回单</h3></div>' + U.detailGrid(podItems);
         }
         html += '<div class="tms-panel-head" style="padding:1rem 0 .5rem;border:0"><h3>物流轨迹</h3></div>' + U.timeline(order.timeline || []);
         var m = U.detailModal('订单详情', html);
@@ -124,12 +136,15 @@
 
         refreshSummary();
         if (cfg.extraBefore) cfg.extraBefore(page.querySelector('#tms-extra-before'));
-        U.table(page.querySelector('#tms-table-panel'), cfg.table);
+        var tableHandle = U.table(page.querySelector('#tms-table-panel'), cfg.table);
+        var isRowsMode = cfg.table && (typeof cfg.table.rows === 'function' || Array.isArray(cfg.table.rows));
         if (cfg.extraAfter) cfg.extraAfter(page.querySelector('#tms-extra-after'));
         bindOrderLinks(page);
 
         S.subscribe(function () {
             refreshSummary();
+            // entity 模式的表格会在自身内部订阅自动刷新；rows 模式需在此手动刷新
+            if (isRowsMode && tableHandle && tableHandle.refresh) tableHandle.refresh();
             bindOrderLinks(page);
         });
     }
@@ -963,11 +978,15 @@
                     key: 'source', label: '来源', render: function (r) {
                         var cat = r.category || '', rmk = r.remark || '';
                         if (r.type === 'income') {
+                            if (cat.indexOf('复核') > -1) return U.badge('复核补收', 'info');
+                            if (cat.indexOf('代收款服务费') > -1) return U.badge('COD服务费', 'warn');
                             if (cat.indexOf('月结') > -1 || rmk.indexOf('月结') > -1) return U.badge('应收核销', 'info');
                             if (rmk.indexOf('到付') > -1) return U.badge('到付收款', 'warn');
                             if (cat.indexOf('运费') > -1) return U.badge('现结收款', 'success');
                             return U.badge('收入', 'muted');
                         }
+                        if (cat.indexOf('复核') > -1) return U.badge('复核退费', 'warn');
+                        if (cat.indexOf('代收货款上划') > -1) return U.badge('COD上划', 'info');
                         if (cat.indexOf('理赔') > -1) return U.badge('理赔支出', 'danger');
                         if (cat.indexOf('干线') > -1 || cat.indexOf('异常扣款') > -1) return U.badge('应付扣款', 'danger');
                         return U.badge('运营支出', 'muted');
@@ -1730,6 +1749,7 @@
                             { key: 'pieces', label: '件数', type: 'number', min: 1, value: 1 },
                             { key: 'dims', label: '尺寸(长x宽x高 cm)', placeholder: '如 40x30x20，用于体积重' },
                             { key: 'declaredValue', label: '声明价值(元)', type: 'number', min: 0, value: 0 },
+                            { key: 'codAmount', label: '代收货款(元)', type: 'number', min: 0, value: 0, placeholder: '仅到付件：向收件人代收的货款本金' },
                             { key: 'isInsured', label: '是否保价', type: 'checkbox', checkboxLabel: '按声明价值投保' },
                             { key: 'receiverAddress', label: '收货地址', full: true, placeholder: '详细地址' }
                         ],
@@ -1791,6 +1811,28 @@
                             var res = S.createReverseOrder(row.id, '客户拒收/退货');
                             U.toast(res.ok ? ('已生成逆向件 ' + res.reverse.id) : res.message, res.ok ? 'success' : 'error');
                         }
+                    }
+                },
+                {
+                    label: '复核', className: 'tms-btn-light', show: function (r) { return ['inbound', 'sorted', 'shipping', 'arrived', 'delivering', 'signed'].indexOf(r.status) > -1; },
+                    onClick: function (row) {
+                        U.formModal({
+                            title: '磅重/体积复核 · ' + row.id, width: 560,
+                            fields: [
+                                { key: 'actualWeight', label: '实际磅重(kg)', type: 'number', required: true, min: 0.1, step: 0.1, value: row.weight },
+                                { key: 'dims', label: '实际尺寸(长x宽x高 cm)', placeholder: '如 40x30x20，留空=沿用原尺寸' },
+                                { key: 'reason', label: '复核原因', type: 'select', full: true, options: ['到货复磅重量偏大', '体积测量与下单不符', '客户少报重量', '包装增加体积', '实际件数多于申报'] },
+                                { key: 'operator', label: '复核人', full: true, placeholder: '操作人姓名' }
+                            ],
+                            submitText: '提交复核',
+                            onSubmit: function (v) {
+                                var res = S.recheckWeight(row.id, { actualWeight: v.actualWeight, dims: v.dims, reason: v.reason, operator: v.operator });
+                                if (!res.ok) { U.toast(res.message, 'error'); return; }
+                                var d = res.delta;
+                                U.toast(Math.abs(d) < 0.01 ? ('复核完成，计费无差异（' + U.fmt.money(res.order.freight) + '）')
+                                    : ('复核完成：' + (d > 0 ? '补收 ' : '退费 ') + U.fmt.money(Math.abs(d)) + '，最新运费 ' + U.fmt.money(res.order.freight)), 'success');
+                            }
+                        });
                     }
                 },
                 { label: '详情', className: 'tms-btn-light', onClick: function (row) { orderDetail(row.id); } }
@@ -2035,6 +2077,264 @@
             ]
         }
     });
+
+    /* ============================== 应付结算（成本应付与结算） ============================== */
+
+    var PAY_TARGET_TYPE = { carrier: '承运商', driver: '司机', branch: '网点' };
+
+    function money(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+
+    define('payable', {
+        title: '应付结算',
+        subtitle: '管理与承运商/司机/网点的成本应付：干线运费与异常定责扣款，结算后自动生成支出流水。',
+        kpis: function () {
+            var p = S.payableSummary();
+            return [
+                { label: '应付总额', value: U.fmt.money(p.total), color: '#667eea', sub: '成本合计' },
+                { label: '待结算', value: U.fmt.money(p.pending), color: '#ff9800', sub: p.pendingCount + ' 笔待付' },
+                { label: '已结算', value: U.fmt.money(p.settled), color: '#4caf50', sub: '已生成支出流水' },
+                { label: '应付笔数', value: p.count, color: '#2196f3', sub: '承运/司机/网点' }
+            ];
+        },
+        charts: function (el) {
+            var pb = S.payableBreakdown();
+            el.innerHTML = '<div class="tms-panel"><div class="tms-panel-head"><h3>应付结构（按分类）</h3></div><div class="tms-panel-body" id="payable-chart"></div></div>';
+            U.charts.donut(el.querySelector('#payable-chart'), {
+                data: pb.byCategory.map(function (d) { return { label: d.label, value: d.value }; }),
+                formatValue: function (v) { return U.fmt.money(v); }
+            });
+        },
+        extraAfter: function (el) {
+            var pb = S.payableBreakdown();
+            el.innerHTML = '<div class="tms-panel"><div class="tms-panel-head"><h3>应付金额·按结算对象类型</h3></div><div class="tms-panel-body" id="payable-type-chart"></div></div>';
+            U.charts.bar(el.querySelector('#payable-type-chart'), {
+                labels: pb.byTargetType.map(function (d) { return d.label; }),
+                series: [{ name: '应付金额', color: '#ff8a65', data: pb.byTargetType.map(function (d) { return d.value; }) }],
+                height: 240
+            });
+        },
+        table: {
+            entity: 'payables',
+            searchPlaceholder: '搜索应付单号/对象/订单',
+            searchFields: ['id', 'target', 'refId'],
+            defaultSort: { key: 'period', dir: 'desc' },
+            pageSize: 12,
+            filters: [
+                { key: 'status', label: '全部状态', options: [{ value: 'pending', label: '待结算' }, { value: 'settled', label: '已结算' }] },
+                { key: 'targetType', label: '全部对象', options: [{ value: 'carrier', label: '承运商' }, { value: 'driver', label: '司机' }, { value: 'branch', label: '网点' }] },
+                { key: 'category', label: '全部分类', options: [{ value: '干线运费', label: '干线运费' }, { value: '异常扣款', label: '异常扣款' }] }
+            ],
+            columns: [
+                { key: 'id', label: '应付单号' },
+                { key: 'target', label: '结算对象' },
+                { key: 'targetType', label: '对象类型', render: function (r) { return U.esc(PAY_TARGET_TYPE[r.targetType] || r.targetType || '-'); } },
+                { key: 'category', label: '分类' },
+                { key: 'refId', label: '关联订单', render: function (r) { return /^HL/.test(r.refId || '') ? orderLink(r.refId) : '<span class="tms-muted">-</span>'; } },
+                { key: 'amount', label: '金额', render: function (r) { return U.fmt.money(r.amount); } },
+                { key: 'period', label: '账期' },
+                { key: 'status', label: '状态', render: function (r) { return U.statusBadge(r.status, 'payable'); } }
+            ],
+            actions: [
+                {
+                    label: '结算', className: 'tms-btn-success', show: function (r) { return r.status !== 'settled'; },
+                    onClick: function (row) {
+                        S.settlePayable(row.id);
+                        U.toast('应付已结算，生成 ' + U.fmt.money(row.amount) + ' 支出流水', 'success');
+                    }
+                },
+                { label: '查看订单', className: 'tms-btn-light', show: function (r) { return /^HL/.test(r.refId || ''); }, onClick: function (row) { orderDetail(row.refId); } }
+            ]
+        }
+    });
+
+    /* ============================== 计费复核审计（磅重/体积差异） ============================== */
+
+    define('audit', {
+        title: '计费复核',
+        subtitle: '记录到货磅重/体积与下单的差异审计，自动重算运费并多退少补，联动应收与财务流水。',
+        kpis: function () {
+            var rows = S.list('rechecks', { pageSize: 0 }).rows;
+            var extra = 0, refund = 0;
+            rows.forEach(function (r) { if (r.delta > 0) extra += Number(r.delta); else if (r.delta < 0) refund += Math.abs(Number(r.delta)); });
+            return [
+                { label: '复核笔数', value: rows.length, color: '#667eea', sub: '审计留痕' },
+                { label: '累计补收', value: U.fmt.money(money(extra)), color: '#4caf50', sub: '重量/体积偏大' },
+                { label: '累计退费', value: U.fmt.money(money(refund)), color: '#ff6b6b', sub: '重量/体积偏小' },
+                { label: '净调整', value: U.fmt.money(money(extra - refund)), color: '#2196f3', sub: '补收 - 退费' }
+            ];
+        },
+        table: {
+            entity: 'rechecks',
+            searchPlaceholder: '搜索订单号/运单号/客户',
+            searchFields: ['orderId', 'waybillNo', 'customer', 'id'],
+            defaultSort: { key: 'auditedAt', dir: 'desc' },
+            pageSize: 12,
+            filters: [{ key: 'type', label: '全部类型', options: [{ value: '补收', label: '补收' }, { value: '退费', label: '退费' }, { value: '一致', label: '无差异' }] }],
+            columns: [
+                { key: 'id', label: '复核单号' },
+                { key: 'orderId', label: '订单号', render: function (r) { return orderLink(r.orderId); } },
+                { key: 'customer', label: '客户' },
+                { key: 'weight', label: '下单/实磅(kg)', render: function (r) { return r.originalWeight + ' → ' + r.auditedWeight; } },
+                { key: 'chargeable', label: '计费重(kg)', render: function (r) { return (r.originalChargeable || '-') + ' → ' + (r.auditedChargeable || '-'); } },
+                { key: 'freight', label: '运费变动', render: function (r) { return U.fmt.money(r.originalFreight) + ' → ' + U.fmt.money(r.auditedFreight); } },
+                { key: 'delta', label: '差额', render: function (r) { var d = Number(r.delta) || 0; return '<span class="tms-strong" style="color:' + (d > 0 ? '#2e7d32' : d < 0 ? '#c0392b' : '#888') + '">' + (d > 0 ? '+' : d < 0 ? '-' : '') + U.fmt.money(Math.abs(d)).replace('¥', '¥') + '</span>'; } },
+                { key: 'type', label: '处理', render: function (r) { return U.badge(r.type, r.type === '补收' ? 'success' : r.type === '退费' ? 'danger' : 'muted'); } },
+                { key: 'reason', label: '原因' },
+                { key: 'operator', label: '复核人' },
+                { key: 'auditedAt', label: '复核时间', render: function (r) { return U.fmt.dateTime(r.auditedAt); } }
+            ],
+            actions: [
+                { label: '查看订单', className: 'tms-btn-light', onClick: function (row) { orderDetail(row.orderId); } }
+            ]
+        }
+    });
+
+
+    /* ============================== 末端派送与 POD 回单 ============================== */
+
+    var POD_RECEIVERS = ['本人签收', '家人代收', '前台代收', '门卫代收', '同事代收', '驿站代收'];
+
+    define('delivery', {
+        title: '派送管理',
+        subtitle: '管理末端派送派单与 POD 回单签收：为已到件分配派送员，签收自动联动结算与代收货款。',
+        kpis: function () {
+            var rows = S.list('orders', { pageSize: 0 }).rows;
+            var today = new Date().toDateString();
+            return [
+                { label: '待派送', value: rows.filter(function (r) { return r.status === 'arrived'; }).length, color: '#ff9800', sub: '已到达待分单' },
+                { label: '派送中', value: rows.filter(function (r) { return r.status === 'delivering'; }).length, color: '#667eea', sub: '末端配送中' },
+                { label: '今日签收', value: rows.filter(function (r) { return r.status === 'signed' && r.signedAt && new Date(r.signedAt).toDateString() === today; }).length, color: '#4caf50', sub: 'POD 回单' },
+                { label: '派送中代收件', value: rows.filter(function (r) { return r.status === 'delivering' && r.paymentMethod === '到付' && Number(r.codAmount) > 0; }).length, color: '#e91e63', sub: '到付需收款' }
+            ];
+        },
+        charts: function (el) {
+            var rows = S.list('orders', { pageSize: 0 }).rows;
+            var map = { arrived: 0, delivering: 0, signed: 0 };
+            rows.forEach(function (r) { if (map[r.status] != null) map[r.status]++; });
+            el.innerHTML = '<div class="tms-panel"><div class="tms-panel-head"><h3>派送环节分布</h3></div><div class="tms-panel-body" id="delivery-donut"></div></div>';
+            U.charts.donut(el.querySelector('#delivery-donut'), {
+                data: [{ label: '待派送', value: map.arrived }, { label: '派送中', value: map.delivering }, { label: '已签收', value: map.signed }]
+            });
+        },
+        table: {
+            rows: function () {
+                return S.list('orders', { pageSize: 0 }).rows.filter(function (r) {
+                    return r.orderType !== 'reverse' && ['arrived', 'delivering', 'signed'].indexOf(r.status) > -1;
+                });
+            },
+            searchPlaceholder: '搜索订单号/运单号/客户/收件人/派送员',
+            searchFields: ['id', 'waybillNo', 'customer', 'contact', 'courier'],
+            defaultSort: { key: 'updatedAt', dir: 'desc' },
+            pageSize: 12,
+            filters: [{ key: 'status', label: '全部环节', options: [{ value: 'arrived', label: '待派送' }, { value: 'delivering', label: '派送中' }, { value: 'signed', label: '已签收' }] }],
+            columns: [
+                { key: 'id', label: '订单号', render: function (r) { return orderLink(r.id); } },
+                { key: 'customer', label: '客户（发货）' },
+                { key: 'contact', label: '收件人' },
+                { key: 'route', label: '目的地', render: function (r) { return U.esc(r.destination); } },
+                { key: 'paymentMethod', label: '付款/代收', render: function (r) { var s = U.esc(r.paymentMethod || '现付'); if (r.paymentMethod === '到付' && Number(r.codAmount) > 0) s += ' ' + U.badge('代收 ' + U.fmt.money(r.codAmount), 'danger'); return s; } },
+                { key: 'courier', label: '派送员', render: function (r) { return r.courier ? U.esc(r.courier) : '<span class="tms-muted">未派单</span>'; } },
+                { key: 'status', label: '状态', render: function (r) { return r.status === 'arrived' ? U.badge('待派送', 'warn') : U.statusBadge(r.status, 'order'); } }
+            ],
+            actions: [
+                {
+                    label: '派单', className: 'tms-btn-warning', show: function (r) { return r.status === 'arrived'; },
+                    onClick: function (row) {
+                        U.formModal({
+                            title: '派送派单 · ' + row.id, width: 520,
+                            fields: [
+                                { key: 'courier', label: '派送员', type: 'select', required: true, options: S.dict.couriers, value: row.courier },
+                                { key: 'operator', label: '操作人', full: true, placeholder: '调度姓名' }
+                            ],
+                            submitText: '确认派单',
+                            onSubmit: function (v) {
+                                var res = S.assignDelivery(row.id, { courier: v.courier, operator: v.operator });
+                                U.toast(res.ok ? ('已指派给 ' + v.courier + '，转入派送中') : res.message, res.ok ? 'success' : 'error');
+                            }
+                        });
+                    }
+                },
+                {
+                    label: 'POD签收', className: 'tms-btn-success', show: function (r) { return r.status === 'delivering'; },
+                    onClick: function (row) {
+                        var codTip = (row.paymentMethod === '到付' && Number(row.codAmount) > 0)
+                            ? '<div class="tms-field" style="grid-column:1/-1"><label>本单为到付代收，签收时需向收件人收取</label><div class="tms-muted">代收货款 ' + U.fmt.money(row.codAmount) + '，另收运费 ' + U.fmt.money(row.freight) + '</div></div>' : '';
+                        U.formModal({
+                            title: 'POD 回单签收 · ' + row.id, width: 560,
+                            fields: [
+                                { key: 'receiver', label: '签收人', type: 'select', required: true, options: POD_RECEIVERS },
+                                { key: 'receiverPhone', label: '签收人电话', full: true, value: row.phone },
+                                { key: 'note', label: '回单备注', type: 'textarea', full: true, rows: 2, placeholder: '如：外包完好，当面验货' },
+                                { key: 'photo', label: '电子回单', type: 'checkbox', checkboxLabel: '已上传签收照片/回单' }
+                            ],
+                            extraHtml: codTip,
+                            submitText: '确认签收',
+                            onSubmit: function (v) {
+                                var res = S.confirmPOD(row.id, { receiver: v.receiver, receiverPhone: v.receiverPhone, note: v.note, photo: v.photo, operator: row.courier });
+                                U.toast(res.ok ? ('已签收，回单已归档' + (codTip ? '，代收货款已入待上划台账' : '')) : res.message, res.ok ? 'success' : 'error');
+                            }
+                        });
+                    }
+                },
+                { label: '详情', className: 'tms-btn-light', onClick: function (row) { orderDetail(row.id); } }
+            ]
+        }
+    });
+
+    /* ============================== 代收货款（COD）上划对账 ============================== */
+
+    define('cod', {
+        title: '代收货款',
+        subtitle: '追踪到付件向收件人代收的货款：签收时形成待上划负债，上划商家后自动生成支出与服务费收入。',
+        kpis: function () {
+            var c = S.codSummary();
+            return [
+                { label: '代收货款总额', value: U.fmt.money(c.goodsTotal), color: '#667eea', sub: c.count + ' 笔代收' },
+                { label: '待上划', value: U.fmt.money(c.pendingRemit), color: '#ff9800', sub: c.pendingCount + ' 笔待上划' },
+                { label: '已上划商家', value: U.fmt.money(c.remittedTotal), color: '#4caf50', sub: '净额已结' },
+                { label: '服务费收入', value: U.fmt.money(c.serviceIncome), color: '#2196f3', sub: '已上划部分' }
+            ];
+        },
+        charts: function (el) {
+            var c = S.codSummary();
+            el.innerHTML = '<div class="tms-panel"><div class="tms-panel-head"><h3>代收货款上划状态（净额口径·已扣服务费）</h3></div><div class="tms-panel-body" id="cod-donut"></div></div>';
+            U.charts.donut(el.querySelector('#cod-donut'), {
+                data: [{ label: '待上划', value: c.pendingRemit, color: '#ffb74d' }, { label: '已上划', value: c.remittedTotal, color: '#4caf50' }],
+                formatValue: function (v) { return U.fmt.money(v); }
+            });
+        },
+        table: {
+            entity: 'codRecords',
+            searchPlaceholder: '搜索订单号/运单号/商家/收件人',
+            searchFields: ['orderId', 'waybillNo', 'shipper', 'consignee', 'id'],
+            defaultSort: { key: 'collectedAt', dir: 'desc' },
+            pageSize: 12,
+            filters: [{ key: 'remitStatus', label: '全部状态', options: [{ value: 'pending', label: '待上划' }, { value: 'remitted', label: '已上划' }] }],
+            columns: [
+                { key: 'id', label: '代收单号' },
+                { key: 'orderId', label: '订单号', render: function (r) { return orderLink(r.orderId); } },
+                { key: 'shipper', label: '商家（应收方）' },
+                { key: 'consignee', label: '收件人' },
+                { key: 'goodsValue', label: '代收货款', render: function (r) { return U.fmt.money(r.goodsValue); } },
+                { key: 'serviceFee', label: '服务费', render: function (r) { return U.fmt.money(r.serviceFee); } },
+                { key: 'netPayable', label: '应上划净额', render: function (r) { return '<span class="tms-strong">' + U.fmt.money(r.netPayable) + '</span>'; } },
+                { key: 'courier', label: '派送员', render: function (r) { return U.esc(r.courier || '-'); } },
+                { key: 'collectedAt', label: '代收时间', render: function (r) { return U.fmt.dateTime(r.collectedAt); } },
+                { key: 'remitStatus', label: '状态', render: function (r) { return r.remitStatus === 'remitted' ? U.badge('已上划', 'success') : U.badge('待上划', 'warn'); } }
+            ],
+            actions: [
+                {
+                    label: '上划商家', className: 'tms-btn-success', show: function (r) { return r.remitStatus !== 'remitted'; },
+                    onClick: function (row) {
+                        S.remitCOD(row.id, '财务结算');
+                        U.toast('已上划 ' + U.fmt.money(row.netPayable) + ' 给 ' + row.shipper + '，并确认服务费 ' + U.fmt.money(row.serviceFee), 'success');
+                    }
+                },
+                { label: '查看订单', className: 'tms-btn-light', onClick: function (row) { orderDetail(row.orderId); } }
+            ]
+        }
+    });
+
 
     /* ============================== 路由管理（多段路由） ============================== */
 
