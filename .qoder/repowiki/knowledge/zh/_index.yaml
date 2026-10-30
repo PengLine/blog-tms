@@ -1,0 +1,229 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: dev
+nodes_managed: true
+exported_at: "2026-10-30T03:32:22Z"
+modules:
+    "":
+        dir_name: TMS 运输管理系统（多角色前端入口与共享库）
+        title: TMS 运输管理系统（多角色前端入口与共享库）
+        scope:
+            - readme
+            - update_all_auth.py
+            - update_login_functions.py
+            - update_login_simple.py
+            - common.js
+            - index.html
+        source_files: []
+        children:
+            - branch_ui
+            - client_ui
+            - deliveryman_ui
+            - sorter_ui
+            - tms_admin
+            - transporter_ui
+        depends_on: []
+        related_to: []
+    branch_ui:
+        dir_name: 网点端（Branch）业务页面集
+        title: 网点端（Branch）业务页面集
+        scope:
+            - branch-collection.html
+            - branch-index.html
+            - branch-inventory.html
+            - branch-operation.html
+            - branch-outbound.html
+            - branch-service.html
+            - branch-sorting.html
+            - branch-system.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: deliveryman_ui
+            - path: tms_admin/transport_sorting
+    client_ui:
+        dir_name: TMS 客户端用户界面
+        title: TMS 客户端用户界面
+        scope:
+            - client-branch.html
+            - client-index.html
+            - client-order.html
+            - client-points.html
+            - client-profile.html
+            - client-send.html
+            - client-tracking.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: sorter_ui
+    deliveryman_ui:
+        dir_name: 派送员前端页面集
+        title: 派送员前端页面集
+        scope:
+            - deliveryman-areas.html
+            - deliveryman-clock.html
+            - deliveryman-collection.html
+            - deliveryman-contacts.html
+            - deliveryman-exception.html
+            - deliveryman-index.html
+            - deliveryman-performance.html
+            - deliveryman-tasks.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: branch_ui
+    sorter_ui:
+        dir_name: 分拣员端前端页面集
+        title: 分拣员端前端页面集
+        scope:
+            - sorter-clock.html
+            - sorter-index.html
+            - sorter-mock-data.js
+            - sorter-performance.html
+            - sorter-scan.html
+            - sorter-schedule.html
+            - sorter-sorting.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: client_ui
+    tms_admin:
+        dir_name: TMS 运营管理后台（多页面装配层）
+        title: TMS 运营管理后台（多页面装配层）
+        scope:
+            - tms-administration.html
+            - tms-architecture.html
+            - tms-capacity.html
+            - tms-claim.html
+            - tms-evaluation.html
+            - tms-exception.html
+            - tms-finance.html
+            - tms-geofence.html
+            - tms-hr.html
+            - tms-index.html
+            - tms-loading.html
+            - tms-material.html
+            - tms-monitor.html
+            - tms-operation.html
+            - tms-pages.js
+            - tms-performance.html
+            - tms-scan.html
+            - tms-service.html
+            - tms-sorting.html
+            - tms-store.js
+            - tms-timing.html
+            - tms-transport.html
+            - tms-ui.css
+            - tms-ui.js
+            - tms-user.html
+            - tms-vehicle.html
+            - tms-warehouse.html
+        source_files: []
+        children:
+            - tms_admin/administration_support
+            - tms_admin/finance_claims
+            - tms_admin/hr_user_management
+            - tms_admin/material_warehouse
+            - tms_admin/monitoring_geofence
+            - tms_admin/operations_performance
+            - tms_admin/transport_sorting
+        depends_on: []
+        related_to: []
+    tms_admin/administration_support:
+        dir_name: TMS 管理端辅助页面（行政管理_架构介绍_异常管理）
+        title: TMS 管理端辅助页面（行政管理/架构介绍/异常管理）
+        scope:
+            - tms-administration.html
+            - tms-architecture.html
+            - tms-exception.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    tms_admin/finance_claims:
+        dir_name: 财务、理赔与考核评级管理页面
+        title: 财务、理赔与考核评级管理页面
+        scope:
+            - tms-finance.html
+            - tms-claim.html
+            - tms-evaluation.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    tms_admin/hr_user_management:
+        dir_name: 人事与用户_车辆管理页面
+        title: 人事与用户/车辆管理页面
+        scope:
+            - tms-hr.html
+            - tms-user.html
+            - tms-vehicle.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    tms_admin/material_warehouse:
+        dir_name: 仓储与运力管理页面（物料_仓库_运力）
+        title: 仓储与运力管理页面（物料/仓库/运力）
+        scope:
+            - tms-material.html
+            - tms-warehouse.html
+            - tms-capacity.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    tms_admin/monitoring_geofence:
+        dir_name: 监控、电子围栏与扫描管理页面
+        title: 监控、电子围栏与扫描管理页面
+        scope:
+            - tms-monitor.html
+            - tms-geofence.html
+            - tms-scan.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    tms_admin/operations_performance:
+        dir_name: 运营、绩效与时效管理页面
+        title: 运营、绩效与时效管理页面
+        scope:
+            - tms-operation.html
+            - tms-performance.html
+            - tms-timing.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    tms_admin/transport_sorting:
+        dir_name: 运输_分拣_装卸运营页面
+        title: 运输/分拣/装卸运营页面
+        scope:
+            - tms-transport.html
+            - tms-sorting.html
+            - tms-loading.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: branch_ui
+    transporter_ui:
+        dir_name: 运输员端前端页面集
+        title: 运输员端前端页面集
+        scope:
+            - transporter-clock.html
+            - transporter-departure.html
+            - transporter-index.html
+            - transporter-loading.html
+            - transporter-performance.html
+            - transporter-route.html
+            - transporter-schedule.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
