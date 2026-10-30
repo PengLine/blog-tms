@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: TMS 运输管理系统（多角色前端入口与共享库）
+title: TMS 多角色前端根聚合层
 scope:
     - readme
     - update_all_auth.py

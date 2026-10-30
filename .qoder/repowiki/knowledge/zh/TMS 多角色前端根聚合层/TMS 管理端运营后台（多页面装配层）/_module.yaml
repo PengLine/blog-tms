@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: tms_admin
-title: TMS 运营管理后台（多页面装配层）
+title: TMS 管理端运营后台（多页面装配层）
 scope:
     - tms-administration.html
     - tms-architecture.html

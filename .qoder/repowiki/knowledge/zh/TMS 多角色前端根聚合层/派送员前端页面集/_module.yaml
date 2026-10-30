@@ -12,5 +12,4 @@ scope:
     - deliveryman-tasks.html
 source_files: []
 depends_on: []
-related_to:
-    - path: branch_ui
+related_to: []

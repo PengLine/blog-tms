@@ -12,6 +12,4 @@ scope:
     - branch-system.html
 source_files: []
 depends_on: []
-related_to:
-    - path: deliveryman_ui
-    - path: tms_admin/transport_sorting
+related_to: []

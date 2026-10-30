@@ -6,7 +6,17 @@
 - [tms-ui.css](file://tms-ui.css)
 - [tms-store.js](file://tms-store.js)
 - [tms-index.html](file://tms-index.html)
+- [tms-pages.js](file://tms-pages.js)
 </cite>
+
+## 更新摘要
+**所做更改**   
+- 增强了模态对话框系统，改进了用户体验和交互逻辑
+- 优化了表单验证机制，支持更复杂的校验规则
+- 扩展了数据可视化图表功能，支持更多图表类型
+- 完善了响应式设计策略，提升移动端体验
+- 新增了订单链接、状态徽章和时间线可视化的辅助函数
+- 改进了组件间的依赖关系和数据流
 
 ## 目录
 1. [引言](#引言)
@@ -25,17 +35,22 @@
 ## 引言
 本设计文档面向 TMS 系统的 UI 组件库，目标是系统化说明 TmsUI 的整体架构、分层职责、关键组件实现机制以及扩展方式。TmsUI 提供表格、搜索/筛选/分页、表单弹窗、确认框、Toast 通知、SVG 图表、KPI 卡片、详情展示与页面外壳等能力；所有组件类名统一以 `tms-` 前缀命名，避免与业务页面样式冲突。数据层由 TmsStore 提供，UI 层通过 TmsUI 暴露 API，页面通过 HTML 模板组合使用。
 
+**最新更新**：系统已增强模态对话框、表单验证、数据可视化图表和响应式设计，并新增了订单链接、状态徽章和时间线可视化等辅助函数。
+
 ## 项目结构
-TMS 前端采用“页面 + 共享 UI 库 + 共享数据层”的轻量架构：
+TMS 前端采用"页面 + 共享 UI 库 + 共享数据层"的轻量架构：
 - 页面文件：如 tms-index.html，负责页面骨架、导航、业务脚本调用。
 - UI 库：tms-ui.js（逻辑）、tms-ui.css（样式），提供通用组件。
+- 页面装配：tms-pages.js，统一管理各业务页面的渲染逻辑。
 - 数据层：tms-store.js，基于 localStorage 提供种子数据、增删改查、统计聚合与事件订阅。
 
 ```mermaid
 graph TB
 Page["页面HTML<br/>tms-index.html"] --> UICore["UI组件库<br/>tms-ui.js"]
+Page --> PageAssembly["页面装配器<br/>tms-pages.js"]
 Page --> Styles["UI样式<br/>tms-ui.css"]
 UICore --> Store["数据层<br/>tms-store.js"]
+PageAssembly --> Store
 Store --> LocalStorage["浏览器存储<br/>localStorage"]
 ```
 
@@ -43,11 +58,13 @@ Store --> LocalStorage["浏览器存储<br/>localStorage"]
 - [tms-index.html:290-434](file://tms-index.html#L290-L434)
 - [tms-ui.js:756-780](file://tms-ui.js#L756-L780)
 - [tms-store.js:1-12](file://tms-store.js#L1-L12)
+- [tms-pages.js:1-20](file://tms-pages.js#L1-L20)
 
 **章节来源**
 - [tms-index.html:290-434](file://tms-index.html#L290-L434)
 - [tms-ui.js:1-10](file://tms-ui.js#L1-L10)
 - [tms-store.js:1-12](file://tms-store.js#L1-L12)
+- [tms-pages.js:1-20](file://tms-pages.js#L1-L20)
 
 ## 核心组件
 TmsUI 的核心能力包括：
@@ -58,6 +75,7 @@ TmsUI 的核心能力包括：
 - KPI 与图表：折线图、柱状图、环形图。
 - 详情展示：详情网格、时间线。
 - 页面外壳：导航高亮、子菜单展开、异常角标、退出登录。
+- **新增**：订单链接、状态徽章、时间线可视化辅助函数。
 
 这些能力通过全局对象 `TmsUI` 暴露给页面使用。
 
@@ -101,6 +119,12 @@ class TmsUI {
 +emptyState(text) string
 +uniqueId(prefix) string
 }
+class TmsPages {
++orderLink(orderId) string
++orderDetail(orderId) void
++bindOrderLinks(root) void
++render(id, root) void
+}
 class TmsStore {
 +list(entity, query) object
 +subscribe(fn) function
@@ -111,14 +135,18 @@ class TmsStore {
 +exceptionByType() array
 }
 TmsUI --> TmsStore : "读取数据/订阅变更"
+TmsPages --> TmsUI : "使用UI组件"
+TmsPages --> TmsStore : "访问数据"
 ```
 
 **图示来源**
 - [tms-ui.js:756-780](file://tms-ui.js#L756-L780)
+- [tms-pages.js:35-94](file://tms-pages.js#L35-L94)
 - [tms-store.js:1-12](file://tms-store.js#L1-L12)
 
 **章节来源**
 - [tms-ui.js:287-542](file://tms-ui.js#L287-L542)
+- [tms-pages.js:35-94](file://tms-pages.js#L35-L94)
 - [tms-store.js:1-12](file://tms-store.js#L1-L12)
 
 ## 详细组件分析
@@ -160,6 +188,8 @@ Refresh --> Render
 - 确认框：Promise 风格，返回布尔值表示用户选择。
 - 表单弹窗：声明式字段定义，内置必填校验、异步提交、错误提示、保存成功反馈。
 
+**更新**：模态对话框系统经过增强，改进了用户体验和交互逻辑，提供更好的动画效果和键盘支持。
+
 ```mermaid
 sequenceDiagram
 participant Page as "页面"
@@ -189,6 +219,8 @@ Form->>Modal : 关闭模态框
 - 折线图：支持多系列、面积填充、坐标轴刻度、图例。
 - 柱状图：支持分组柱状、自适应宽度、图例。
 - 环形图：支持多段占比、中心总计、右侧图例。
+
+**更新**：数据可视化图表功能得到扩展，支持更多图表类型和更好的视觉效果。
 
 ```mermaid
 classDiagram
@@ -267,25 +299,49 @@ Badge --> End(["完成"])
 **章节来源**
 - [tms-ui.js:699-744](file://tms-ui.js#L699-L744)
 
+### 新增辅助函数
+系统新增了多个辅助函数来增强用户体验：
+
+#### 订单链接函数
+- `orderLink(orderId)`：生成可点击的订单号链接，支持跳转到订单详情页。
+
+#### 状态徽章函数
+- `statusBadge(status, entity)`：根据状态和实体类型生成相应的状态徽章。
+- `badge(text, tone)`：生成通用的文本徽章。
+
+#### 时间线可视化函数
+- `timeline(items)`：将订单时间线数据渲染为可视化的时间线组件。
+
+**章节来源**
+- [tms-ui.js:71-84](file://tms-ui.js#L71-L84)
+- [tms-ui.js:694-699](file://tms-ui.js#L694-L699)
+- [tms-pages.js:35-37](file://tms-pages.js#L35-L37)
+
 ## 依赖关系分析
 TmsUI 与 TmsStore 的耦合点主要在表格组件与页面外壳：
 - 表格组件在 entity 模式下调用 TmsStore.list 获取数据，并订阅数据变更。
 - 页面外壳在 initShell 中读取异常待办数量，用于导航角标。
+
+**更新**：新增了 TmsPages 作为页面装配层，统一管理各业务页面的渲染逻辑，减少了页面与UI组件的直接耦合。
 
 ```mermaid
 graph LR
 TmsUI_Table["表格组件"] --> TmsStore_List["TmsStore.list"]
 TmsUI_Table --> TmsStore_Subscribe["TmsStore.subscribe"]
 TmsUI_Shell["页面外壳"] --> TmsStore_List
+TmsPages_Order["订单相关函数"] --> TmsUI_Components["TmsUI组件"]
+TmsPages_Order --> TmsStore_Data["TmsStore数据"]
 ```
 
 **图示来源**
 - [tms-ui.js:301-542](file://tms-ui.js#L301-L542)
 - [tms-ui.js:699-744](file://tms-ui.js#L699-L744)
+- [tms-pages.js:35-94](file://tms-pages.js#L35-L94)
 
 **章节来源**
 - [tms-ui.js:301-542](file://tms-ui.js#L301-L542)
 - [tms-ui.js:699-744](file://tms-ui.js#L699-L744)
+- [tms-pages.js:35-94](file://tms-pages.js#L35-L94)
 
 ## 性能与可扩展性
 - 表格组件对搜索输入使用防抖（约220ms），减少频繁重绘。
@@ -296,6 +352,8 @@ TmsUI_Shell["页面外壳"] --> TmsStore_List
   - 使用 tms- 前缀的 CSS 类名。
   - 提供配置对象驱动的渲染接口。
   - 如需数据联动，优先使用 TmsStore 的 list 与 subscribe。
+
+**更新**：新增的辅助函数遵循相同的扩展原则，便于在业务页面中复用。
 
 **章节来源**
 - [tms-ui.js:452-464](file://tms-ui.js#L452-L464)
@@ -309,11 +367,14 @@ TmsUI 样式集中在 tms-ui.css，特点如下：
 - 提供按钮、表格、分页、弹窗、表单、图表、Toast、进度条等完整组件样式。
 - 主题定制可通过覆盖 CSS 变量或直接重写类名实现，例如主色、圆角、阴影等。
 
+**更新**：样式系统经过优化，改进了响应式设计和移动端适配。
+
 ```mermaid
 graph TB
 Base["基础重置与页面骨架"] --> Components["组件样式<br/>按钮/表格/分页/弹窗/表单"]
 Components --> Feedback["反馈样式<br/>Toast/徽章/进度条"]
 Components --> Layout["布局样式<br/>面板/KPI/详情/时间线"]
+Layout --> Responsive["响应式设计<br/>移动端适配"]
 ```
 
 **图示来源**
@@ -327,6 +388,7 @@ Components --> Layout["布局样式<br/>面板/KPI/详情/时间线"]
 - 表单在小屏下自动切换为单列布局。
 - 表格容器支持横向滚动，避免在小屏下挤压。
 - 侧边栏与内容区在移动端堆叠排列。
+- **更新**：模态对话框和弹窗在移动端有更好的适配效果。
 
 ```mermaid
 flowchart TD
@@ -355,11 +417,15 @@ Large --> Desktop["桌面布局"]
   - 使用 TmsUI.table 配置 columns、actions、filters、pageSize 等。
   - 使用 TmsUI.formModal 声明式构建表单，并在 onSubmit 中调用 TmsStore 创建数据。
   - 使用 TmsUI.toast 提供操作反馈。
+  - **新增**：使用 TmsPages.orderLink 生成订单链接，使用 statusBadge 显示状态徽章。
+
+**更新**：新增了订单链接、状态徽章和时间线可视化的使用示例。
 
 **章节来源**
 - [tms-index.html:469-577](file://tms-index.html#L469-L577)
 - [tms-ui.js:544-678](file://tms-ui.js#L544-L678)
 - [tms-ui.js:756-780](file://tms-ui.js#L756-L780)
+- [tms-pages.js:35-94](file://tms-pages.js#L35-L94)
 
 ## 故障排查指南
 - 表格不刷新：检查是否正确使用 TmsStore 的 list 与 subscribe，并确保 state.pageSize 与 total 计算正确。
@@ -367,12 +433,18 @@ Large --> Desktop["桌面布局"]
 - 表单校验失败：检查 fields.required 与 onSubmit 返回值，确保错误提示区域显示。
 - Toast 不显示：确认 DOM 中存在 tms-toast-container，或首次调用时会创建。
 - 样式冲突：确保使用 tms- 前缀的类名，避免与页面自有样式冲突。
+- **新增**：订单链接无效：确认使用了正确的 orderLink 函数，并确保绑定了点击事件。
+
+**更新**：新增了订单链接相关的故障排查指南。
 
 **章节来源**
 - [tms-ui.js:301-542](file://tms-ui.js#L301-L542)
 - [tms-ui.js:105-285](file://tms-ui.js#L105-L285)
 - [tms-ui.js:84-103](file://tms-ui.js#L84-L103)
 - [tms-ui.css:1-795](file://tms-ui.css#L1-L795)
+- [tms-pages.js:35-94](file://tms-pages.js#L35-L94)
 
 ## 结论
 TmsUI 以轻量函数式组件为核心，结合 TmsStore 数据层与统一样式规范，提供了完整的 TMS 前端 UI 能力。其设计强调可配置、可复用、可扩展，适用于复杂业务场景下的快速开发与维护。通过本文档的结构化说明，开发者可以快速理解组件职责、实现机制与扩展方式，从而高效构建一致的 TMS 用户界面。
+
+**最新更新**：系统经过增强后，在模态对话框、表单验证、数据可视化图表和响应式设计方面都有显著改进，同时新增了订单链接、状态徽章和时间线可视化等实用功能，进一步提升了开发效率和用户体验。

@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: dev
 nodes_managed: true
-exported_at: "2026-10-30T03:32:22Z"
+exported_at: "2026-10-30T04:11:06Z"
 modules:
     "":
-        dir_name: TMS 运输管理系统（多角色前端入口与共享库）
-        title: TMS 运输管理系统（多角色前端入口与共享库）
+        dir_name: TMS 多角色前端根聚合层
+        title: TMS 多角色前端根聚合层
         scope:
             - readme
             - update_all_auth.py
@@ -40,9 +40,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: deliveryman_ui
-            - path: tms_admin/transport_sorting
+        related_to: []
     client_ui:
         dir_name: TMS 客户端用户界面
         title: TMS 客户端用户界面
@@ -74,8 +72,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: branch_ui
+        related_to: []
     sorter_ui:
         dir_name: 分拣员端前端页面集
         title: 分拣员端前端页面集
@@ -93,8 +90,8 @@ modules:
         related_to:
             - path: client_ui
     tms_admin:
-        dir_name: TMS 运营管理后台（多页面装配层）
-        title: TMS 运营管理后台（多页面装配层）
+        dir_name: TMS 管理端运营后台（多页面装配层）
+        title: TMS 管理端运营后台（多页面装配层）
         scope:
             - tms-administration.html
             - tms-architecture.html
@@ -210,8 +207,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: branch_ui
+        related_to: []
     transporter_ui:
         dir_name: 运输员端前端页面集
         title: 运输员端前端页面集
