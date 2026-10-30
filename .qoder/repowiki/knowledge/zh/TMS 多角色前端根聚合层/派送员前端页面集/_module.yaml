@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: deliveryman_ui
+title: 派送员前端页面集
+scope:
+    - deliveryman-areas.html
+    - deliveryman-clock.html
+    - deliveryman-collection.html
+    - deliveryman-contacts.html
+    - deliveryman-exception.html
+    - deliveryman-index.html
+    - deliveryman-performance.html
+    - deliveryman-tasks.html
+source_files: []
+depends_on: []
+related_to: []

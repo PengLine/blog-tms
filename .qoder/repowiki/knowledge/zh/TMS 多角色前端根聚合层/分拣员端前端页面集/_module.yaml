@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: sorter_ui
+title: 分拣员端前端页面集
+scope:
+    - sorter-clock.html
+    - sorter-index.html
+    - sorter-mock-data.js
+    - sorter-performance.html
+    - sorter-scan.html
+    - sorter-schedule.html
+    - sorter-sorting.html
+source_files: []
+depends_on: []
+related_to:
+    - path: client_ui

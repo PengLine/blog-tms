@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: ""
+title: TMS 多角色前端根聚合层
+scope:
+    - readme
+    - update_all_auth.py
+    - update_login_functions.py
+    - update_login_simple.py
+    - common.js
+    - index.html
+source_files: []
+depends_on: []
+related_to: []

@@ -63,7 +63,9 @@
         approved: 'success', rejected: 'danger', paid: 'success',
         settled: 'success', void: 'muted', normal: 'success', low: 'warn', out: 'danger',
         available: 'success', busy: 'warn', expired: 'muted',
-        suspended: 'danger', on_leave: 'warn', resigned: 'muted'
+        suspended: 'danger', on_leave: 'warn', resigned: 'muted',
+        unpaid: 'warn', partial: 'info', overdue: 'danger',
+        draft: 'muted', confirmed: 'info', disputed: 'danger'
     };
 
     function statusBadge(status, entity) {
@@ -166,6 +168,7 @@
         var values = opts.values || {};
 
         var html = '<form class="tms-form" novalidate>';
+        if (opts.extraHtml) html += opts.extraHtml;
         fields.forEach(function (f) {
             var val = values[f.key] != null ? values[f.key] : (f.value != null ? f.value : '');
             var required = f.required ? ' required' : '';
@@ -654,6 +657,7 @@
         var opts = options || {};
         var data = (opts.data || []).filter(function (d) { return Number(d.value) > 0; });
         var total = data.reduce(function (s, d) { return s + Number(d.value); }, 0) || 1;
+        var fmt = opts.formatValue || function (v) { return Math.round(Number(v) * 100) / 100; };
         var colors = ['#4ecdc4', '#667eea', '#ffb74d', '#4caf50', '#ff6b6b', '#90a4ae', '#26c6da', '#ab47bc'];
         var r = 78, cx = 260, cy = 130, stroke = 30;
         var circumference = 2 * Math.PI * r;
@@ -667,11 +671,14 @@
                 '" stroke-dashoffset="' + (-offset) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>';
             offset += len;
         });
+        var totalText = String(fmt(total));
+        // 圆心内孔安全宽度约 116，按文本长度自适应字号，避免长金额（如 ¥12,909.54）压到色环
+        var valFont = Math.max(14, Math.min(26, Math.floor(108 / (0.52 * totalText.length))));
         inner += '<text x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle" font-size="13" fill="#98a4b3">总计</text>';
-        inner += '<text x="' + cx + '" y="' + (cy + 24) + '" text-anchor="middle" font-size="26" font-weight="700" fill="#3d4b5c">' + total + '</text>';
+        inner += '<text x="' + cx + '" y="' + (cy + 24) + '" text-anchor="middle" font-size="' + valFont + '" font-weight="700" fill="#3d4b5c">' + totalText + '</text>';
         var legend = data.map(function (d, i) {
             return '<span class="tms-legend-item"><i style="background:' + (d.color || colors[i % colors.length]) + '"></i>' +
-                esc(d.label) + ' <b>' + d.value + '</b></span>';
+                esc(d.label) + ' <b>' + fmt(d.value) + '</b></span>';
         }).join('');
         container.innerHTML = '<div class="tms-donut-wrap"><div class="tms-chart" style="height:' + (opts.height || 260) + 'px"><svg viewBox="0 0 520 260">' + inner + '</svg></div>' +
             '<div class="tms-donut-legend">' + legend + '</div></div>';

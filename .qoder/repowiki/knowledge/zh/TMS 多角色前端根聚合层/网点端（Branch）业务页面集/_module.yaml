@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: branch_ui
+title: 网点端（Branch）业务页面集
+scope:
+    - branch-collection.html
+    - branch-index.html
+    - branch-inventory.html
+    - branch-operation.html
+    - branch-outbound.html
+    - branch-service.html
+    - branch-sorting.html
+    - branch-system.html
+source_files: []
+depends_on: []
+related_to: []

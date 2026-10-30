@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: tms_admin/transport_sorting
+title: 运输/分拣/装卸运营页面
+scope:
+    - tms-transport.html
+    - tms-sorting.html
+    - tms-loading.html
+source_files: []
+depends_on: []
+related_to: []

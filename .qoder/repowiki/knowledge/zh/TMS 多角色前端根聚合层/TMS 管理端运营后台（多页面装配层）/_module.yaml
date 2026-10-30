@@ -1,0 +1,34 @@
+schema_version: 1
+module_path: tms_admin
+title: TMS 管理端运营后台（多页面装配层）
+scope:
+    - tms-administration.html
+    - tms-architecture.html
+    - tms-capacity.html
+    - tms-claim.html
+    - tms-evaluation.html
+    - tms-exception.html
+    - tms-finance.html
+    - tms-geofence.html
+    - tms-hr.html
+    - tms-index.html
+    - tms-loading.html
+    - tms-material.html
+    - tms-monitor.html
+    - tms-operation.html
+    - tms-pages.js
+    - tms-performance.html
+    - tms-scan.html
+    - tms-service.html
+    - tms-sorting.html
+    - tms-store.js
+    - tms-timing.html
+    - tms-transport.html
+    - tms-ui.css
+    - tms-ui.js
+    - tms-user.html
+    - tms-vehicle.html
+    - tms-warehouse.html
+source_files: []
+depends_on: []
+related_to: []

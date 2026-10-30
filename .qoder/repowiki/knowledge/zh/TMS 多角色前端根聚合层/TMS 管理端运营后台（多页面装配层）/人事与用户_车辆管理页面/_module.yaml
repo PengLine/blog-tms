@@ -1,0 +1,10 @@
+schema_version: 1
+module_path: tms_admin/hr_user_management
+title: 人事与用户/车辆管理页面
+scope:
+    - tms-hr.html
+    - tms-user.html
+    - tms-vehicle.html
+source_files: []
+depends_on: []
+related_to: []
