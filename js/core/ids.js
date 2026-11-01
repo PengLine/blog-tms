@@ -37,10 +37,18 @@
         return digits(counters[key], 4);
     }
 
+    /* 订单号尾段只有 4 位随机：同一发货省 + 同一天 + 同一客户 hash 是一个一万格的桶，
+       日均几十单就会撞号。撞号即两条订单共用主键，读档时后者覆盖前者，账面会凭空少单。
+       所以发号时先查重，重投用尽再退回当日流水补位——落库的单号必然唯一。 */
     function buildOrderId(province, customerId, date) {
         var p = String(province || 'SH').toUpperCase().slice(0, 2);
         var tail = digits(util.hash(String(customerId || 'guest')), 4);
-        return 'HL' + p + dayStamp(date) + tail + randomDigits(4);
+        var stem = 'HL' + p + dayStamp(date) + tail;
+        for (var i = 0; i < 30; i++) {
+            var id = stem + randomDigits(4);
+            if (!TMS.db.get('orders', id)) return id;
+        }
+        return stem + sequence('orderId', date);
     }
 
     function buildWaybill(orderId) {

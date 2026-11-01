@@ -93,6 +93,25 @@
             (db.data.performances || []).forEach(function (p) { delete p.metrics; });
             (db.data.shifts || []).forEach(function (s) { delete s.shiftName; delete s.startAt; delete s.endAt; delete s.hours; delete s.location; });
             (db.data.clockRecords || []).forEach(function (c) { delete c.role; delete c.orgId; delete c.orgName; delete c.earlyLeave; });
+        },
+        /* v7 → v8：仓储加「库存流水」台账。老库只有各仓当前存量，没有凭证链就无从核对账实，
+           所以把现有存量落成一条期初建账入库，之后的出入库/调整都在这条链上做增减 */
+        8: function (db, TMS) {
+            var util = TMS.util;
+            var counters = db.counters || (db.counters = {});
+            var today = util.dateKey(util.now());
+            var rows = db.data.stockMovements || (db.data.stockMovements = []);
+            counters['@stockMovements'] = counters['@stockMovements'] || 0;
+            (db.data.stocks || []).forEach(function (s) {
+                counters['@stockMovements']++;
+                rows.push({
+                    id: 'SMV' + util.pad(counters['@stockMovements'], 6),
+                    kind: 'in', date: today, warehouseId: s.warehouseId, materialId: s.materialId,
+                    qty: Number(s.qty) || 0, reason: '期初建账（v8 升级）', operator: '系统',
+                    createdAt: util.iso(util.now())
+                });
+            });
+            (db.data.materials || []).forEach(function (m) { m.inTransit = 0; });
         }
     };
 

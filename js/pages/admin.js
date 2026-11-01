@@ -100,6 +100,30 @@
         'cust:edit': function (id) { customerFormModal(id); }
     };
 
+    /* 仓储与物料两套账互相引用：仓库弹窗里点物料、物料弹窗里点仓库、在途单里点应付。
+       ui.actions 每次渲染只装配「共享 + 当前页」，所以这一整套统一导出，两个页面各自合并 */
+    var stockActions = {
+        'wh:open': function (id) { whModal(id); },
+        'wh:edit': function (id) { whFormModal(id); },
+        'wh:new': function () { whFormModal(''); },
+        'wh:in': function (id) { whInOutModal(id, 'in'); },
+        'wh:out': function (id) { whInOutModal(id, 'out'); },
+        'wh:count': function (id) { whCountModal(id); },
+        'wh:transfer': function (id) { whTransferModal(id); },
+        'wh:recalc': function (id) { recalcUsage(id); },
+        'wh:urge': function (id) { urgeOrder(id); },
+        'wh:exception': function (id) { exceptionFromStock(id); },
+        'wh:buy': function (arg) { purchaseEntry(arg); },
+        'wh:buys': function () { purchaseListModal(); },
+        'smv:recv': function (id) { receiveMovement(id); },
+        'mat:open': function (id) { materialModal(id); },
+        'mat:edit': function (id) { materialFormModal(id); },
+        'mat:count': function (id) { materialCountModal(id); },
+        'mat:buy': function (id) { purchaseEntry(id); },
+        'mat:buys': function () { purchaseListModal(); },
+        'ap:open': gotoPayable
+    };
+
     /* ---------- CSV 导出 ---------- */
 
     function csvCell(v) {
@@ -1140,7 +1164,7 @@
     pg.define('order', {
         sub: '全渠道订单统一台账：建单、推进、拦截、改单都走领域服务，页面不直接改状态字段',
         load: function (ctx) {
-            applyParamFilter(ctx, ['customerId', 'status', 'destination', 'origin']);
+            applyParamFilter(ctx, ['customerId', 'status', 'destination', 'origin', 'q']);
             var rows = db.col('orders').map(TMS.order.view);
             var open = rows.filter(function (o) { return !TMS.order.isTerminal(o); });
             var today = util.dateKey(util.now());
@@ -5832,7 +5856,7 @@
         var id = p.refId || '';
         var pool = /^TRP/.test(id) ? 'transports' : /^HB/.test(id) ? 'hubs' : /^EMP/.test(id) ? 'employees'
             : /^EX/.test(id) ? 'exceptions' : /^SUP/.test(id) ? 'suppliers' : /^CAR/.test(id) ? 'carriers'
-                : /^BR/.test(id) ? 'branches' : /^VEH/.test(id) ? 'vehicles' : '';
+                : /^BR/.test(id) ? 'branches' : /^VEH/.test(id) ? 'vehicles' : /^MAT/.test(id) ? 'materials' : '';
         var row = pool ? db.get(pool, id) : null;
         var label = id;
         if (pool === 'transports' && row) label = TMS.operation.labelOf(row);
@@ -6158,7 +6182,7 @@
     pg.define('payable', {
         sub: '成本应付：车次/操作/派送按业务发生自动计提，结算即生成支出流水，逾期与账期排程一目了然',
         load: function (ctx) {
-            applyParamFilter(ctx, ['category', 'target']);
+            applyParamFilter(ctx, ['category', 'target', 'q']);
             var rows = apRows(ctx.days);
             var all = apRows(0);
             var br = TMS.finance.payableBreakdown();
@@ -7767,6 +7791,11 @@
         ], rows));
     }
 
+    /* 台账详情里会挂别的页面的单号链接，而 ui.actions 每次渲染只装配「共享动作 + 当前页动作」。
+       跳转用的 tp:open / ap:open 必须在打开这份弹窗的那一页再注册一次，否则点了没反应。 */
+    function gotoTrip(id) { ui.closeTop(); TMS.shell.go('transport', { q: id }); }
+    function gotoPayable(id) { ui.closeTop(); TMS.shell.go('payable', { q: id }); }
+
     /* ---------- 二十四、车辆管理 ---------- */
     var VEH_TEXT = { available: '待命', busy: '在途', maintenance: '保养中', offline: '停运' };
     var MAINT_ITEMS = ['常规保养', '轮胎更换', '刹车系统检修', '冷藏机组检修', '事故维修', '年检'];
@@ -8311,6 +8340,8 @@
             'veh:new': function () { vehFormModal(''); },
             'veh:maint': function (id) { vehMaintModal(id); },
             'veh:driver': function (id) { vehDriverModal(id); },
+            'tp:open': gotoTrip,
+            'ap:open': gotoPayable,
             'veh:trips': function (id) {
                 var v = db.get('vehicles', id);
                 ui.closeTop();
@@ -8964,6 +8995,8 @@
             'cap:new': function () { carFormModal(''); },
             'cap:contract': function (id) { carContractModal(id); },
             'cap:lane': function (hubId) { laneModal(hubId); },
+            'tp:open': gotoTrip,
+            'ap:open': gotoPayable,
             'cap:review': function () {
                 var ctx = curCtx();
                 reviewModal(capReview(capTransports(Math.max(7, Number(ctx.days) || 14)), 140));
@@ -9058,6 +9091,1577 @@
         });
     }
 
+    /* ---------- 二十六、仓储库存 ---------- */
+    var WH_TEXT = { active: '在用', closed: '停用' };
+    var WH_TYPES = ['自营仓', '租赁仓', '分拨仓中仓'];
+    var MOV_TEXT = { in: '入库', out: '领用出库', adjust: '盘点调整', purchase: '采购在途' };
+    var OUT_USES = ['分拨包装领用', '网点耗材领用', '冷链冰袋周转', '面单打印消耗', '托盘周转调用'];
+    var IN_SOURCES = ['采购到货', '退货回库', '仓间调拨入', '盘盈入账'];
+    var AGE_BUCKETS = ['24 小时内', '1~3 天', '3~7 天', '超 7 天'];
+
+    /* 库存流水是唯一事实：in 加、out 减、adjust 带符号、purchase 只是凭证不动库存（到货才入账）。
+       库存行只存当前数量，任何一次改动都必须有对应流水，否则账实核对就是空话 */
+    function mvSigned(m) {
+        if (m.kind === 'out') return -(Number(m.qty) || 0);
+        if (m.kind === 'in' || m.kind === 'adjust') return Number(m.qty) || 0;
+        return 0;
+    }
+
+    function stockCtx(days) {
+        var win = util.addDays(util.now(), -(days || 30)).getTime();
+        var ctx = { days: days || 30, ledger: {}, byWh: {}, byMat: {}, pending: [], total: 0 };
+        db.col('stockMovements').forEach(function (m) {
+            ctx.total++;
+            var k = m.warehouseId + '|' + m.materialId;
+            ctx.ledger[k] = (ctx.ledger[k] || 0) + mvSigned(m);
+            if (m.kind === 'purchase' && m.status === 'pending') ctx.pending.push(m);
+            if (util.toDate(m.date || m.createdAt).getTime() < win) return;
+            (ctx.byWh[m.warehouseId] || (ctx.byWh[m.warehouseId] = [])).push(m);
+            (ctx.byMat[m.materialId] || (ctx.byMat[m.materialId] = [])).push(m);
+        });
+        return ctx;
+    }
+
+    function mvOf(list, days) {
+        var cutoff = util.addDays(util.now(), -(days || 30)).getTime();
+        return util.sortBy(list.filter(function (m) {
+            return util.toDate(m.date || m.createdAt).getTime() >= cutoff;
+        }), 'createdAt', 'desc');
+    }
+
+    /* 在库货物从订单状态反算：停在「已入库」就是压在原分拨库，停在「已到件」就是压在目的分拨库。
+       仓库档案里的 usedPieces 是上次盘点写下的静态数，两个数对不上说明账面早已失真 */
+    function goodsByHub() {
+        var idx = TMS.order.scanIndex();
+        var out = {};
+        db.col('orders').forEach(function (o) {
+            var hub = '', at = '';
+            if (o.status === 'inbound') { hub = o.hubFrom; at = TMS.order.stageAt(o, 'inbound', idx[o.id]); }
+            else if (o.status === 'arrived') { hub = o.hubTo; at = TMS.order.stageAt(o, 'arrived', idx[o.id]); }
+            if (!hub) return;
+            var hours = Math.max(0, util.hoursBetween(at || o.updatedAt || o.createdAt, util.now()));
+            var g = out[hub] || (out[hub] = { hubId: hub, orders: [], pieces: 0, weight: 0, buckets: [0, 0, 0, 0], aged: 0, maxHours: 0 });
+            g.pieces += Number(o.pieces) || 1;
+            g.weight += Number(o.chargeableWeight) || 0;
+            g.buckets[hours < 24 ? 0 : (hours < 72 ? 1 : (hours < 168 ? 2 : 3))]++;
+            if (hours > 48) g.aged++;
+            if (hours > g.maxHours) g.maxHours = hours;
+            g.orders.push({
+                id: o.id, origin: o.origin, destination: o.destination, service: o.service,
+                customer: TMS.order.customerName(o), pieces: Number(o.pieces) || 1,
+                weight: util.round(Number(o.chargeableWeight) || 0, 1), hours: util.round(hours, 1),
+                status: o.status, statusText: pg.statusText(o.status)
+            });
+        });
+        Object.keys(out).forEach(function (k) { out[k].orders = util.sortBy(out[k].orders, 'hours', 'desc'); });
+        return out;
+    }
+
+    function whStockRows(warehouseId, ctx) {
+        return db.col('stocks').filter(function (s) { return s.warehouseId === warehouseId; }).map(function (s) {
+            var m = db.get('materials', s.materialId) || {};
+            var mv = (ctx.byWh[warehouseId] || []).filter(function (x) { return x.materialId === s.materialId; });
+            var qty = Number(s.qty) || 0, safe = Number(s.safeQty) || 0;
+            var outQty = util.sum(mv.filter(function (x) { return x.kind === 'out'; }), 'qty');
+            var perDay = outQty / (ctx.days || 30);
+            var book = ctx.ledger[warehouseId + '|' + s.materialId];
+            return {
+                id: s.id, warehouseId: warehouseId, materialId: s.materialId,
+                material: s.material || m.name || '', unit: s.unit || m.unit || '件',
+                qty: qty, safeQty: safe, low: qty < safe, price: Number(m.price) || 0,
+                value: util.money(qty * (Number(m.price) || 0)),
+                outQty: util.round(outQty, 1),
+                turnDays: perDay > 0 ? util.round(qty / perDay, 1) : null,
+                /* 流水只在建账时快照过的仓才有值，undefined 表示这条库存行还没有凭证 */
+                diff: book == null ? null : util.round(book - qty, 1),
+                updatedAt: s.updatedAt || '', matStatus: m.status || 'normal', matPrice: Number(m.price) || 0
+            };
+        });
+    }
+
+    function whView(w, ctx, goods) {
+        var stocks = whStockRows(w.id, ctx);
+        var g = (w.hubId && goods[w.hubId]) || { orders: [], pieces: 0, weight: 0, buckets: [0, 0, 0, 0], aged: 0, maxHours: 0 };
+        var mv = ctx.byWh[w.id] || [];
+        var usedPieces = Number(w.usedPieces) || 0;
+        var areaRate = w.areaM2 ? util.round((Number(w.usedArea) || 0) / w.areaM2 * 100, 1) : 0;
+        var pieceRate = w.capacityPieces ? util.round(usedPieces / w.capacityPieces * 100, 1) : 0;
+        return {
+            id: w.id, name: w.name, city: w.city || '', type: w.type || '自营仓', status: w.status || 'active',
+            manager: w.manager || '', hubId: w.hubId || '', hubName: w.hubId ? pg.hubName(w.hubId) : '',
+            areaM2: Number(w.areaM2) || 0, usedArea: Number(w.usedArea) || 0, areaRate: areaRate,
+            capacityPieces: Number(w.capacityPieces) || 0, usedPieces: usedPieces, pieceRate: pieceRate,
+            costPerM2: Number(w.costPerM2) || 0, rent: util.money((Number(w.areaM2) || 0) * (Number(w.costPerM2) || 0) * 30),
+            stockRows: stocks, stockValue: util.money(util.sum(stocks, 'value')),
+            lowCount: stocks.filter(function (s) { return s.low; }).length,
+            diffRows: stocks.filter(function (s) { return s.diff != null && Math.abs(s.diff) > 0.5; }),
+            inQty: util.round(util.sum(mv.filter(function (x) { return x.kind === 'in'; }), 'qty'), 1),
+            outQty: util.round(util.sum(mv.filter(function (x) { return x.kind === 'out'; }), 'qty'), 1),
+            moves: mv.length,
+            goodsOrders: g.orders.length, goodsPieces: g.pieces, goodsWeight: util.round(g.weight, 1),
+            goodsAged: g.aged, goodsMax: util.round(g.maxHours, 0), buckets: g.buckets, goodsList: g.orders,
+            pieceDrift: Math.round(g.pieces - usedPieces),
+            pieceDriftPct: usedPieces ? util.round(Math.abs(g.pieces - usedPieces) / usedPieces * 100, 1) : (g.pieces ? 100 : 0)
+        };
+    }
+
+    function whRows(days) {
+        var ctx = stockCtx(days || 30), goods = goodsByHub();
+        return db.col('warehouses').map(function (w) { return whView(w, ctx, goods); });
+    }
+
+    function whGaps(rows) {
+        return {
+            low: rows.filter(function (r) { return r.lowCount; }),
+            diff: rows.filter(function (r) { return r.diffRows.length; }),
+            overload: rows.filter(function (r) { return r.areaRate >= 88 || r.pieceRate >= 88; }),
+            drift: rows.filter(function (r) { return r.goodsOrders && r.pieceDriftPct > 15; }),
+            aged: rows.filter(function (r) { return r.goodsAged > 0; }),
+            closed: rows.filter(function (r) { return r.status !== 'active' && (r.stockValue > 0 || r.goodsOrders > 0); }),
+            noHub: rows.filter(function (r) { return !r.hubId; })
+        };
+    }
+
+    /* 物料档案的合计/状态/在途都是派生值，改动库存后统一走这里重算，避免三处口径各写一遍 */
+    function syncMaterial(materialId) {
+        var m = db.get('materials', materialId);
+        if (!m) return null;
+        var stock = util.sum(db.col('stocks').filter(function (s) { return s.materialId === materialId; }), 'qty');
+        var transit = util.sum(db.col('stockMovements').filter(function (x) {
+            return x.materialId === materialId && x.kind === 'purchase' && x.status === 'pending';
+        }), 'qty');
+        stock = Math.round(stock);
+        transit = Math.round(transit);
+        /* 停用是采购决策不是库存结论，重算合计不能把它冲回 normal */
+        var status = m.status === 'obsolete' ? 'obsolete' : (stock <= 0 ? 'out' : (stock < (Number(m.safeStock) || 0) ? 'low' : 'normal'));
+        db.update('materials', materialId, { stock: stock, inTransit: transit, status: status, updatedAt: util.iso(util.now()) });
+        return db.get('materials', materialId);
+    }
+
+    function stockRowOf(warehouseId, materialId, safeQty) {
+        var s = db.findOne('stocks', function (x) { return x.warehouseId === warehouseId && x.materialId === materialId; });
+        if (s) return s;
+        var mat = db.get('materials', materialId) || {};
+        return db.create('stocks', {
+            warehouseId: warehouseId, warehouseName: (db.get('warehouses', warehouseId) || {}).name || '',
+            materialId: materialId, material: mat.name || materialId, unit: mat.unit || '件',
+            qty: 0, safeQty: Math.round(Number(safeQty) || 0), updatedAt: util.iso(util.now())
+        });
+    }
+
+    /* 记一笔库存变动：流水 + 库存行 + 物料档案三张表一起改，任何一步失败都不能只写一半 */
+    function postMovement(entry) {
+        var whId = entry.warehouseId, matId = entry.materialId;
+        var stock = stockRowOf(whId, matId, Math.round((Number((db.get('materials', matId) || {}).safeStock) || 0) / Math.max(1, db.col('warehouses').length)));
+        var qty = Number(entry.qty) || 0;
+        var signed = entry.kind === 'out' ? -qty : qty;
+        var next = Math.round((Number(stock.qty) || 0) + (entry.kind === 'purchase' ? 0 : signed));
+        if (next < 0) return { ok: false, message: ((db.get('materials', matId) || {}).name || matId) + ' 现存 ' + (Number(stock.qty) || 0) + '，不够出库' };
+        var mv = db.create('stockMovements', {
+            kind: entry.kind, date: util.dateKey(entry.at || util.now()), warehouseId: whId, materialId: matId,
+            qty: entry.kind === 'adjust' ? signed : qty, reason: entry.reason || '', operator: entry.operator || actor(),
+            link: entry.link || '', refId: entry.refId || '', status: entry.status || '',
+            createdAt: util.iso(entry.at || util.now())
+        }, { stamp: false });
+        if (entry.kind !== 'purchase') {
+            db.update('stocks', stock.id, { qty: next, updatedAt: util.iso(entry.at || util.now()) });
+            db.commit('stocks', stock.id, 'stock:mv');
+        }
+        saveRow('stockMovements', mv, 'stock:mv');
+        syncMaterial(matId);
+        return { ok: true, movement: mv, stock: db.get('stocks', stock.id) };
+    }
+
+    function movementOptions(warehouseId) {
+        return db.col('stockMovements').filter(function (m) {
+            return m.kind === 'purchase' && m.status === 'pending' && (!warehouseId || m.warehouseId === warehouseId);
+        }).map(function (m) {
+            var mat = db.get('materials', m.materialId) || {};
+            return { value: m.id, label: m.id + ' ' + (mat.name || m.materialId) + ' ×' + m.qty };
+        });
+    }
+
+    function warehouseOptions(keep) {
+        var list = db.col('warehouses').filter(function (w) { return w.status === 'active' || w.id === keep; });
+        return list.map(function (w) { return { value: w.id, label: w.name }; });
+    }
+
+    function whStockTable(rows) {
+        if (!rows.length) return ui.empty('该仓暂无库存行', '可从「物料管理」页发起采购补货');
+        return ui.table({
+            dense: true, keyName: 'id', rows: rows,
+            columns: [
+                { key: 'material', label: '物料', render: function (s) { return ui.link(esc(s.material), 'mat:open', s.materialId); } },
+                { key: 'qty', label: '现存', align: 'right', width: '92px', render: function (s) { return (s.low ? '<span class="tone-danger">' : '') + fmt.number(s.qty) + ' ' + esc(s.unit) + (s.low ? '</span>' : ''); } },
+                { key: 'safeQty', label: '安全库存', align: 'right', width: '96px', render: function (s) { return fmt.number(s.safeQty) + ' ' + esc(s.unit); } },
+                { key: 'outQty', label: '窗口领用', align: 'right', width: '104px', render: function (s) { return fmt.number(s.outQty) + ' ' + esc(s.unit); } },
+                { key: 'turnDays', label: '周转天数', align: 'right', width: '96px', render: function (s) { return s.turnDays == null ? '<span class="tms-dim">无领用</span>' : fmt.number(s.turnDays) + ' 天'; } },
+                { key: 'diff', label: '账实差异', align: 'right', width: '96px', render: function (s) { return s.diff == null ? '<span class="tms-dim">无凭证</span>' : (Math.abs(s.diff) > 0.5 ? ui.badge(fmt.number(s.diff), 'danger') : '<span class="tms-dim">0</span>'); } },
+                { key: 'value', label: '库存金额', align: 'right', width: '108px', render: function (s) { return fmt.money(s.value); } },
+                { key: 'updatedAt', label: '最近变动', align: 'right', width: '112px', render: function (s) { return s.updatedAt ? fmt.date(s.updatedAt) : '<span class="tms-dim">—</span>'; } }
+            ]
+        });
+    }
+
+    function mvTable(list, limit) {
+        if (!list.length) return ui.empty('窗口内没有出入库流水', '库存只做静态快照，账实差异就无从追查');
+        return ui.table({
+            dense: true, keyName: 'id', rows: list.slice(0, limit || 10),
+            columns: [
+                { key: 'id', label: '凭证', width: '116px', render: function (m) { return ui.idCell(m.id); } },
+                { key: 'kind', label: '类型', width: '92px', render: function (m) { return ui.badge(MOV_TEXT[m.kind] || m.kind, m.kind === 'out' ? 'info' : (m.kind === 'in' ? 'success' : (m.kind === 'purchase' ? 'accent' : 'warn'))); } },
+                { key: 'materialId', label: '物料', render: function (m) { return ui.link(esc((db.get('materials', m.materialId) || {}).name || m.materialId), 'mat:open', m.materialId); } },
+                { key: 'qty', label: '数量', align: 'right', width: '92px', render: function (m) { return (m.kind === 'out' ? '-' : (m.qty < 0 ? '' : '+')) + fmt.number(Math.abs(m.qty)); } },
+                { key: 'reason', label: '事由', render: function (m) { return esc(m.reason || '—'); } },
+                { key: 'operator', label: '经办', width: '92px', render: function (m) { return esc(m.operator || '—'); } },
+                { key: 'date', label: '日期', align: 'right', width: '100px' }
+            ]
+        });
+    }
+
+    function whModal(id) {
+        var w = db.get('warehouses', id);
+        if (!w) { ui.toast('仓库不存在', 'warn'); return; }
+        var ctx = stockCtx(30);
+        var r = whView(w, ctx, goodsByHub());
+        var mv = ctx.byWh[w.id] || [];
+        var risks = [];
+        if (r.diffRows.length) risks.push(r.diffRows.length + ' 项库存与流水对不上：档案数是被人工改过的，先盘点调平再谈补货');
+        if (r.lowCount) risks.push(r.lowCount + ' 项低于分仓安全库存，断料当天分拨就得停线');
+        if (r.goodsAged) risks.push(r.goodsAged + ' 票货在库超 48 小时（最久 ' + r.goodsMax + ' 小时），滞留件既不产生收入还占库位');
+        if (r.areaRate >= 88 || r.pieceRate >= 88) risks.push('库容占用已达 ' + fmt.percent(Math.max(r.areaRate, r.pieceRate)) + '，再来一票旺季货就爆仓');
+        if (r.goodsOrders && r.pieceDriftPct > 15) risks.push('档案占用 ' + fmt.number(r.usedPieces) + ' 件 vs 实际在库 ' + fmt.number(r.goodsPieces) + ' 件，账面偏差 ' + fmt.percent(r.pieceDriftPct));
+        if (r.status !== 'active' && (r.stockValue > 0 || r.goodsOrders > 0)) risks.push('仓库已停用但仍有库存与在库货物，货找不到责任人');
+        ui.modal({
+            title: esc(r.name), size: 'wide',
+            sub: esc(r.type) + ' · ' + esc(r.city || '—') + ' · 对接分拨 ' + esc(r.hubName || '未归属') + ' · 仓管 ' + esc(r.manager || '—') + ' ' + statusBadge(r.status, WH_TEXT),
+            body: ui.stack([
+                ui.kpis([
+                    { label: '面积占用', value: fmt.percent(r.areaRate), tone: r.areaRate >= 88 ? 'danger' : '', sub: fmt.number(r.usedArea) + ' / ' + fmt.number(r.areaM2) + ' m²' },
+                    { label: '库位件数', value: fmt.percent(r.pieceRate), tone: r.pieceRate >= 88 ? 'danger' : '', sub: fmt.number(r.usedPieces) + ' / ' + fmt.number(r.capacityPieces) + ' 件' },
+                    { label: '在库货物', value: fmt.number(r.goodsOrders), unit: '单', tone: r.goodsAged ? 'warn' : '', sub: fmt.number(r.goodsPieces) + ' 件 / ' + fmt.kg(r.goodsWeight) },
+                    { label: '耗材库存值', value: fmt.money(r.stockValue), tone: 'brand', sub: r.lowCount ? ui.badge(r.lowCount + ' 项告急', 'danger') : '库存充足' },
+                    { label: '月仓租测算', value: fmt.money(r.rent), sub: fmt.money(r.costPerM2) + '/m²·天 × ' + fmt.number(r.areaM2) + ' m²' }
+                ]),
+                risks.length ? ui.notice(risks.map(function (t) { return '· ' + esc(t); }).join('<br>'), 'warn', '本仓体检') : '',
+                ui.card({ title: '耗材库存', sub: r.stockRows.length + ' 个品类 · 现存合计 ' + fmt.number(util.sum(r.stockRows, 'qty')) , flat: true, body: whStockTable(r.stockRows) }),
+                ui.card({
+                    title: '在库货物', sub: r.goodsOrders ? r.goodsOrders + ' 单待出库，最久 ' + r.goodsMax + ' 小时' : '当前没有在库货物', flat: true,
+                    body: r.goodsList.length ? ui.table({
+                        dense: true, keyName: 'id', rows: r.goodsList.slice(0, 8),
+                        columns: [
+                            { key: 'id', label: '单号', width: '150px', render: function (o) { return ui.idCell(o.id, 'order:open'); } },
+                            { key: 'customer', label: '客户', render: function (o) { return esc(o.customer || '—'); } },
+                            { key: 'statusText', label: '状态', width: '92px' },
+                            { key: 'pieces', label: '件数', align: 'right', width: '72px' },
+                            { key: 'weight', label: '重量', align: 'right', width: '92px', render: function (o) { return fmt.kg(o.weight); } },
+                            { key: 'hours', label: '在库时长', align: 'right', width: '104px', render: function (o) { return o.hours > 48 ? ui.badge(Math.round(o.hours) + ' 小时', 'danger') : fmt.number(o.hours) + ' 小时'; } }
+                        ]
+                    }) : ui.empty('没有滞留货物', '在库件数从订单状态实时反算')
+                }),
+                ui.card({ title: '近期出入库流水', sub: '窗口 ' + ctx.days + ' 天 · ' + mv.length + ' 笔', flat: true, body: mvTable(mv, 10) })
+            ]),
+            footer: ui.btn('入库单', { tone: 'primary', size: 'sm', act: 'wh:in', arg: w.id }) +
+                ui.btn('领用出库', { size: 'sm', act: 'wh:out', arg: w.id }) +
+                ui.btn('盘点调账', { size: 'sm', act: 'wh:count', arg: w.id }) +
+                ui.btn('调拨转仓', { size: 'sm', act: 'wh:transfer', arg: w.id }) +
+                ui.btn('按在库重算占用', { size: 'sm', tone: 'ghost', act: 'wh:recalc', arg: w.id }) +
+                ui.btn('编辑档案', { size: 'sm', tone: 'ghost', act: 'wh:edit', arg: w.id }) +
+                ui.btn('关闭', { size: 'sm', act: 'ui:close' })
+        });
+    }
+
+    function whFormModal(id) {
+        var w = id ? db.get('warehouses', id) : null;
+        ui.formModal({
+            title: w ? '维护仓库档案' : '新增仓库',
+            sub: w ? esc(w.name) + ' · 库容与仓租只影响成本测算，不动库存事实' : '仓库必须挂在分拨中心下面，否则在库货物无法归位',
+            notice: '「档案占用」是盘点写入的静态数，「实际在库」由订单状态实时反算；台账页会把两者差异顶出来，别靠手填保持一致。',
+            fields: [
+                { key: 'name', label: '仓库名称', required: true },
+                { key: 'hubId', label: '归属分拨', type: 'select', required: true, options: ui.optionsOf(db.col('hubs'), 'id', 'name') },
+                { key: 'type', label: '仓库类型', type: 'select', required: true, options: ui.optionsOf(WH_TYPES) },
+                { key: 'manager', label: '仓管负责人', required: true },
+                { key: 'areaM2', label: '建筑面积', type: 'number', min: 1, required: true, unit: 'm²' },
+                { key: 'usedArea', label: '已用面积', type: 'number', min: 0, required: true, unit: 'm²' },
+                { key: 'capacityPieces', label: '库容件数', type: 'number', min: 1, required: true, unit: '件' },
+                { key: 'usedPieces', label: '档案占用件数', type: 'number', min: 0, required: true, unit: '件' },
+                { key: 'costPerM2', label: '仓租单价', type: 'number', min: 0.1, step: '0.01', required: true, unit: '元/m²·天', tip: '按天计租，页面折算月度成本' },
+                { key: 'status', label: '状态', type: 'select', options: Object.keys(WH_TEXT).map(function (k) { return { value: k, label: WH_TEXT[k] }; }) }
+            ],
+            values: w ? {
+                name: w.name, hubId: w.hubId, type: w.type, manager: w.manager, areaM2: w.areaM2,
+                usedArea: w.usedArea, capacityPieces: w.capacityPieces, usedPieces: w.usedPieces,
+                costPerM2: w.costPerM2, status: w.status
+            } : { type: '自营仓', status: 'active', areaM2: 6000, usedArea: 3000, capacityPieces: 60000, usedPieces: 20000, costPerM2: 1.2 },
+            okText: '保存仓库',
+            onSubmit: function (data) {
+                var name = String(data.name || '').trim();
+                if (!name) return '仓库名称必填';
+                if (db.col('warehouses').some(function (x) { return x.name === name && x.id !== (w ? w.id : ''); })) return '同名仓库已存在';
+                var area = Number(data.areaM2) || 0, used = Number(data.usedArea) || 0;
+                if (area <= 0) return '建筑面积必须大于 0';
+                if (used > area) return '已用面积不能超过建筑面积';
+                var cap = Number(data.capacityPieces) || 0, up = Number(data.usedPieces) || 0;
+                if (cap <= 0) return '库容件数必须大于 0';
+                if (up > cap) return '档案占用件数不能超过库容';
+                if (!(Number(data.costPerM2) > 0)) return '仓租单价必须大于 0，否则成本测算会把这仓算成免费';
+                var hub = db.get('hubs', data.hubId);
+                if (!hub) return '请选择归属分拨';
+                var patch = {
+                    name: name, hubId: hub.id, city: hub.city, type: data.type, manager: String(data.manager).trim(),
+                    areaM2: area, usedArea: used, capacityPieces: cap, usedPieces: up,
+                    costPerM2: util.round(Number(data.costPerM2), 2), status: data.status
+                };
+                var saved = w ? (db.update('warehouses', w.id, patch), db.get('warehouses', w.id)) : db.create('warehouses', patch);
+                saveRow('warehouses', saved, 'wh:save');
+                TMS.audit.log('warehouse.update', 'warehouses', saved.id,
+                    (w ? '维护' : '新增') + '仓库 ' + saved.name + '（' + saved.type + '，' + fmt.number(saved.areaM2) + ' m²，库容 ' + fmt.number(saved.capacityPieces) + ' 件），仓管 ' + saved.manager,
+                    actor());
+                ui.toast('已保存仓库「' + saved.name + '」', 'success');
+                for (var i = 0; i < 2; i++) TMS.ui.closeTop();
+            }
+        });
+    }
+
+    function whInOutModal(id, kind, materialId) {
+        var w = db.get('warehouses', id);
+        if (!w) { ui.toast('仓库不存在', 'warn'); return; }
+        var rows = whStockRows(w.id, stockCtx(30));
+        var opts = rows.map(function (s) { return { value: s.materialId, label: s.material + '（现存 ' + fmt.number(s.qty) + s.unit + '）' }; });
+        if (!opts.length) { ui.toast('该仓还没有库存品类', 'warn'); return; }
+        var isIn = kind === 'in';
+        ui.formModal({
+            title: isIn ? '入库单' : '领用出库',
+            sub: esc(w.name) + ' · ' + (isIn ? '到货、回库、盘盈都走入库，库存与流水同时更新' : '出库只减库存，费用在采购结算时确认，避免与单票包材成本双计'),
+            fields: [{ key: 'materialId', label: '物料', type: 'select', required: true, options: opts, value: opts[0].value },
+                { key: 'qty', label: isIn ? '入库数量' : '出库数量', type: 'number', min: 1, required: true },
+                { key: 'reason', label: isIn ? '入库来源' : '领用用途', type: 'select', required: true, options: ui.optionsOf(isIn ? IN_SOURCES : OUT_USES) }]
+                /* 只有入库才允许冲在途采购单；出库挂采购流水会把同一张单据销两次 */
+                .concat(isIn ? [{ key: 'apId', label: '关联采购流水', type: 'select', options: [{ value: '', label: '不关联' }].concat(movementOptions(w.id)) }] : [])
+                .concat([{ key: 'remark', label: '备注', span: 2, placeholder: '批次、托盘号、领用班组' },
+                    { key: 'operator', label: '经办人', required: true, value: actor() }]),
+            values: { materialId: materialId && opts.some(function (o) { return o.value === materialId; }) ? materialId : opts[0].value, qty: 1, operator: actor() },
+            okText: isIn ? '确认入库' : '确认出库',
+            onSubmit: function (data) {
+                var qty = Math.round(Number(data.qty) || 0);
+                if (qty <= 0) return '数量必须大于 0';
+                var mat = db.get('materials', data.materialId) || {};
+                var link = data.apId ? db.get('stockMovements', data.apId) : null;
+                if (link && link.materialId !== data.materialId) return '关联的采购单和这个物料不是同一个，请先按采购单入库';
+                var res = { ok: false };
+                db.batch(function () {
+                    if (isIn) {
+                        res = postMovement({
+                            kind: 'in', warehouseId: w.id, materialId: data.materialId, qty: qty,
+                            reason: data.reason + (data.remark ? '：' + data.remark : ''), operator: data.operator
+                        });
+                        if (!res.ok) return;
+                        if (link) {
+                            var left = Math.max(0, (Number(link.qty) || 0) - qty);
+                            db.update('stockMovements', link.id, {
+                                status: left ? 'partial' : 'received', receivedQty: (Number(link.receivedQty) || 0) + qty,
+                                receivedAt: util.iso(util.now())
+                            });
+                            db.commit('stockMovements', link.id, 'purchase:receive');
+                            syncMaterial(data.materialId);
+                        }
+                    } else {
+                        res = postMovement({
+                            kind: 'out', warehouseId: w.id, materialId: data.materialId, qty: qty,
+                            reason: data.reason + (data.remark ? '（' + data.remark + '）' : ''), operator: data.operator
+                        });
+                    }
+                }, isIn ? 'stock:in' : 'stock:out');
+                if (!res.ok) { ui.toast(res.message || '操作失败', 'error'); return; }
+                var after = db.get('materials', data.materialId) || {};
+                TMS.audit.log(isIn ? 'stock.in' : 'stock.out', 'warehouses', w.id,
+                    w.name + ' ' + (isIn ? '入库' : '出库') + ' ' + (mat.name || '') + ' ' + fmt.number(qty) + (mat.unit || '') +
+                    '（事由：' + data.reason + '），现存 ' + fmt.number(after.stock || 0) + (after.inTransit ? '，在途 ' + fmt.number(after.inTransit) : ''),
+                    data.operator || actor());
+                if (isIn && (Number(after.stock) || 0) >= (Number(after.safeStock) || 0)) {
+                    TMS.jobs.run('materialStock');
+                    if ((Number(after.stock) || 0) >= (Number(after.safeStock) || 0)) ui.toast((mat.name || '') + ' 库存已回补至安全线，告警自动核销', 'success');
+                }
+                ui.toast(isIn ? '已入库 ' + fmt.number(qty) + (mat.unit || '') : '已出库 ' + fmt.number(qty) + (mat.unit || ''), 'success');
+                for (var i = 0; i < 2; i++) TMS.ui.closeTop();
+            }
+        });
+    }
+
+    function whCountModal(id) {
+        var w = db.get('warehouses', id);
+        if (!w) { ui.toast('仓库不存在', 'warn'); return; }
+        var rows = whStockRows(w.id, stockCtx(30));
+        if (!rows.length) { ui.toast('该仓没有库存品类可盘点', 'warn'); return; }
+        var values = { operator: actor() };
+        rows.forEach(function (s) { values['q_' + s.materialId] = s.qty; });
+        ui.formModal({
+            title: '盘点单 · ' + esc(w.name),
+            sub: rows.length + ' 个品类 · 填「实盘数量」，系统按差额生成盘点流水并调平库存',
+            notice: '盘点差异不直接改库存数字，而是记一条带符号的调整流水：账实核对时任何人都能顺着这条凭证查到是谁、哪天、为什么调的。',
+            fields: rows.map(function (s) {
+                return {
+                    key: 'q_' + s.materialId, label: s.material + '（账面 ' + fmt.number(s.qty) + ' ' + s.unit + '）',
+                    type: 'number', min: 0, required: true, unit: s.unit,
+                    hint: s.low ? '<span class="tone-danger">低于分仓安全库存 ' + fmt.number(s.safeQty) + '</span>' : ('安全库存 ' + fmt.number(s.safeQty))
+                };
+            }).concat([{ key: 'memo', label: '盘点说明', type: 'textarea', rows: 2, span: 2, placeholder: '盘点组、差异原因、是否复点' },
+                { key: 'operator', label: '盘点人', required: true }]),
+            values: values, okText: '提交盘点',
+            onSubmit: function (data) {
+                var diffs = [];
+                rows.forEach(function (s) {
+                    var real = Math.round(Number(data['q_' + s.materialId]));
+                    if (isNaN(real) || real < 0) return;
+                    if (real !== s.qty) diffs.push({ id: s.materialId, delta: real - s.qty, name: s.material, unit: s.unit });
+                });
+                if (!diffs.length) { ui.toast('账实一致，本次盘点无需调整', 'info'); return; }
+                db.batch(function () {
+                    diffs.forEach(function (d) {
+                        postMovement({
+                            kind: 'adjust', warehouseId: w.id, materialId: d.id, qty: d.delta,
+                            reason: '盘点调整' + (data.memo ? '：' + data.memo : ''), operator: data.operator || actor()
+                        });
+                    });
+                }, 'stock:count');
+                TMS.audit.log('stock.count', 'warehouses', w.id,
+                    w.name + ' 盘点调整 ' + diffs.length + ' 项：' + diffs.map(function (d) { return d.name + ' ' + (d.delta > 0 ? '+' : '') + d.delta; }).join('、'),
+                    data.operator || actor());
+                ui.toast('盘点已入账，' + diffs.length + ' 项差异留痕', 'success');
+                for (var i = 0; i < 2; i++) TMS.ui.closeTop();
+            }
+        });
+    }
+
+    function whTransferModal(id) {
+        var w = db.get('warehouses', id);
+        if (!w) { ui.toast('仓库不存在', 'warn'); return; }
+        var rows = whStockRows(w.id, stockCtx(30)).filter(function (s) { return s.qty > 0; });
+        var targets = db.col('warehouses').filter(function (x) { return x.id !== w.id; });
+        if (!rows.length || !targets.length) { ui.toast('没有可调拨的库存或目标仓', 'warn'); return; }
+        ui.formModal({
+            title: '仓间调拨 · 从 ' + esc(w.name),
+            sub: '调拨拆成「一出一入」两条配对流水，两边各自的账实核对才不会破洞',
+            fields: [
+                { key: 'materialId', label: '物料', type: 'select', required: true, options: rows.map(function (s) { return { value: s.materialId, label: s.material + '（现存 ' + fmt.number(s.qty) + s.unit + '）' }; }) },
+                { key: 'toId', label: '调入仓', type: 'select', required: true, options: ui.optionsOf(targets, 'id', 'name') },
+                { key: 'qty', label: '调拨数量', type: 'number', min: 1, required: true },
+                { key: 'reason', label: '调拨原因', type: 'select', options: ui.optionsOf(['旺季分流', '就近补料', '退仓归集', '库位腾挪']) },
+                { key: 'operator', label: '经办人', required: true, value: actor() }
+            ],
+            values: { qty: 1, operator: actor() }, okText: '确认调拨',
+            onSubmit: function (data) {
+                var qty = Math.round(Number(data.qty) || 0);
+                if (qty <= 0) return '数量必须大于 0';
+                if (data.toId === w.id) return '调入仓不能是自己';
+                var mat = db.get('materials', data.materialId) || {};
+                var link = TMS.ids.nextFlat('stockMovements', 'TL');
+                var res = { ok: true };
+                db.batch(function () {
+                    res = postMovement({
+                        kind: 'out', warehouseId: w.id, materialId: data.materialId, qty: qty,
+                        reason: '调拨出仓（' + (data.reason || '库间调剂') + '）→ ' + ((db.get('warehouses', data.toId) || {}).name || data.toId),
+                        operator: data.operator, link: link
+                    });
+                    if (!res.ok) return;
+                    postMovement({
+                        kind: 'in', warehouseId: data.toId, materialId: data.materialId, qty: qty,
+                        reason: '调拨入仓（' + (data.reason || '库间调剂') + '）← ' + w.name,
+                        operator: data.operator, link: link
+                    });
+                }, 'stock:transfer');
+                if (!res.ok) { ui.toast(res.message || '调拨失败', 'error'); return; }
+                TMS.audit.log('stock.transfer', 'warehouses', w.id,
+                    w.name + ' → ' + ((db.get('warehouses', data.toId) || {}).name || data.toId) + ' 调拨 ' + (mat.name || '') + ' ' + fmt.number(qty) + (mat.unit || '') + '，配对单号 ' + link,
+                    data.operator || actor());
+                ui.toast('调拨完成，配对单号 ' + link, 'success');
+                for (var i = 0; i < 2; i++) TMS.ui.closeTop();
+            }
+        });
+    }
+
+    /* 采购补货：在途凭证 + 供应商应付同时生成，到货入库才冲减在途、加回库存 */
+    function purchaseModal(materialId, warehouseId) {
+        var m = materialId ? db.get('materials', materialId) : null;
+        var mats = db.col('materials');
+        var sups = db.col('suppliers');
+        var whs = db.col('warehouses').filter(function (w) { return w.status === 'active'; });
+        if (!mats.length || !sups.length || !whs.length) { ui.toast('缺少物料/供应商/仓库档案，无法下采购单', 'warn'); return; }
+        var stock = m ? (Number(m.stock) || 0) : 0;
+        var safe = m ? (Number(m.safeStock) || 0) : 0;
+        var transit = m ? (Number(m.inTransit) || 0) : 0;
+        var suggest = m ? Math.max(10, Math.round((safe * 1.5 - stock - transit) / 10) * 10) : 50;
+        ui.formModal({
+            title: m ? '补货下单 · ' + esc(m.name) : '补货下单',
+            sub: m ? ('现存 ' + fmt.number(stock) + (m.unit || '') + ' · 安全库存 ' + fmt.number(safe) + ' · 在途 ' + fmt.number(transit)) : '选择物料后按安全库存给出建议量',
+            notice: '采购当场只挂「在途凭证 + 供应商应付」，库存数量要等到货入库才增加——账期在下单时确认，货权在到货时确认。',
+            fields: [
+                { key: 'materialId', label: '物料', type: 'select', required: true, options: ui.optionsOf(mats, 'id', 'name'), disabled: !!m },
+                { key: 'warehouseId', label: '收货仓', type: 'select', required: true, options: ui.optionsOf(whs, 'id', 'name') },
+                { key: 'supplierId', label: '供应商', type: 'select', required: true, options: ui.optionsOf(sups, 'id', 'name') },
+                { key: 'qty', label: '采购数量', type: 'number', min: 1, required: true, hint: '建议 ' + fmt.number(suggest) + '（补到安全库存 1.5 倍）' },
+                { key: 'price', label: '成交单价', type: 'number', min: 0.01, step: '0.01', required: true, unit: '元' },
+                { key: 'cycle', label: '结算账期', type: 'select', options: ui.optionsOf(['现结', '半月结', '月结', '季结']) },
+                { key: 'reason', label: '采购事由', type: 'select', options: ui.optionsOf(['安全库存不足', '旺季提前备货', '新网点开业', '设备改造耗材']) },
+                { key: 'operator', label: '经办人', required: true, value: actor() }
+            ],
+            values: {
+                materialId: m ? m.id : mats[0].id, warehouseId: warehouseId || whs[0].id,
+                supplierId: (m && m.supplierId) || sups[0].id, qty: suggest,
+                price: m ? (Number(m.price) || 1) : 1, cycle: '月结', reason: '安全库存不足'
+            },
+            okText: '生成采购单',
+            onSubmit: function (data) {
+                var mat = db.get('materials', data.materialId);
+                var wh = db.get('warehouses', data.warehouseId);
+                var sup = db.get('suppliers', data.supplierId);
+                if (!mat || !wh || !sup) return '物料、收货仓或供应商不存在';
+                var qty = Math.round(Number(data.qty) || 0);
+                var price = util.round(Number(data.price) || 0, 2);
+                if (qty <= 0) return '采购数量必须大于 0';
+                if (price <= 0) return '成交单价必须大于 0';
+                if (mat.status === 'obsolete') return (mat.name || '') + ' 已停用，不能继续采购';
+                var amount = util.money(qty * price);
+                var days = data.cycle === '现结' ? 0 : (data.cycle === '半月结' ? 15 : (data.cycle === '季结' ? 90 : 30));
+                var result = { mv: null, ap: null };
+                db.batch(function () {
+                    result.mv = postMovement({
+                        kind: 'purchase', warehouseId: wh.id, materialId: mat.id, qty: qty,
+                        reason: data.reason + ' · ' + sup.name, operator: data.operator, status: 'pending'
+                    }).movement;
+                    if (!result.mv) return;
+                    result.ap = TMS.finance.createPayable({
+                        refId: mat.id, refNo: result.mv.id, target: sup.name, targetType: 'supplier',
+                        category: '物料耗材', amount: amount, date: util.dateKey(util.now()),
+                        dueDate: util.dateKey(util.addDays(util.now(), days)),
+                        status: 'pending', settledAt: '', remark: fmt.number(qty) + (mat.unit || '') + ' ' + mat.name + ' 采购'
+                    });
+                    db.update('stockMovements', result.mv.id, { refId: result.ap ? result.ap.id : '' });
+                    saveRow('stockMovements', result.mv, 'purchase:ap');
+                    syncMaterial(mat.id);
+                }, 'stock:purchase');
+                TMS.audit.log('stock.purchase', 'materials', mat.id,
+                    mat.name + ' 向 ' + sup.name + ' 采购 ' + fmt.number(qty) + (mat.unit || '') + '，单价 ' + fmt.money(price) +
+                    '，合计 ' + fmt.money(amount) + '，账期 ' + data.cycle + '，收货仓 ' + wh.id,
+                    data.operator || actor());
+                ui.toast('采购单已生成，应付挂账 ' + fmt.money(amount), 'success');
+                for (var i = 0; i < 2; i++) TMS.ui.closeTop();
+            }
+        });
+    }
+
+    function purchaseListModal() {
+        var ctx = stockCtx(30);
+        var rows = ctx.pending.map(function (m) {
+            var mat = db.get('materials', m.materialId) || {};
+            var wh = db.get('warehouses', m.warehouseId) || {};
+            var left = (Number(m.qty) || 0) - (Number(m.receivedQty) || 0);
+            return {
+                id: m.id, material: mat.name || m.materialId, materialId: m.materialId, unit: mat.unit || '件',
+                qty: Number(m.qty) || 0, left: Math.max(0, left), whName: wh.name || m.warehouseId,
+                date: m.date || '', amount: util.money(left * (Number(mat.price) || 0)), apId: m.refId || '',
+                operator: m.operator || '', reason: m.reason || ''
+            };
+        });
+        if (!rows.length) { ui.toast('没有在途采购单', 'info'); return; }
+        ui.modal({
+            title: '在途采购单', size: 'wide',
+            sub: rows.length + ' 张未到货 · 合计 ' + fmt.money(util.money(util.sum(rows, 'amount'))),
+            body: ui.card({
+                title: '待到货清单', sub: '到货入库当场冲减在途、加回库存，并联动物料告警核销', flat: true,
+                body: ui.table({
+                    dense: true, keyName: 'id', rows: rows,
+                    columns: [
+                        { key: 'id', label: '采购流水', width: '120px', render: function (r) { return ui.idCell(r.id); } },
+                        { key: 'material', label: '物料', render: function (r) { return ui.link(esc(r.material), 'mat:open', r.materialId); } },
+                        { key: 'whName', label: '收货仓', width: '140px' },
+                        { key: 'qty', label: '下单量', align: 'right', width: '92px', render: function (r) { return fmt.number(r.qty) + ' ' + esc(r.unit); } },
+                        { key: 'left', label: '未到货', align: 'right', width: '92px', render: function (r) { return '<b class="tone-warn">' + fmt.number(r.left) + '</b>'; } },
+                        { key: 'amount', label: '未到货金额', align: 'right', width: '116px', render: function (r) { return fmt.money(r.amount); } },
+                        { key: 'date', label: '下单日', align: 'right', width: '100px' },
+                        { key: 'apId', label: '应付', width: '120px', render: function (r) { return r.apId ? idLink(r.apId, 'ap:open') : '<span class="tms-dim">未挂账</span>'; } },
+                        { key: 'ops', label: '操作', align: 'right', width: '88px', sortable: false, render: function (r) { return ui.link('到货入库', 'smv:recv', r.id, { tone: 'ghost' }); } }
+                    ]
+                })
+            }),
+            footer: ui.btn('继续补货下单', { tone: 'primary', size: 'sm', act: 'mat:buy', arg: rows[0].materialId }) +
+                ui.btn('关闭', { size: 'sm', act: 'ui:close' })
+        });
+    }
+
+    function receiveMovement(movementId) {
+        var mv = db.get('stockMovements', movementId);
+        if (!mv || mv.kind !== 'purchase') { purchaseListModal(); return false; }
+        if (mv.status === 'received') { ui.toast('这张采购单已经到货入库了', 'info'); return false; }
+        var mat = db.get('materials', mv.materialId) || {};
+        var left = Math.max(0, (Number(mv.qty) || 0) - (Number(mv.receivedQty) || 0));
+        if (!left) { ui.toast('采购单没有未到货数量', 'warn'); return false; }
+        ui.formModal({
+            title: '采购到货入库', sub: esc(mat.name || '') + ' · 下单 ' + fmt.number(mv.qty) + '，未到货 ' + fmt.number(left),
+            notice: '支持分批到货：本次入库量小于未到货量时，采购单保持部分到货，剩余数量继续挂在途。',
+            fields: [
+                { key: 'qty', label: '本次到货数量', type: 'number', min: 1, required: true, value: left, unit: mat.unit || '件' },
+                { key: 'reason', label: '入库来源', type: 'select', options: ui.optionsOf(IN_SOURCES), value: '采购到货' },
+                { key: 'operator', label: '收货人', required: true, value: actor() }
+            ],
+            okText: '确认收货',
+            onSubmit: function (data) {
+                var qty = Math.round(Number(data.qty) || 0);
+                if (qty <= 0) return '数量必须大于 0';
+                if (qty > left) return '本次到货不能超过未到货数量 ' + left;
+                db.batch(function () {
+                    postMovement({
+                        kind: 'in', warehouseId: mv.warehouseId, materialId: mv.materialId, qty: qty,
+                        reason: (data.reason || '采购到货') + '（' + mv.id + '）', operator: data.operator, link: mv.id
+                    });
+                    var rest = left - qty;
+                    db.update('stockMovements', mv.id, {
+                        status: rest ? 'partial' : 'received', receivedQty: (Number(mv.receivedQty) || 0) + qty, receivedAt: util.iso(util.now())
+                    });
+                    db.commit('stockMovements', mv.id, 'purchase:receive');
+                    syncMaterial(mv.materialId);
+                }, 'purchase:receive');
+                var after = db.get('materials', mv.materialId) || {};
+                TMS.audit.log('purchase.receive', 'stockMovements', mv.id,
+                    (after.name || mat.name || '') + ' 到货入库 ' + fmt.number(qty) + (mat.unit || '') + '，仓内现存 ' + fmt.number(after.stock || 0) + '，在途 ' + fmt.number(after.inTransit || 0),
+                    data.operator || actor());
+                TMS.jobs.run('materialStock');
+                ui.toast('已收货 ' + fmt.number(qty) + (mat.unit || '') + '，在途已冲减', 'success');
+                for (var i = 0; i < 2; i++) TMS.ui.closeTop();
+            }
+        });
+        return true;
+    }
+
+    function goodsTable(rows, limit) {
+        if (!rows.length) return ui.empty('全网没有在库滞留货物', '在库件数由订单状态实时反算');
+        return ui.table({
+            dense: true, keyName: 'id', rows: rows.slice(0, limit || 10),
+            columns: [
+                { key: 'id', label: '单号', width: '150px', render: function (o) { return ui.idCell(o.id, 'order:open'); } },
+                { key: 'hubName', label: '所在分拨', render: function (o) { return esc(o.hubName); } },
+                { key: 'route', label: '线路', width: '150px', render: function (o) { return esc(o.origin + ' → ' + o.destination); } },
+                { key: 'customer', label: '客户', render: function (o) { return esc(o.customer || '—'); } },
+                { key: 'statusText', label: '状态', width: '92px' },
+                { key: 'pieces', label: '件', align: 'right', width: '64px' },
+                { key: 'hours', label: '在库时长', align: 'right', width: '104px', render: function (o) { return o.hours > 48 ? ui.badge(Math.round(o.hours) + ' 小时', 'danger') : fmt.number(o.hours) + ' 小时'; } },
+                { key: 'ops', label: '操作', align: 'right', width: '120px', sortable: false, render: function (o) { return ui.link('催派', 'wh:urge', o.id, { tone: 'ghost' }) + ' ' + ui.link('转异常', 'wh:exception', o.id, { tone: 'ghost' }); } }
+            ]
+        });
+    }
+
+    /* 补货入口只挂一个动作名，但按钮可能出现在物料行、也可能出现在仓库行：
+       按单据号前缀分派，从物料进来时自动落到覆盖倍数最低的那个仓，免得仓管来回猜 */
+    function purchaseEntry(arg) {
+        var id = String(arg || '');
+        if (/^MAT/.test(id)) {
+            var worst = '', worstRate = Infinity;
+            db.col('stocks').forEach(function (s) {
+                if (s.materialId !== id) return;
+                var w = db.get('warehouses', s.warehouseId) || {};
+                if (w.status !== 'active') return;
+                var rate = (Number(s.qty) || 0) / Math.max(1, Number(s.safeQty) || 1);
+                if (rate < worstRate) { worstRate = rate; worst = s.warehouseId; }
+            });
+            purchaseModal(id, worst);
+        } else if (/^WH/.test(id)) purchaseModal('', id);
+        else purchaseModal('', '');
+    }
+
+    /* 催派 / 转异常都要「此刻还压在第几个仓、压了多久」，
+       窗口取数早已过期，一律按订单现态重算，否则会把已出库的单也催一遍 */
+    function stockGoods(orderId) {
+        var o = db.get('orders', orderId);
+        if (!o) return null;
+        var hub = o.status === 'inbound' ? o.hubFrom : (o.status === 'arrived' ? o.hubTo : '');
+        if (!hub) return null;
+        var idx = TMS.order.scanIndex();
+        var at = TMS.order.stageAt(o, o.status, idx[o.id]);
+        var wh = db.findOne('warehouses', function (x) { return x.hubId === hub; });
+        return {
+            order: o, hubId: hub, hubName: pg.hubName(hub), whId: wh ? wh.id : '',
+            hours: util.round(Math.max(0, util.hoursBetween(at || o.updatedAt || o.createdAt, util.now())), 1)
+        };
+    }
+
+    function urgeOrder(orderId) {
+        var g = stockGoods(orderId);
+        if (!g) { ui.toast('该单已不在库，无需催派', 'info'); return; }
+        var t = TMS.service.createTicket({
+            orderId: g.order.id, type: '催件', priority: g.hours > 168 ? '高' : '中',
+            content: '货物滞留 ' + g.hubName + ' 已 ' + Math.round(g.hours) + ' 小时（' + pg.statusText(g.order.status) + '），要求当班排出库并回传新的时效承诺',
+            channel: '系统', assignee: actor()
+        });
+        ui.toast('已生成催件工单 ' + t.id + '，时限 ' + fmt.dateTime(t.deadline), 'success');
+        TMS.shell.refresh();
+    }
+
+    function exceptionFromStock(orderId) {
+        var g = stockGoods(orderId);
+        if (!g) { ui.toast('该单已不在库，无需转异常', 'info'); return; }
+        var ex = TMS.service.createException({
+            orderId: g.order.id, type: '延迟送达', level: g.hours > 168 ? '一级' : '二级',
+            description: g.hubName + ' 在库滞留 ' + Math.round(g.hours) + ' 小时未出库，责任环节：分拨仓储',
+            actor: actor(), source: '仓储上报'
+        });
+        ui.toast('已转异常 ' + ex.id + '（' + ex.level + '），处理时限 ' + ex.slaHours + ' 小时', 'success');
+        TMS.shell.refresh();
+    }
+
+    /* 档案占用是盘点写死的静态数；库里真实积压从订单反算，两者长期不挨着就是假账，
+       这里按现态一次性对齐，并把这次改写留痕（不然没人知道数字为什么突然变了） */
+    function recalcUsage(id) {
+        var w = db.get('warehouses', id);
+        if (!w) { ui.toast('仓库不存在', 'warn'); return; }
+        var g = goodsByHub()[w.hubId];
+        var pieces = g ? g.pieces : 0;
+        if (pieces === (Number(w.usedPieces) || 0)) { ui.toast('档案占用与在库货物本来就一致', 'info'); return; }
+        ui.confirm({
+            title: '按在库货物重算档案占用',
+            message: w.name + '：档案 ' + fmt.number(w.usedPieces) + ' 件 → 实际 ' + fmt.number(pieces) + ' 件。',
+            detail: '只改库位占用这一个数，不动库存流水。差异超过 15% 的仓会一直挂在体检里，直到有人承认哪个数才是真的。'
+        }).then(function (yes) {
+            if (!yes) return;
+            db.update('warehouses', id, { usedPieces: pieces });
+            db.commit('warehouses', id, 'wh:recalc');
+            TMS.audit.log('warehouse.recalc', 'warehouses', id,
+                w.name + ' 档案占用由 ' + fmt.number(w.usedPieces) + ' 件按在库货物重算为 ' + fmt.number(pieces) + ' 件', actor());
+            ui.toast('已重算占用，差异登记在审计日志', 'success');
+            TMS.shell.refresh();
+        });
+    }
+
+    /* 库存覆盖倍数矩阵：横着看一个仓缺哪些料，竖着看一种料缺在哪个仓。
+       绝对数量没法跨品类比（纸箱四万个和托盘四百块共用一张色阶会失真），所以画倍数 */
+    function stockMatrix(whs, matAggList) {
+        return {
+            cols: whs.map(function (w) { return String(w.city || w.name || w.id).replace('中央仓', ''); }),
+            rows: matAggList.map(function (a) {
+                return {
+                    label: a.material.split(' ')[0] + '(' + a.unit + ')',
+                    values: whs.map(function (w) {
+                        var cellv = a.byWh[w.id];
+                        if (!cellv) return 0;
+                        return cellv.safe > 0 ? Math.min(9, util.round(cellv.qty / cellv.safe, 1)) : (cellv.qty > 0 ? 9 : 0);
+                    })
+                };
+            })
+        };
+    }
+
+    pg.define('warehouse', {
+        sub: '仓库档案 · 耗材库存 · 在库货物三张脸对齐：每笔出入库都要有流水，账实差异当场顶出来',
+        load: function (ctx) {
+            applyParamFilter(ctx, ['hub', 'type', 'q']);
+            var days = Math.max(7, Number(ctx.days) || 30);
+            var sk = stockCtx(days);
+            var goods = goodsByHub();
+            var rows = db.col('warehouses').map(function (w) { return whView(w, sk, goods); });
+            var gaps = whGaps(rows);
+            var whs = db.col('warehouses');
+
+            var agg = {};
+            db.col('stocks').forEach(function (s) {
+                var m = db.get('materials', s.materialId) || {};
+                var a = agg[s.materialId] || (agg[s.materialId] = {
+                    id: s.materialId, material: s.material || m.name || s.materialId,
+                    unit: s.unit || m.unit || '件', price: Number(m.price) || 0,
+                    qty: 0, safeQty: 0, value: 0, lowWh: 0, emptyWh: 0, byWh: {}
+                });
+                var q = Math.round(Number(s.qty) || 0), safe = Math.round(Number(s.safeQty) || 0);
+                a.qty += q; a.safeQty += safe; a.value = util.money(a.value + q * a.price);
+                if (safe > 0 && q < safe) a.lowWh++;
+                if (q <= 0) a.emptyWh++;
+                a.byWh[s.warehouseId] = { qty: q, safe: safe };
+            });
+            var matRows = util.sortBy(Object.keys(agg).map(function (k) {
+                var a = agg[k];
+                a.cover = a.safeQty > 0 ? util.round(a.qty / a.safeQty, 2) : 0;
+                return a;
+            }), 'value', 'desc');
+
+            var aged = [];
+            Object.keys(goods).forEach(function (hubId) {
+                goods[hubId].orders.forEach(function (o) {
+                    if (o.hours <= 48) return;
+                    o.hubId = hubId; o.hubName = pg.hubName(hubId);
+                    aged.push(o);
+                });
+            });
+            aged = util.sortBy(aged, 'hours', 'desc');
+
+            var goodsTot = { orders: 0, pieces: 0, weight: 0, aged: 0, buckets: [0, 0, 0, 0] };
+            Object.keys(goods).forEach(function (k) {
+                var g = goods[k];
+                goodsTot.orders += g.orders.length; goodsTot.pieces += g.pieces;
+                goodsTot.weight += g.weight; goodsTot.aged += g.aged;
+                g.buckets.forEach(function (v, i) { goodsTot.buckets[i] += v; });
+            });
+
+            var pending = sk.pending;
+            return {
+                days: days, rows: rows, gaps: gaps, sk: sk, matRows: matRows,
+                matrix: stockMatrix(whs, matRows),
+                aged: aged, goodsTot: goodsTot, pending: pending, mv: mvOf(db.col('stockMovements'), days),
+                rent: util.money(util.sum(rows, 'rent')), stockValue: util.money(util.sum(rows, 'stockValue')),
+                maxHours: aged.length ? Math.round(aged[0].hours) : 0,
+                perPiece: goodsTot.pieces ? util.round(util.money(util.sum(rows, 'rent')) / 30 / goodsTot.pieces, 2) : 0,
+                gapCount: gaps.low.length + gaps.diff.length + gaps.overload.length + gaps.drift.length +
+                    gaps.aged.length + gaps.closed.length + gaps.noHub.length
+            };
+        },
+        render: function (ctx, d) {
+            var kpi = ui.kpis([
+                { label: '在册仓库', value: d.rows.length, unit: '座', icon: '⛅', sub: '在用 ' + d.rows.filter(function (r) { return r.status === 'active'; }).length + ' · 未挂分拨 ' + d.gaps.noHub.length },
+                { label: '库位占用', value: fmt.percent(d.rows.length ? util.round(util.sum(d.rows, 'usedPieces') / Math.max(1, util.sum(d.rows, 'capacityPieces')) * 100, 1) : 0), icon: '⛁', tone: d.gaps.overload.length ? 'warn' : '', sub: '临爆仓 ' + d.gaps.overload.length + ' 座' },
+                { label: '在库货物', value: fmt.number(d.goodsTot.pieces), unit: '件', icon: '⛰', tone: d.goodsTot.aged ? 'danger' : '', sub: d.goodsTot.orders + ' 单待出库 · 滞留 ' + d.goodsTot.aged + ' 票' },
+                { label: '耗材库存值', value: fmt.money(d.stockValue), icon: '¥', tone: 'brand', sub: d.matRows.filter(function (r) { return r.lowWh; }).length + ' 个品类有仓告急' },
+                { label: '月仓租测算', value: fmt.money(d.rent), icon: '⌂', sub: '件均 ' + fmt.money(d.perPiece) + '/天' },
+                { label: '在途采购', value: d.pending.length, unit: '张', icon: '⇄', tone: d.pending.length ? 'warn' : '', sub: '到货入库才冲减、才加库存' },
+                { label: '台账体检', value: d.gapCount, unit: '项', icon: '⚑', tone: d.gapCount ? 'warn' : 'success', sub: '账实差异 ' + d.gaps.diff.length + ' 座' }
+            ]);
+            var capCard = ui.card({
+                title: '库容、档案与真实在库对照', flat: true,
+                sub: '「档案占用」是盘点写下的静态数，「实际在库」从订单状态实时反算，偏差超过 15% 就是账面失真',
+                body: ui.table({
+                    dense: true, keyName: 'id', rows: d.rows,
+                    columns: [
+                        {
+                            key: 'name', label: '仓库', render: function (r) {
+                                return ui.link(esc(r.name), 'wh:open', r.id) + '<div class="tms-dim">' + esc(r.type) + ' · ' + esc(r.hubName || '未归属分拨') + '</div>';
+                            }
+                        },
+                        { key: 'areaRate', label: '面积占用', align: 'right', width: '160px', render: function (r) { return rateBar(r.areaRate, { target: 75 }); } },
+                        { key: 'pieceRate', label: '库位占用', align: 'right', width: '160px', render: function (r) { return rateBar(r.pieceRate, { target: 75 }); } },
+                        {
+                            key: 'usedPieces', label: '档案 / 实际在库', align: 'right', width: '150px', render: function (r) {
+                                return fmt.number(r.usedPieces) + ' / ' + fmt.number(r.goodsPieces) +
+                                    (r.goodsOrders && r.pieceDriftPct > 15 ? ' ' + ui.badge(fmt.percent(r.pieceDriftPct), 'danger') : '');
+                            }
+                        },
+                        {
+                            key: 'goodsAged', label: '滞留超 48h', align: 'right', width: '120px', render: function (r) {
+                                return r.goodsAged ? ui.badge(r.goodsAged + ' 票 · 最久 ' + r.goodsMax + 'h', 'danger') : '<span class="tms-dim">无</span>';
+                            }
+                        },
+                        { key: 'stockValue', label: '耗材值', align: 'right', width: '110px', render: function (r) { return fmt.money(r.stockValue); } },
+                        {
+                            key: 'lowCount', label: '告急 / 差异', align: 'right', width: '124px', render: function (r) {
+                                return (r.lowCount ? ui.badge(r.lowCount + ' 告急', 'warn') : '<span class="tms-dim">库存足</span>') + ' ' +
+                                    (r.diffRows.length ? ui.badge(r.diffRows.length + ' 差异', 'danger') : '');
+                            }
+                        },
+                        {
+                            key: 'ops', label: '操作', align: 'right', width: '150px', sortable: false, render: function (r) {
+                                return ui.link('入库', 'wh:in', r.id, { tone: 'ghost' }) + ' ' +
+                                    ui.link('盘点', 'wh:count', r.id, { tone: 'ghost' }) + ' ' +
+                                    ui.link('重算占用', 'wh:recalc', r.id, { tone: 'ghost' });
+                            }
+                        }
+                    ]
+                })
+            });
+            var matrixCard = ui.card({
+                title: '库存覆盖倍数', sub: '现存 ÷ 分仓安全库存；<1 的格子这个仓当天就断料，≥4 是压资金', flat: true,
+                body: ch.heat({ cols: d.matrix.cols, rows: d.matrix.rows, cell: 44, max: 4 })
+            });
+            var valueCard = ui.card({
+                title: '品类库存与周转', sub: '按库存金额排序；倍数长期高于 6 的品类就是在囤货', flat: true,
+                body: ch.hbars({
+                    data: d.matRows.map(function (r) {
+                        return { label: r.material.split(' ')[0], value: util.money(r.value), sub: fmt.number(r.qty) + r.unit + ' · 覆盖 ' + r.cover + ' 倍' };
+                    }),
+                    limit: 8, rowH: 26, fmt: function (v) { return fmt.money(v); }
+                })
+            });
+            var gapCard = ui.card({
+                title: '仓储体检', sub: '库存、库容、货物、档案四本账对不上，仓租与断料就都算不清',
+                tone: d.gapCount ? 'danger' : '', flat: true,
+                body: ui.list([
+                    {
+                        title: '低于分仓安全库存 ' + ui.badge(d.gaps.low.length + ' 座', d.gaps.low.length ? 'warn' : 'success'),
+                        sub: d.gaps.low.length ? d.gaps.low.slice(0, 5).map(function (r) { return esc(r.name + '（' + r.lowCount + ' 项）'); }).join('、') + '：包材用完当天分拨停线' : '全网耗材库存都在安全线上',
+                        right: d.gaps.low.length ? ui.btn('发起补货', { size: 'sm', tone: 'warn', act: 'wh:buy', arg: '' }) : ''
+                    },
+                    {
+                        title: '账实核对不平 ' + ui.badge(d.gaps.diff.length + ' 座', d.gaps.diff.length ? 'danger' : 'success'),
+                        sub: d.gaps.diff.length ? '库存行数字与流水累计对不上，说明有人绕过出入库直接改了档案：' + d.gaps.diff.slice(0, 5).map(function (r) { return esc(r.name); }).join('、') : '每个仓的现存都能顺着流水推回来',
+                        right: d.gaps.diff.length ? ui.btn('盘点调平', { size: 'sm', tone: 'danger', act: 'wh:count', arg: d.gaps.diff[0].id }) : ''
+                    },
+                    {
+                        title: '库容临爆 ' + ui.badge(d.gaps.overload.length + ' 座', d.gaps.overload.length ? 'warn' : 'success'),
+                        sub: d.gaps.overload.length ? d.gaps.overload.slice(0, 5).map(function (r) { return esc(r.name + ' ' + fmt.percent(Math.max(r.areaRate, r.pieceRate))); }).join('、') + '：旺季再进一票就得占用通道，事故与错分概率同步上升' : '库容余量健康',
+                        right: d.gaps.overload.length ? ui.btn('调拨分流', { size: 'sm', tone: 'warn', act: 'wh:transfer', arg: d.gaps.overload[0].id }) : ''
+                    },
+                    {
+                        title: '档案与在库偏差 >15% ' + ui.badge(d.gaps.drift.length + ' 座', d.gaps.drift.length ? 'warn' : 'success'),
+                        sub: d.gaps.drift.length ? d.gaps.drift.slice(0, 5).map(function (r) { return esc(r.name + '（' + fmt.number(r.usedPieces) + '→' + fmt.number(r.goodsPieces) + ' 件）'); }).join('、') : '档案占用与订单反算一致',
+                        right: d.gaps.drift.length ? ui.btn('按在库重算', { size: 'sm', act: 'wh:recalc', arg: d.gaps.drift[0].id }) : ''
+                    },
+                    {
+                        title: '在库滞留超 48 小时 ' + ui.badge(d.goodsTot.aged + ' 票', d.goodsTot.aged ? 'danger' : 'success'),
+                        sub: d.goodsTot.aged ? '最久 ' + d.maxHours + ' 小时；既不产生收入又占库位，还直接把时效达成率拖下去' : '没有超时滞留',
+                        right: d.aged.length ? ui.btn('催派最早一票', { size: 'sm', tone: 'danger', act: 'wh:urge', arg: d.aged[0].id }) : ''
+                    },
+                    {
+                        title: '停用仓仍有存货 ' + ui.badge(d.gaps.closed.length + ' 座', d.gaps.closed.length ? 'danger' : 'success'),
+                        sub: d.gaps.closed.length ? d.gaps.closed.map(function (r) { return esc(r.name); }).join('、') + '：停用的仓没人收货，货在这里等于失踪' : '停用仓都已清场',
+                        right: d.gaps.closed.length ? ui.btn('恢复档案', { size: 'sm', tone: 'warn', act: 'wh:edit', arg: d.gaps.closed[0].id }) : ''
+                    },
+                    {
+                        title: '未归属分拨的仓库 ' + ui.badge(d.gaps.noHub.length + ' 座', d.gaps.noHub.length ? 'muted' : 'success'),
+                        sub: d.gaps.noHub.length ? '这些仓收不到在库货物画像，滞留件无法归位到任何责任人' : '每座仓都挂在分拨中心上'
+                    }
+                ])
+            });
+            var agedCard = ui.card({
+                title: '在库滞留货物', flat: true,
+                sub: d.aged.length ? d.aged.length + ' 票压过 48 小时，窗口 ' + d.days + ' 天' : '当前没有超时滞留',
+                tools: ui.btn('全部滞留清单', { size: 'sm', tone: 'ghost', act: 'wh:goOrders' }),
+                body: goodsTable(d.aged, 8)
+            });
+            var bucketsCard = ui.card({
+                title: '在库时长分布', sub: '越往右的柱子越是积压，健康结构应该压在 24 小时内', flat: true,
+                body: ch.bars({
+                    data: AGE_BUCKETS.map(function (label, i) { return { label: label, value: d.goodsTot.buckets[i] }; }),
+                    height: 210, fmt: function (v) { return v + ' 单'; }
+                })
+            });
+            var mvCard = ui.card({
+                title: '近期出入库流水', sub: '窗口 ' + d.days + ' 天 · ' + d.mv.length + ' 笔 · 全库 ' + d.sk.total + ' 笔凭证', flat: true,
+                tools: ui.btn('导出流水', { size: 'sm', tone: 'ghost', act: 'wh:exportMv' }),
+                body: mvTable(d.mv, 8)
+            });
+            var buyCard = ui.card({
+                title: '在途采购与到货', flat: true,
+                sub: (function () {
+                    var open = util.sum(d.pending, function (m) {
+                        var mat = db.get('materials', m.materialId) || {};
+                        return Math.max(0, (Number(m.qty) || 0) - (Number(m.receivedQty) || 0)) * (Number(mat.price) || 0);
+                    });
+                    return d.pending.length
+                        ? d.pending.length + ' 张未到货 · 挂账金额 ' + fmt.money(util.money(open))
+                        : '没有在途采购单，补货从「物料管理」页发起';
+                })(),
+                tools: d.pending.length ? ui.btn('全部在途单', { size: 'sm', tone: 'ghost', act: 'wh:buys' }) : '',
+                body: d.pending.length ? ui.table({
+                    dense: true, keyName: 'id', rows: d.pending.slice(0, 8),
+                    columns: [
+                        { key: 'id', label: '采购流水', width: '118px', render: function (m) { return ui.idCell(m.id); } },
+                        { key: 'materialId', label: '物料', render: function (m) { return ui.link(esc((db.get('materials', m.materialId) || {}).name || m.materialId), 'mat:open', m.materialId); } },
+                        { key: 'warehouseId', label: '收货仓', render: function (m) { return esc((db.get('warehouses', m.warehouseId) || {}).name || m.warehouseId); } },
+                        { key: 'qty', label: '未到货', align: 'right', width: '92px', render: function (m) { return '<b class="tone-warn">' + fmt.number(Math.max(0, (Number(m.qty) || 0) - (Number(m.receivedQty) || 0))) + '</b>'; } },
+                        { key: 'reason', label: '事由', render: function (m) { return esc(m.reason || '—'); } },
+                        { key: 'date', label: '下单日', align: 'right', width: '100px' },
+                        { key: 'refId', label: '应付', width: '112px', render: function (m) { return m.refId ? idLink(m.refId, 'ap:open') : '<span class="tms-dim">未挂账</span>'; } },
+                        { key: 'ops', label: '操作', align: 'right', width: '84px', sortable: false, render: function (m) { return ui.link('到货入库', 'smv:recv', m.id, { tone: 'ghost' }); } }
+                    ]
+                }) : ui.empty('没有在途采购单', '库存低于安全线时从物料页下单，下单即挂供应商应付')
+            });
+            var listCard = grid(ctx, {
+                title: '仓库台账', rows: d.rows, keyName: 'id', dense: true, onRow: 'wh:open', searchKey: 'q',
+                filter: function (r, fs) {
+                    if (fs.hub && r.hubId !== fs.hub) return false;
+                    if (fs.type && r.type !== fs.type) return false;
+                    if (fs.status && r.status !== fs.status) return false;
+                    var c = fs.chip || '';
+                    if (c === 'low' && !r.lowCount) return false;
+                    if (c === 'diff' && !r.diffRows.length) return false;
+                    if (c === 'full' && !(r.areaRate >= 88 || r.pieceRate >= 88)) return false;
+                    if (c === 'aged' && !r.goodsAged) return false;
+                    return true;
+                },
+                search: function (r) { return [r.id, r.name, r.city, r.hubName, r.manager, r.type].join(' '); },
+                chips: [
+                    { label: '全部', value: '', count: d.rows.length },
+                    { label: '耗材告急', value: 'low', count: d.gaps.low.length },
+                    { label: '账实不平', value: 'diff', count: d.gaps.diff.length },
+                    { label: '临爆仓', value: 'full', count: d.gaps.overload.length },
+                    { label: '有滞留', value: 'aged', count: d.gaps.aged.length }
+                ], chipsName: 'chip',
+                fields: [
+                    { key: 'q', type: 'search', label: '仓库 / 仓管', placeholder: '上海中央仓 / 仓管1' },
+                    { key: 'hub', label: '归属分拨', options: [{ value: '', label: '全部分拨' }].concat(ui.optionsOf(db.col('hubs'), 'id', 'name')) },
+                    { key: 'type', label: '仓库类型', options: [{ value: '', label: '全部类型' }].concat(ui.optionsOf(WH_TYPES)) },
+                    { key: 'status', label: '状态', options: [{ value: '', label: '全部状态' }].concat(Object.keys(WH_TEXT).map(function (k) { return { value: k, label: WH_TEXT[k] }; })) }
+                ],
+                tools: ui.btn('新增仓库', { size: 'sm', tone: 'primary', act: 'wh:new', icon: '+' }) +
+                    ui.btn('在途采购单', { size: 'sm', act: 'wh:buys', icon: '⇄' }) +
+                    ui.btn('库存明细', { size: 'sm', tone: 'ghost', act: 'wh:exportStock', icon: '↓' }) +
+                    ui.btn('导出', { size: 'sm', tone: 'ghost', act: 'wh:export', icon: '↓' }),
+                columns: [
+                    {
+                        key: 'name', label: '仓库', render: function (r) {
+                            return ui.link(esc(r.name), 'wh:open', r.id) +
+                                '<div class="tms-dim">' + esc(r.type) + ' · ' + esc(r.city || '—') + ' · 仓管 ' + esc(r.manager || '—') + '</div>';
+                        }
+                    },
+                    { key: 'hubName', label: '归属分拨', width: '130px', render: function (r) { return r.hubId ? ui.link(esc(r.hubName), 'wh:goOrders', r.id) : '<span class="tms-dim">未归属</span>'; } },
+                    { key: 'areaM2', label: '面积', align: 'right', width: '110px', render: function (r) { return fmt.number(r.areaM2) + ' m²'; } },
+                    { key: 'areaRate', label: '面积占用', align: 'right', width: '150px', render: function (r) { return rateBar(r.areaRate, { target: 75 }); } },
+                    { key: 'pieceRate', label: '库位占用', align: 'right', width: '150px', render: function (r) { return rateBar(r.pieceRate, { target: 75 }); } },
+                    { key: 'goodsPieces', label: '在库货物', align: 'right', width: '130px', render: function (r) { return fmt.number(r.goodsPieces) + ' 件' + (r.goodsAged ? ' ' + ui.badge(r.goodsAged + ' 超时', 'danger') : ''); } },
+                    { key: 'stockValue', label: '耗材值', align: 'right', width: '110px', render: function (r) { return fmt.money(r.stockValue); } },
+                    { key: 'moves', label: '窗口流水', align: 'right', width: '104px', render: function (r) { return r.moves ? fmt.number(r.moves) + ' 笔' : '<span class="tms-dim">无凭证</span>'; } },
+                    { key: 'rent', label: '月仓租', align: 'right', width: '116px', render: function (r) { return fmt.money(r.rent); } },
+                    { key: 'status', label: '状态', align: 'right', width: '84px', sortable: false, render: function (r) { return statusBadge(r.status, WH_TEXT); } },
+                    {
+                        key: 'ops', label: '操作', align: 'right', width: '168px', sortable: false, render: function (r) {
+                            return ui.link('入库', 'wh:in', r.id, { tone: 'ghost' }) + ' ' +
+                                ui.link('出库', 'wh:out', r.id, { tone: 'ghost' }) + ' ' +
+                                ui.link('盘点', 'wh:count', r.id, { tone: 'ghost' }) + ' ' +
+                                ui.link('编辑', 'wh:edit', r.id, { tone: 'ghost' });
+                        }
+                    }
+                ],
+                emptyText: '没有符合条件的仓库'
+            });
+            return wrap(ctx, {
+                actions: ui.btn('补货下单', { tone: 'primary', act: 'wh:buy', arg: '', icon: '+' }) +
+                    ui.btn('物料管理', { act: 'wh:goMaterial', icon: '⛔' }),
+                sub: '窗口 ' + d.days + ' 天 · ' + d.sk.total + ' 笔库存凭证 · 月仓租测算 ' + fmt.money(d.rent) + '（件均 ' + fmt.money(d.perPiece) + '/天）',
+                body: [kpi, capCard, ui.split('2', [matrixCard, valueCard]), ui.split('2', [gapCard, bucketsCard]), ui.split('2', [agedCard, buyCard]), ui.split('2', [mvCard, ui.card({ title: '口径说明', flat: true, body: ui.desc([
+                    { label: '库存事实', value: '库存行只存数量，任何增减都必须有一条流水' },
+                    { label: '采购口径', value: '下单只挂「在途凭证 + 供应商应付」，到货入库才加库存、才冲在途' },
+                    { label: '出库口径', value: '领用出库只减库存；包材成本已进单票成本，不再重复确认费用' },
+                    { label: '盘点口径', value: '差异写带符号的调整流水，不直接改档案数，责任与时间留在凭证上' },
+                    { label: '调拨口径', value: '一出一入两条配对流水，两个仓各自的账实核对都不会破洞' },
+                    { label: '在库货物', value: '从订单状态实时反算，与耗材库存是两套账，偏差顶在体检里' }
+                ], { inline: false })})]), listCard]
+            });
+        },
+        actions: merge(stockActions, {
+            'wh:goMaterial': function () { ui.closeTop(); TMS.shell.go('material'); },
+            'wh:goOrders': function (id) {
+                var w = id ? db.get('warehouses', id) : null;
+                ui.closeTop();
+                /* 订单台账没有分拨维度，用仓库所在城市落到城市口径上，
+                   比跳过去让人在一万行里海搜快 */
+                TMS.shell.go('order', w ? { q: w.city || pg.hubName(w.hubId) || '' } : { status: 'inbound' });
+            },
+            'wh:export': function () {
+                exportGrid({
+                    name: '仓库台账.csv', rows: whRows(Math.max(7, Number(curCtx().days) || 30)), searchKey: 'q',
+                    search: function (r) { return [r.id, r.name, r.city, r.hubName, r.manager, r.type].join(' '); },
+                    cols: [
+                        { key: 'id', label: '仓库编号' }, { key: 'name', label: '仓库名称' },
+                        { key: 'type', label: '类型' }, { key: 'city', label: '城市' },
+                        { key: 'hubName', label: '归属分拨' }, { key: 'manager', label: '仓管' },
+                        { key: 'areaM2', label: '建筑面积(m²)' }, { key: 'usedArea', label: '已用面积(m²)' },
+                        { key: 'areaRate', label: '面积占用(%)' },
+                        { key: 'capacityPieces', label: '库容(件)' }, { key: 'usedPieces', label: '档案占用(件)' },
+                        { key: 'goodsPieces', label: '实际在库(件)' }, { key: 'goodsOrders', label: '在库单数' },
+                        { key: 'goodsAged', label: '滞留超48h(票)' },
+                        { key: 'stockValue', label: '耗材库存值' }, { key: 'lowCount', label: '告急品类' },
+                        { key: 'moves', label: '窗口流水' }, { key: 'rent', label: '月仓租' },
+                        { key: 'status', label: '状态', value: function (r) { return WH_TEXT[r.status] || r.status; } }
+                    ]
+                }, 'warehouse');
+            },
+            'wh:exportStock': function () {
+                var rows = [];
+                var sk = stockCtx(Math.max(7, Number(curCtx().days) || 30));
+                db.col('warehouses').forEach(function (w) {
+                    whStockRows(w.id, sk).forEach(function (s) {
+                        s.warehouseName = w.name; rows.push(s);
+                    });
+                });
+                if (!rows.length) { ui.toast('还没有库存行', 'warn'); return; }
+                download('库存明细.csv', toCsv([
+                    { key: 'warehouseName', label: '仓库' }, { key: 'material', label: '物料' },
+                    { key: 'unit', label: '单位' }, { key: 'qty', label: '现存' }, { key: 'safeQty', label: '分仓安全库存' },
+                    { key: 'outQty', label: '窗口领用' }, { key: 'turnDays', label: '周转天数' },
+                    { key: 'diff', label: '账实差异' }, { key: 'value', label: '库存金额' },
+                    { key: 'updatedAt', label: '最近变动' }
+                ], rows));
+            },
+            'wh:exportMv': function () {
+                var list = mvOf(db.col('stockMovements'), Math.max(7, Number(curCtx().days) || 30));
+                if (!list.length) { ui.toast('窗口内没有出入库流水', 'warn'); return; }
+                download('库存流水.csv', toCsv([
+                    { key: 'id', label: '凭证号' }, { key: 'date', label: '日期' },
+                    { key: 'kind', label: '类型', value: function (m) { return MOV_TEXT[m.kind] || m.kind; } },
+                    { key: 'warehouseId', label: '仓库', value: function (m) { return (db.get('warehouses', m.warehouseId) || {}).name || m.warehouseId; } },
+                    { key: 'materialId', label: '物料', value: function (m) { return (db.get('materials', m.materialId) || {}).name || m.materialId; } },
+                    { key: 'qty', label: '数量' }, { key: 'reason', label: '事由' },
+                    { key: 'operator', label: '经办' }, { key: 'link', label: '配对单号' },
+                    { key: 'refId', label: '关联应付' }, { key: 'status', label: '状态' }
+                ], list));
+            }
+        })
+    });
+
+    /* ---------- 二十七、物料管理 ---------- */
+
+    var MAT_TEXT = { normal: '正常', low: '告急', out: '断货', obsolete: '停用' };
+
+    /* 物料档案里的 stock 是各仓相加的派生值，读取时重算而不是写入时同步：
+       库存行改了档案忘了改，巡检下一轮也会把它拽回来 */
+    function matView(m, sk, days, orderCount) {
+        var rows = db.col('stocks').filter(function (s) { return s.materialId === m.id; });
+        var price = Number(m.price) || 0;
+        var qty = Math.round(util.sum(rows, 'qty'));
+        var safe = Math.round(util.sum(rows, 'safeQty'));
+        var mv = sk.byMat[m.id] || [];
+        var outQty = Math.round(util.sum(mv.filter(function (x) { return x.kind === 'out'; }), 'qty'));
+        var inQty = Math.round(util.sum(mv.filter(function (x) { return x.kind === 'in'; }), 'qty'));
+        var adjQty = util.round(util.sum(mv.filter(function (x) { return x.kind === 'adjust'; }), 'qty'), 1);
+        var pendingMv = db.col('stockMovements').filter(function (x) {
+            return x.materialId === m.id && x.kind === 'purchase' &&
+                (!x.status || x.status === 'pending' || x.status === 'partial');
+        });
+        var transit = Math.round(util.sum(pendingMv, function (x) {
+            return Math.max(0, (Number(x.qty) || 0) - (Number(x.receivedQty) || 0));
+        }));
+        var book = 0, hasBook = false;
+        rows.forEach(function (s) {
+            var b = sk.ledger[s.warehouseId + '|' + m.id];
+            if (b != null) { hasBook = true; book += b; }
+        });
+        var ap = db.col('payables').filter(function (p) { return p.refId === m.id && p.status !== 'settled'; });
+        var late = pendingMv.filter(function (x) { return util.hoursBetween(x.date || x.createdAt, util.now()) > 7 * 24; });
+        var perDay = outQty / Math.max(1, days);
+        return {
+            id: m.id, name: m.name, unit: m.unit || '件', price: price, status: m.status || 'normal',
+            supplier: m.supplier || '', supplierId: m.supplierId || '',
+            safeStock: Number(m.safeStock) || 0, qty: qty, stockRows: rows,
+            value: util.money(qty * price), cover: safe > 0 ? util.round(qty / safe, 2) : 0,
+            lowWh: rows.filter(function (s) { return (Number(s.safeQty) || 0) > 0 && (Number(s.qty) || 0) < (Number(s.safeQty) || 0); }).length,
+            emptyWh: rows.filter(function (s) { return (Number(s.qty) || 0) <= 0; }).length,
+            outQty: outQty, inQty: inQty, adjQty: adjQty, outValue: util.money(outQty * price),
+            turnDays: perDay > 0 ? Math.round(qty / perDay) : null,
+            transit: transit, transitValue: util.money(transit * price), pendingCount: pendingMv.length,
+            lateCount: late.length, lateDays: late.length ? Math.round(util.hoursBetween(late[0].date || late[0].createdAt, util.now()) / 24) : 0,
+            apOpen: util.money(util.sum(ap, 'amount')), apCount: ap.length,
+            diff: hasBook ? util.round(book - qty, 1) : null,
+            suggest: Math.max(0, Math.round((Math.max(safe, m.safeStock || 0) * 1.5 - qty - transit) / 10) * 10),
+            perOrder: orderCount ? util.round(outQty * price / orderCount, 3) : 0,
+            lastAt: mv.length ? (mv[0].date || '') : ''
+        };
+    }
+
+    function matRowsOf(days) {
+        var sk = stockCtx(days);
+        var orderCount = TMS.stats.ordersWithin(days).length;
+        return db.col('materials').map(function (m) { return matView(m, sk, days, orderCount); });
+    }
+
+    function matGaps(rows) {
+        return {
+            out: rows.filter(function (r) { return r.status === 'out'; }),
+            low: rows.filter(function (r) { return r.status === 'low'; }),
+            over: rows.filter(function (r) { return r.cover >= 6 && r.status !== 'obsolete'; }),
+            late: rows.filter(function (r) { return r.lateCount; }),
+            drift: rows.filter(function (r) { return r.diff != null && Math.abs(r.diff) > 0.5; }),
+            orphan: rows.filter(function (r) { return r.transit > 0 && !r.apCount; }),
+            obsolete: rows.filter(function (r) { return r.status === 'obsolete' && r.qty > 0; })
+        };
+    }
+
+    function materialModal(id) {
+        var m = db.get('materials', id);
+        if (!m) { ui.toast('物料不存在', 'warn'); return; }
+        var days = Math.max(7, Number(curCtx().days) || 30);
+        var r = matView(m, stockCtx(days), days, TMS.stats.ordersWithin(days).length);
+        var mv = util.sortBy(db.col('stockMovements').filter(function (x) { return x.materialId === m.id; }), 'createdAt', 'desc');
+        var ap = db.col('payables').filter(function (p) { return p.refId === m.id; });
+        var risks = [];
+        if (r.status === 'out') risks.push('全网断货：分拨当天就没箱可用，必须立刻下单并指定收货仓');
+        if (r.status === 'low') risks.push('现存 ' + fmt.number(r.qty) + r.unit + ' 低于安全库存 ' + fmt.number(r.safeStock) + '，覆盖只剩 ' + r.cover + ' 倍');
+        if (r.transit > 0 && r.lateCount) risks.push('在途 ' + fmt.number(r.transit) + r.unit + '，最早一张采购单已挂 ' + r.lateDays + ' 天未到货');
+        if (r.transit > 0 && !r.apCount) risks.push('有在途数量却没有未结应付：货到就变成没有成本归属的库存');
+        if (r.diff != null && Math.abs(r.diff) > 0.5) risks.push('各仓流水累计与现存相加差 ' + fmt.number(r.diff) + r.unit + '，说明有人绕过出入库直接改过档案');
+        if (r.cover >= 6) risks.push('覆盖 ' + r.cover + ' 倍，按窗口领用速度够压 ' + r.turnDays + ' 天，属于囤占资金');
+        if (r.status === 'obsolete' && r.qty > 0) risks.push('已停用但各仓还有 ' + fmt.number(r.qty) + r.unit + '，要么清完要么恢复档案');
+        ui.modal({
+            title: esc(r.name), size: 'wide',
+            sub: esc(r.unit) + ' · 单价 ' + fmt.money(r.price) + ' · 供应商 ' + esc(r.supplier || '未指定') + ' · ' + statusBadge(r.status, MAT_TEXT),
+            body: ui.stack([
+                ui.kpis([
+                    { label: '全网现存', value: fmt.number(r.qty), unit: r.unit, tone: r.status === 'normal' ? '' : (r.status === 'out' ? 'danger' : 'warn'), sub: '安全库存 ' + fmt.number(r.safeStock) },
+                    { label: '库存金额', value: fmt.money(r.value), icon: '¥', sub: '覆盖 ' + r.cover + ' 倍安全线' },
+                    { label: '窗口领用', value: fmt.number(r.outQty), unit: r.unit, sub: '折 ' + fmt.money(r.outValue) + ' · 摊票 ' + fmt.money(r.perOrder) },
+                    { label: '周转天数', value: r.turnDays == null ? '无领用' : r.turnDays, unit: r.turnDays == null ? '' : '天', tone: r.cover >= 6 ? 'warn' : '', sub: '按日均消耗 ' + fmt.number(r.outQty / days) + ' ' + r.unit + ' 折算' },
+                    { label: '在途采购', value: fmt.number(r.transit), unit: r.unit, tone: r.lateCount ? 'danger' : (r.transit ? 'accent' : ''), sub: r.pendingCount + ' 张未到货 · ' + fmt.money(r.transitValue) },
+                    { label: '未结应付', value: fmt.money(r.apOpen), icon: '⌁', tone: r.apOpen ? 'warn' : '', sub: r.apCount + ' 张挂账待财务结算' }
+                ]),
+                risks.length ? ui.notice(risks.map(function (t) { return '· ' + esc(t); }).join('<br>'), 'warn', '补货体检') : '',
+                ui.card({
+                    title: '分仓分布', sub: r.stockRows.length + ' 个仓 · 库存行是事实，档案合计是派生', flat: true,
+                    body: ui.table({
+                        dense: true, keyName: 'id', rows: r.stockRows,
+                        columns: [
+                            { key: 'warehouseId', label: '仓库', render: function (s) { return ui.link(esc(s.warehouseName || (db.get('warehouses', s.warehouseId) || {}).name || s.warehouseId), 'wh:open', s.warehouseId); } },
+                            { key: 'qty', label: '现存', align: 'right', width: '110px', render: function (s) { return (s.low ? '<b class="tone-danger">' : '') + fmt.number(s.qty) + ' ' + esc(s.unit) + (s.low ? '</b>' : ''); } },
+                            { key: 'safeQty', label: '分仓安全库存', align: 'right', width: '128px', render: function (s) { return fmt.number(s.safeQty); } },
+                            { key: 'ops2', label: '覆盖', align: 'right', width: '150px', sortable: false, render: function (s) { return rateBar(s.safeQty ? util.round(s.qty / s.safeQty * 100, 1) : 0, { target: 100 }); } },
+                            { key: 'updatedAt', label: '最近变动', align: 'right', width: '112px', render: function (s) { return s.updatedAt ? fmt.date(s.updatedAt) : '<span class="tms-dim">—</span>'; } }
+                        ]
+                    })
+                }),
+                ui.card({ title: '采购应付挂账', sub: ap.length ? ap.length + ' 张 · 未结 ' + fmt.money(r.apOpen) : '该物料没有采购挂账', flat: true,
+                    body: ap.length ? ui.table({
+                        dense: true, keyName: 'id', rows: ap.slice(0, 6),
+                        columns: [
+                            { key: 'id', label: '应付单', width: '120px', render: function (p) { return ui.idCell(p.id, 'ap:open'); } },
+                            { key: 'target', label: '供应商' },
+                            { key: 'amount', label: '金额', align: 'right', width: '110px', render: function (p) { return fmt.money(p.amount); } },
+                            { key: 'refNo', label: '采购流水', width: '120px', render: function (p) { return ui.idCell(p.refNo); } },
+                            { key: 'dueDate', label: '到期', align: 'right', width: '104px' },
+                            { key: 'status', label: '状态', align: 'right', width: '88px', render: function (p) { return p.status === 'settled' ? ui.badge('已结', 'success') : (util.toDate(p.dueDate) < util.now() ? ui.badge('逾期', 'danger') : ui.badge('未结', 'warn')); } }
+                        ]
+                    }) : ui.empty('没有采购挂账', '下单会同时生成在途凭证与供应商应付') }),
+                ui.card({ title: '出入库流水', sub: '全量 ' + mv.length + ' 笔', flat: true, body: mvTable(mv, 10) })
+            ]),
+            footer: ui.btn('补货下单', { tone: 'primary', size: 'sm', act: 'mat:buy', arg: m.id }) +
+                ui.btn('发起盘点', { size: 'sm', act: 'mat:count', arg: m.id }) +
+                ui.btn('编辑档案', { size: 'sm', tone: 'ghost', act: 'mat:edit', arg: m.id }) +
+                ui.btn('关闭', { size: 'sm', act: 'ui:close' })
+        });
+    }
+
+    function materialFormModal(id) {
+        var m = id ? db.get('materials', id) : null;
+        var sups = db.col('suppliers');
+        ui.formModal({
+            title: m ? '维护物料档案' : '新增物料',
+            sub: m ? esc(m.name) + ' · 档案只定义单价与安全线，数量一律由库存行与流水决定' : '新建物料后各仓会生成 0 存量行，从「仓储库存」页入库即有凭证',
+            notice: '「现存合计」「在途」在本页都是读取时重算的派生值；停用物料不会被安全库存巡检改回正常。',
+            fields: [
+                { key: 'name', label: '物料名称', required: true },
+                { key: 'unit', label: '计量单位', required: true, placeholder: '个 / 卷 / 块' },
+                { key: 'price', label: '参考单价', type: 'number', min: 0.01, step: '0.01', required: true, unit: '元', tip: '库存金额与采购应付都按这个单价测算' },
+                { key: 'safeStock', label: '全网安全库存', type: 'number', min: 0, required: true, hint: '分仓安全库存按仓数均摊' },
+                { key: 'supplierId', label: '主供应商', type: 'select', options: [{ value: '', label: '暂不指定' }].concat(ui.optionsOf(sups, 'id', 'name')) },
+                { key: 'status', label: '状态', type: 'select', options: Object.keys(MAT_TEXT).map(function (k) { return { value: k, label: MAT_TEXT[k] }; }) }
+            ],
+            values: m ? { name: m.name, unit: m.unit, price: m.price, safeStock: m.safeStock, supplierId: m.supplierId, status: m.status } :
+                { unit: '个', price: 1, safeStock: 500, status: 'normal', supplierId: sups.length ? sups[0].id : '' },
+            okText: '保存物料',
+            onSubmit: function (data) {
+                var name = String(data.name || '').trim();
+                if (!name) return '物料名称必填';
+                if (db.col('materials').some(function (x) { return x.name === name && x.id !== (m ? m.id : ''); })) return '同名物料已存在';
+                if (!(Number(data.price) > 0)) return '参考单价必须大于 0，否则库存金额与采购应付都会算成零';
+                if ((Number(data.safeStock) || 0) <= 0) return '安全库存必须大于 0，否则断料也不会告警';
+                var sup = data.supplierId ? db.get('suppliers', data.supplierId) : null;
+                var patch = {
+                    name: name, unit: String(data.unit || '件').trim(), price: util.round(Number(data.price), 2),
+                    safeStock: Math.round(Number(data.safeStock)), status: data.status || 'normal',
+                    supplierId: sup ? sup.id : '', supplier: sup ? sup.name : ''
+                };
+                var saved;
+                db.batch(function () {
+                    saved = m ? (db.update('materials', m.id, patch), db.get('materials', m.id)) : db.create('materials', patch);
+                    if (!m) db.update('materials', saved.id, { inTransit: 0 });
+                    /* 安全库存改了，各仓的分仓线跟着均摊重切，否则仓级覆盖倍数还按老线报警 */
+                    var whs = db.col('warehouses');
+                    var per = Math.max(1, Math.round((Number(saved.safeStock) || 0) / Math.max(1, whs.length)));
+                    /* 新物料先铺 0 存量行：没有库存行的物料在仓储页看不到，
+                       也永远等不到第一笔入库凭证 */
+                    if (!m) whs.forEach(function (w) { stockRowOf(w.id, saved.id, per); });
+                    db.col('stocks').filter(function (s) { return s.materialId === saved.id; }).forEach(function (s) {
+                        db.update('stocks', s.id, { safeQty: per, material: saved.name, unit: saved.unit, warehouseName: (db.get('warehouses', s.warehouseId) || {}).name || s.warehouseName });
+                        db.commit('stocks', s.id, 'material:syncStock');
+                    });
+                    syncMaterial(saved.id);
+                    db.commit('materials', saved.id, 'material:save');
+                }, 'material:save');
+                TMS.audit.log('material.update', 'materials', saved.id,
+                    (m ? '维护' : '新增') + '物料 ' + saved.name + '（' + saved.unit + '，单价 ' + fmt.money(saved.price) +
+                    '，安全库存 ' + fmt.number(saved.safeStock) + '，供应商 ' + (saved.supplier || '未指定') + '）', actor());
+                ui.toast('已保存物料「' + saved.name + '」，' + db.col('warehouses').length + ' 个仓的分仓安全线同步为 ' + fmt.number(Math.max(1, Math.round(saved.safeStock / Math.max(1, db.col('warehouses').length)))));
+                for (var i = 0; i < 2; i++) TMS.ui.closeTop();
+            }
+        });
+    }
+
+    /* 从物料页直接盘某个仓：先让人选仓，再把该仓盘点单打开 */
+    function materialCountModal(id) {
+        var m = db.get('materials', id);
+        if (!m) { ui.toast('物料不存在', 'warn'); return; }
+        var rows = db.col('stocks').filter(function (s) { return s.materialId === id; });
+        if (!rows.length) { ui.toast('该物料还没有库存行', 'info'); return; }
+        if (rows.length === 1) { whCountModal(rows[0].warehouseId); return; }
+        ui.formModal({
+            title: '选择盘点仓库 · ' + esc(m.name),
+            sub: '盘点单以仓为单位开，一次把整仓品类一起过秤，避免同一仓被多次改写',
+            fields: [{ key: 'whId', label: '仓库', type: 'select', required: true, placeholder: false,
+                options: rows.map(function (s) { return { value: s.warehouseId, label: (s.warehouseName || s.warehouseId) + '（现存 ' + fmt.number(s.qty) + m.unit + '）' }; }) }],
+            values: { whId: rows[0].warehouseId }, okText: '开盘点单',
+            onSubmit: function (data) {
+                ui.closeTop();
+                whCountModal(data.whId);
+            }
+        });
+    }
+
+    pg.define('material', {
+        sub: '耗材档案与补货链路：库存行是事实、流水是凭证、在途是承诺、应付是成本，四条线互相核对',
+        load: function (ctx) {
+            applyParamFilter(ctx, ['status', 'supplierId', 'q']);
+            var days = Math.max(7, Number(ctx.days) || 30);
+            var rows = matRowsOf(days);
+            var gaps = matGaps(rows);
+            var whs = db.col('warehouses');
+            var sk = stockCtx(days), goods = goodsByHub();
+            var byWh = whs.map(function (w) {
+                var r = whView(w, sk, goods);
+                return { id: w.id, name: w.name, city: w.city, qty: util.round(util.sum(r.stockRows, 'qty'), 1), value: r.stockValue, low: r.lowCount };
+            });
+            var trend = (function () {
+                var ledger = db.col('stockMovements').filter(function (m) { return m.kind === 'out'; });
+                var g = util.groupBy(ledger, function (m) { return util.dateKey(util.toDate(m.date || m.createdAt)); });
+                var priceOf = {};
+                db.col('materials').forEach(function (m) { priceOf[m.id] = Number(m.price) || 0; });
+                var out = [];
+                for (var i = 13; i >= 0; i--) {
+                    var k = util.dateKey(util.addDays(util.now(), -i));
+                    var day = g[k] || [];
+                    out.push({ label: fmt.monthDay(k), value: util.money(util.sum(day, function (m) { return (Number(m.qty) || 0) * (priceOf[m.materialId] || 0); })) });
+                }
+                return out;
+            })();
+            return {
+                days: days, rows: rows, gaps: gaps, byWh: byWh, trend: trend,
+                value: util.money(util.sum(rows, 'value')),
+                outValue: util.money(util.sum(rows, 'outValue')),
+                transit: util.money(util.sum(rows, 'transitValue')),
+                apOpen: util.money(util.sum(rows, 'apOpen')),
+                perOrder: util.round(util.sum(rows, 'perOrder'), 3),
+                orders: TMS.stats.ordersWithin(days).length,
+                gapCount: gaps.out.length + gaps.low.length + gaps.late.length + gaps.drift.length + gaps.orphan.length + gaps.obsolete.length
+            };
+        },
+        render: function (ctx, d) {
+            var kpi = ui.kpis([
+                { label: '在册物料', value: d.rows.length, unit: '种', icon: '⛔', sub: '告急 ' + d.gaps.low.length + ' · 断货 ' + d.gaps.out.length },
+                { label: '库存金额', value: fmt.money(d.value), icon: '¥', tone: 'brand', sub: '停用仍有存货 ' + d.gaps.obsolete.length + ' 种' },
+                { label: '窗口领用', value: fmt.money(d.outValue), icon: '⇣', sub: d.orders + ' 票摊薄 ' + fmt.money(d.perOrder) + '/票' },
+                { label: '在途采购', value: fmt.money(d.transit), icon: '⇄', tone: d.gaps.late.length ? 'danger' : '', sub: '超期未到 ' + d.gaps.late.length + ' 种' },
+                { label: '供应商未结应付', value: fmt.money(d.apOpen), icon: '⌁', tone: d.apOpen ? 'warn' : '', sub: '有在途却没挂账 ' + d.gaps.orphan.length + ' 种' },
+                { label: '补货体检', value: d.gapCount, unit: '项', icon: '⚑', tone: d.gapCount ? 'warn' : 'success', sub: '账实差异 ' + d.gaps.drift.length + ' 种' }
+            ]);
+            var whCard = ui.card({
+                title: '各仓耗材规模', sub: '同一个品类在不同仓的松紧完全不同，补货要落到具体的仓', flat: true,
+                body: ui.table({
+                    dense: true, keyName: 'id', rows: d.byWh,
+                    columns: [
+                        { key: 'name', label: '仓库', render: function (r) { return ui.link(esc(r.name), 'wh:open', r.id); } },
+                        { key: 'city', label: '城市', width: '110px' },
+                        { key: 'qty', label: '现存合计', align: 'right', width: '128px', render: function (r) { return fmt.number(r.qty); } },
+                        { key: 'value', label: '库存金额', align: 'right', width: '128px', render: function (r) { return fmt.money(r.value); } },
+                        { key: 'low', label: '告急品类', align: 'right', width: '116px', render: function (r) { return r.low ? ui.badge(r.low + ' 项', 'warn') : '<span class="tms-dim">无</span>'; } }
+                    ]
+                })
+            });
+            var trendCard = ui.card({
+                title: '包材领用金额', sub: '近 14 天出库折算金额（成本已在单票口径，这里只做消耗监控）', flat: true,
+                body: ch.line({ data: d.trend, height: 220, area: true, fmt: function (v) { return fmt.money(v); } })
+            });
+            var coverCard = ui.card({
+                title: '覆盖倍数与囤占', sub: '现存 ÷ 安全库存；<1 断料，≥6 囤资金', flat: true,
+                body: ch.compare({
+                    data: util.sortBy(d.rows, 'cover', 'desc').slice(0, 8).map(function (r) {
+                        return { label: r.name.split(' ')[0], value: r.cover, target: 1.5, text: fmt.number(r.qty) + ' ' + r.unit, color: r.cover < 1 ? '#d93a3a' : (r.cover >= 6 ? '#e58a1a' : '#1668dc') };
+                    }),
+                    rowH: 26
+                })
+            });
+            var gapCard = ui.card({
+                title: '补货体检', sub: '断料、囤货、在途超期、挂账缺失四种钱和料的问题一次摊开',
+                tone: d.gapCount ? 'danger' : '', flat: true,
+                body: ui.list([
+                    {
+                        title: '全网断货 ' + ui.badge(d.gaps.out.length + ' 种', d.gaps.out.length ? 'danger' : 'success'),
+                        sub: d.gaps.out.length ? d.gaps.out.map(function (r) { return esc(r.name); }).join('、') + '：分拨当天就没得用，只能临时外采' : '没有断货品项',
+                        right: d.gaps.out.length ? ui.btn('立即补货', { size: 'sm', tone: 'danger', act: 'mat:buy', arg: d.gaps.out[0].id }) : ''
+                    },
+                    {
+                        title: '低于安全线 ' + ui.badge(d.gaps.low.length + ' 种', d.gaps.low.length ? 'warn' : 'success'),
+                        sub: d.gaps.low.length ? d.gaps.low.slice(0, 5).map(function (r) { return esc(r.name + '（' + fmt.number(r.qty) + '/' + fmt.number(r.safeStock) + r.unit + '）'); }).join('、') : '全部品项在安全线上',
+                        right: d.gaps.low.length ? ui.btn('库存台账', { size: 'sm', act: 'mat:goWarehouse' }) : ''
+                    },
+                    {
+                        title: '采购超期未到货 ' + ui.badge(d.gaps.late.length + ' 种', d.gaps.late.length ? 'danger' : 'success'),
+                        sub: d.gaps.late.length ? d.gaps.late.slice(0, 5).map(function (r) { return esc(r.name + '（挂 ' + r.lateDays + ' 天）'); }).join('、') + '：应付已按账期确认，货却没进仓，账实两头都虚' : '在途采购都在约定时间内',
+                        right: d.gaps.late.length ? ui.btn('在途单催收', { size: 'sm', tone: 'danger', act: 'mat:buys' }) : ''
+                    },
+                    {
+                        title: '有在途却没有应付 ' + ui.badge(d.gaps.orphan.length + ' 种', d.gaps.orphan.length ? 'warn' : 'success'),
+                        sub: d.gaps.orphan.length ? d.gaps.orphan.map(function (r) { return esc(r.name); }).join('、') + '：到货即入库却没有成本归属，这批耗材永远不进损益' : '每张在途单都挂着未结应付',
+                        right: d.gaps.orphan.length ? ui.btn('重挂应付', { size: 'sm', tone: 'warn', act: 'mat:repair' }) : ''
+                    },
+                    {
+                        title: '账实核对不平 ' + ui.badge(d.gaps.drift.length + ' 种', d.gaps.drift.length ? 'danger' : 'success'),
+                        sub: d.gaps.drift.length ? d.gaps.drift.slice(0, 5).map(function (r) { return esc(r.name + '（差 ' + fmt.number(r.diff) + r.unit + '）'); }).join('、') : '每种物料都能顺着流水推回现存',
+                        right: d.gaps.drift.length ? ui.btn('盘点调平', { size: 'sm', tone: 'danger', act: 'mat:count', arg: d.gaps.drift[0].id }) : ''
+                    },
+                    {
+                        title: '超储囤货（覆盖 ≥6 倍） ' + ui.badge(d.gaps.over.length + ' 种', d.gaps.over.length ? 'warn' : 'success'),
+                        sub: d.gaps.over.length ? d.gaps.over.slice(0, 5).map(function (r) { return esc(r.name + ' ' + r.cover + ' 倍'); }).join('、') + '：占用资金和库位，先停采、跨仓调拨消化' : '没有明显囤占'
+                    },
+                    {
+                        title: '停用但仍有存货 ' + ui.badge(d.gaps.obsolete.length + ' 种', d.gaps.obsolete.length ? 'muted' : 'success'),
+                        sub: d.gaps.obsolete.length ? d.gaps.obsolete.map(function (r) { return esc(r.name + '（' + fmt.number(r.qty) + r.unit + '）'); }).join('、') : '停用物料都已清仓'
+                    }
+                ])
+            });
+            var buyCard = ui.card({
+                title: '在途采购与应付核对', flat: true,
+                sub: (function () { var n = util.sum(d.rows, 'pendingCount'); return n ? n + ' 张未到货凭证 · 下单即挂供应商应付，到货入库才加库存' : '没有在途采购单'; })(),
+                tools: d.rows.some(function (r) { return r.transit > 0; }) ? ui.btn('全部在途单', { size: 'sm', tone: 'ghost', act: 'mat:buys' }) : '',
+                body: d.rows.filter(function (r) { return r.transit > 0 || r.apCount; }).length ? ui.table({
+                    dense: true, keyName: 'id',
+                    rows: d.rows.filter(function (r) { return r.transit > 0 || r.apCount; }),
+                    columns: [
+                        { key: 'name', label: '物料', render: function (r) { return ui.link(esc(r.name), 'mat:open', r.id) + '<div class="tms-dim">' + esc(r.supplier || '未指定供应商') + '</div>'; } },
+                        { key: 'qty', label: '现存', align: 'right', width: '104px', render: function (r) { return fmt.number(r.qty) + ' ' + esc(r.unit); } },
+                        { key: 'transit', label: '在途', align: 'right', width: '104px', render: function (r) { return r.transit ? '<b class="tone-accent">' + fmt.number(r.transit) + '</b>' : '<span class="tms-dim">0</span>'; } },
+                        { key: 'suggest', label: '建议补至', align: 'right', width: '104px', render: function (r) { return r.suggest ? fmt.number(r.suggest) + ' ' + esc(r.unit) : '<span class="tms-dim">够</span>'; } },
+                        { key: 'transitValue', label: '在途金额', align: 'right', width: '116px', render: function (r) { return fmt.money(r.transitValue); } },
+                        { key: 'apOpen', label: '未结应付', align: 'right', width: '116px', render: function (r) { return r.apOpen ? fmt.money(r.apOpen) : '<span class="tms-dim">未挂账</span>'; } },
+                        { key: 'lateCount', label: '超期', align: 'right', width: '92px', render: function (r) { return r.lateCount ? ui.badge(r.lateDays + ' 天', 'danger') : '<span class="tms-dim">按时</span>'; } },
+                        { key: 'ops', label: '操作', align: 'right', width: '124px', sortable: false, render: function (r) { return ui.link('补货', 'mat:buy', r.id, { tone: 'ghost' }) + ' ' + ui.link('盘点', 'mat:count', r.id, { tone: 'ghost' }); } }
+                    ]
+                }) : ui.empty('没有在途采购与挂账', '从台账行点「补货」下单，系统会同时生成在途凭证和供应商应付')
+            });
+            var listCard = grid(ctx, {
+                title: '物料台账', rows: d.rows, keyName: 'id', dense: true, onRow: 'mat:open', searchKey: 'q',
+                filter: function (r, fs) {
+                    if (fs.status && r.status !== fs.status) return false;
+                    if (fs.supplierId && r.supplierId !== fs.supplierId) return false;
+                    var c = fs.chip || '';
+                    if (c === 'need' && !(r.status === 'low' || r.status === 'out')) return false;
+                    if (c === 'transit' && !r.transit) return false;
+                    if (c === 'late' && !r.lateCount) return false;
+                    if (c === 'over' && r.cover < 6) return false;
+                    return true;
+                },
+                search: function (r) { return [r.id, r.name, r.supplier, r.unit].join(' '); },
+                chips: [
+                    { label: '全部', value: '', count: d.rows.length },
+                    { label: '待补货', value: 'need', count: d.gaps.low.length + d.gaps.out.length },
+                    { label: '有在途', value: 'transit', count: d.rows.filter(function (r) { return r.transit > 0; }).length },
+                    { label: '超期未到', value: 'late', count: d.gaps.late.length },
+                    { label: '超储', value: 'over', count: d.gaps.over.length }
+                ], chipsName: 'chip',
+                fields: [
+                    { key: 'q', type: 'search', label: '物料 / 供应商', placeholder: '纸箱 / 安捷包装' },
+                    { key: 'status', label: '状态', options: [{ value: '', label: '全部状态' }].concat(Object.keys(MAT_TEXT).map(function (k) { return { value: k, label: MAT_TEXT[k] }; })) },
+                    { key: 'supplierId', label: '供应商', options: [{ value: '', label: '全部供应商' }].concat(ui.optionsOf(db.col('suppliers'), 'id', 'name')) }
+                ],
+                tools: ui.btn('新增物料', { size: 'sm', tone: 'primary', act: 'mat:new', icon: '+' }) +
+                    ui.btn('在途采购单', { size: 'sm', act: 'mat:buys', icon: '⇄' }) +
+                    ui.btn('导出', { size: 'sm', tone: 'ghost', act: 'mat:export', icon: '↓' }),
+                columns: [
+                    {
+                        key: 'name', label: '物料', render: function (r) {
+                            return ui.link(esc(r.name), 'mat:open', r.id) +
+                                '<div class="tms-dim">' + esc(r.unit) + ' · ' + fmt.money(r.price) + ' · ' + esc(r.supplier || '未指定供应商') + '</div>';
+                        }
+                    },
+                    { key: 'qty', label: '现存', align: 'right', width: '112px', render: function (r) { return (r.status === 'out' ? '<b class="tone-danger">' : (r.status === 'low' ? '<b class="tone-warn">' : '')) + fmt.number(r.qty) + '</b> ' + esc(r.unit); } },
+                    { key: 'safeStock', label: '安全库存', align: 'right', width: '104px', render: function (r) { return fmt.number(r.safeStock); } },
+                    { key: 'cover', label: '覆盖倍数', align: 'right', width: '120px', render: function (r) { return r.cover < 1 ? ui.badge(r.cover + ' 倍', 'danger') : (r.cover >= 6 ? ui.badge(r.cover + ' 倍', 'warn') : fmt.number(r.cover) + ' 倍'); } },
+                    { key: 'value', label: '库存金额', align: 'right', width: '116px', render: function (r) { return fmt.money(r.value); } },
+                    { key: 'outQty', label: '窗口领用', align: 'right', width: '116px', render: function (r) { return r.outQty ? fmt.number(r.outQty) + ' · ' + fmt.money(r.outValue) : '<span class="tms-dim">无领用</span>'; } },
+                    { key: 'turnDays', label: '周转', align: 'right', width: '92px', render: function (r) { return r.turnDays == null ? '<span class="tms-dim">—</span>' : r.turnDays + ' 天'; } },
+                    { key: 'transit', label: '在途', align: 'right', width: '96px', render: function (r) { return r.transit ? fmt.number(r.transit) + (r.lateCount ? ' ' + ui.badge('超期', 'danger') : '') : '<span class="tms-dim">—</span>'; } },
+                    { key: 'diff', label: '账实差异', align: 'right', width: '104px', render: function (r) { return r.diff == null ? '<span class="tms-dim">无凭证</span>' : (Math.abs(r.diff) > 0.5 ? ui.badge(fmt.number(r.diff), 'danger') : '<span class="tms-dim">0</span>'); } },
+                    { key: 'status', label: '状态', align: 'right', width: '84px', sortable: false, render: function (r) { return statusBadge(r.status, MAT_TEXT); } },
+                    {
+                        key: 'ops', label: '操作', align: 'right', width: '152px', sortable: false, render: function (r) {
+                            return ui.link('补货', 'mat:buy', r.id, { tone: 'ghost' }) + ' ' +
+                                ui.link('盘点', 'mat:count', r.id, { tone: 'ghost' }) + ' ' +
+                                ui.link('编辑', 'mat:edit', r.id, { tone: 'ghost' });
+                        }
+                    }
+                ],
+                emptyText: '没有符合条件的物料'
+            });
+            return wrap(ctx, {
+                actions: ui.btn('新增物料', { tone: 'primary', act: 'mat:new', icon: '+' }) +
+                    ui.btn('重算档案合计', { act: 'mat:sync', icon: '⚑' }),
+                sub: '窗口 ' + d.days + ' 天 · ' + d.orders + ' 票分摊包材 ' + fmt.money(d.perOrder) + '/票 · 库存金额 ' + fmt.money(d.value),
+                body: [kpi, ui.split('2', [trendCard, coverCard]), whCard, ui.split('2', [gapCard, buyCard]), listCard]
+            });
+        },
+        actions: merge(stockActions, {
+            'mat:new': function () { materialFormModal(''); },
+            'mat:goWarehouse': function () { ui.closeTop(); TMS.shell.go('warehouse'); },
+            'mat:sync': function () {
+                var drift = [];
+                db.col('materials').forEach(function (m) {
+                    var sum = Math.round(util.sum(db.col('stocks').filter(function (s) { return s.materialId === m.id; }), 'qty'));
+                    if (sum !== (Number(m.stock) || 0)) drift.push({ id: m.id, from: m.stock, to: sum, name: m.name });
+                });
+                if (!drift.length) { ui.toast('物料档案合计与各仓库存行完全一致', 'success'); return; }
+                ui.confirm({
+                    title: '按库存行重算 ' + drift.length + ' 个物料档案',
+                    message: '档案合计与「各仓相加」对不上。',
+                    detail: drift.slice(0, 8).map(function (r) { return esc(r.name + '：' + fmt.number(r.from) + ' → ' + fmt.number(r.to)); }).join('<br>') +
+                        '<br>库存行是事实，档案合计只是派生数，重算不改任何一张流水。'
+                }).then(function (yes) {
+                    if (!yes) return;
+                    db.batch(function () { drift.forEach(function (r) { syncMaterial(r.id); }); }, 'material:sync');
+                    TMS.audit.log('material.sync', 'materials', '', '按库存行重算物料合计 ' + drift.length + ' 项', actor());
+                    ui.toast('已重算 ' + drift.length + ' 项物料合计', 'success');
+                    TMS.shell.refresh();
+                });
+            },
+            'mat:repair': function () {
+                var orphans = matRowsOf(Math.max(7, Number(curCtx().days) || 30)).filter(function (r) { return r.transit > 0 && !r.apCount; });
+                if (!orphans.length) { ui.toast('每张在途采购都已经挂了应付', 'success'); return; }
+                ui.confirm({
+                    title: '补挂 ' + orphans.length + ' 项在途采购应付',
+                    message: '有在途数量却没有未结应付，货到就直接进库存、成本无处归集。',
+                    detail: orphans.slice(0, 8).map(function (r) { return esc(r.name + ' 在途 ' + fmt.number(r.transit) + r.unit + '，折 ' + fmt.money(r.transitValue)); }).join('<br>') +
+                        '<br>补挂按档案单价 × 在途量计，供应商取物料主供应商，账期默认月结。'
+                }).then(function (yes) {
+                    if (!yes) return;
+                    var created = [];
+                    db.batch(function () {
+                        orphans.forEach(function (r) {
+                            var mv = db.findOne('stockMovements', function (x) {
+                                return x.materialId === r.id && x.kind === 'purchase' && (!x.status || x.status === 'pending' || x.status === 'partial');
+                            });
+                            if (!mv) return;
+                            var ap = TMS.finance.createPayable({
+                                refId: r.id, refNo: mv.id, target: r.supplier || '物料供应商', targetType: 'supplier',
+                                category: '物料耗材', amount: util.money(r.transit * r.price), date: util.dateKey(mv.date || util.now()),
+                                dueDate: util.dateKey(util.addDays(util.toDate(mv.date || util.now()), 30)),
+                                status: 'pending', remark: fmt.number(r.transit) + r.unit + ' ' + r.name + ' 采购在途补挂'
+                            });
+                            if (ap) { db.update('stockMovements', mv.id, { refId: ap.id }); db.commit('stockMovements', mv.id, 'purchase:repair'); created.push(r.name); }
+                        });
+                    }, 'material:repair');
+                    if (!created.length) { ui.toast('没有找到可补挂的在途凭证', 'warn'); return; }
+                    TMS.audit.log('purchase.repair', 'materials', '', '补挂在途采购应付：' + created.join('、'), actor());
+                    ui.toast('已补挂 ' + created.length + ' 张供应商应付', 'success');
+                    TMS.shell.refresh();
+                });
+            },
+            'mat:export': function () {
+                exportGrid({
+                    name: '物料台账.csv', rows: matRowsOf(Math.max(7, Number(curCtx().days) || 30)), searchKey: 'q',
+                    search: function (r) { return [r.id, r.name, r.supplier, r.unit].join(' '); },
+                    cols: [
+                        { key: 'id', label: '物料编号' }, { key: 'name', label: '物料名称' }, { key: 'unit', label: '单位' },
+                        { key: 'price', label: '参考单价' }, { key: 'qty', label: '全网现存' }, { key: 'safeStock', label: '安全库存' },
+                        { key: 'cover', label: '覆盖倍数' }, { key: 'value', label: '库存金额' },
+                        { key: 'outQty', label: '窗口领用' }, { key: 'outValue', label: '领用金额' },
+                        { key: 'turnDays', label: '周转天数' }, { key: 'transit', label: '在途数量' },
+                        { key: 'apOpen', label: '未结应付' }, { key: 'diff', label: '账实差异' },
+                        { key: 'supplier', label: '供应商' },
+                        { key: 'status', label: '状态', value: function (r) { return MAT_TEXT[r.status] || r.status; } }
+                    ]
+                }, 'material');
+            }
+        })
+    });
+
     TMS.pages.admin = {
         wrap: wrap, grid: grid, toCsv: toCsv, download: download, exportGrid: exportGrid,
         curCtx: curCtx, rateBar: rateBar, actor: actor, applyParamFilter: applyParamFilter,
@@ -9070,6 +10674,15 @@
         deviceModal: deviceModal, dim: dim, orderFormFields: orderFormFields, quoteParams: quoteParams,
         EXC_TEXT: EXC_TEXT, TICKET_TEXT: TICKET_TEXT, CLAIM_TEXT: CLAIM_TEXT, slaCell: slaCell,
         levelBadge: levelBadge, statusBadge: statusBadge, pctBar: pctBar, dutyTargetOf: dutyTargetOf,
-        defaultParty: defaultParty, wfGaps: wfGaps
+        defaultParty: defaultParty, wfGaps: wfGaps,
+        whRows: whRows, whView: whView, whGaps: whGaps, stockCtx: stockCtx, mvOf: mvOf,
+        goodsByHub: goodsByHub, goodsTable: goodsTable, postMovement: postMovement, syncMaterial: syncMaterial,
+        stockRowOf: stockRowOf, whStockRows: whStockRows, purchaseEntry: purchaseEntry,
+        whModal: whModal, whFormModal: whFormModal, whInOutModal: whInOutModal, whCountModal: whCountModal,
+        whTransferModal: whTransferModal, purchaseModal: purchaseModal, purchaseListModal: purchaseListModal,
+        receiveMovement: receiveMovement, WH_TEXT: WH_TEXT, WH_TYPES: WH_TYPES, MOV_TEXT: MOV_TEXT,
+        matView: matView, matRowsOf: matRowsOf, matGaps: matGaps, MAT_TEXT: MAT_TEXT,
+        materialModal: materialModal, materialFormModal: materialFormModal,
+        materialCountModal: materialCountModal, stockActions: stockActions
     };
 })(window);

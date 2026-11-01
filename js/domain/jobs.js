@@ -11,6 +11,7 @@
         { key: 'receivableOverdue', name: '应收逾期与信用管控', run: receivableOverdue },
         { key: 'vehicleMaintenance', name: '车辆保养到期', run: vehicleMaintenance },
         { key: 'materialStock', name: '物料安全库存', run: materialStock },
+        { key: 'purchaseOverdue', name: '采购到货超期', run: purchaseOverdue },
         { key: 'deviceHealth', name: '扫描设备健康', run: deviceHealth },
         { key: 'tripDeparture', name: '班次未按时发车', run: tripDeparture },
         { key: 'slaBacklog', name: '压单预警', run: slaBacklog },
@@ -39,6 +40,24 @@
         var a = db.findOne('alerts', function (x) { return x.key === key && x.status === 'open'; });
         if (!a) return null;
         return db.update('alerts', a.id, { status: 'resolved', resolvedAt: util.iso(util.now()), resolveNote: note || '自动恢复' });
+    }
+
+    /* 条件型告警必须双向收口：本轮命中的补建，本轮不再命中的自动核销。
+       只建不关的告警会永远挂在「未处理」上，看板数字与真实风险脱钩，巡检也就失去意义。 */
+    function resolveGone(prefix, active, note) {
+        var n = 0;
+        db.col('alerts').forEach(function (a) {
+            if (a.status !== 'open' || String(a.key).indexOf(prefix) !== 0 || active[a.key]) return;
+            db.update('alerts', a.id, { status: 'resolved', resolvedAt: util.iso(util.now()), resolveNote: note || '条件已消除，自动核销' });
+            n++;
+        });
+        return n;
+    }
+
+    function keysOf(list, prefix) {
+        var out = {};
+        list.forEach(function (x) { out[prefix + x.id] = 1; });
+        return out;
     }
 
     /* 1. 节点超时：单条订单只看最后一个节点——前序节点的时限已被后续扫描证明达成。
@@ -97,23 +116,30 @@
                 title: '应收逾期', message: TMS.order.customerName(r) + ' 单号 ' + r.orderId + ' 逾期 ' + Math.round(util.hoursBetween(r.dueDate, util.now()) / 24) + ' 天，金额 ' + util.fmt.money(r.amount),
                 category: 'finance', entity: 'receivables', refId: r.id, owner: '财务部'
             });
-            var c = r.customerId ? db.get('customers', r.customerId) : null;
-            if (c) {
-                var overdueTotal = util.sum(db.col('receivables').filter(function (x) {
-                    return x.customerId === c.id && x.status === 'pending' && util.toDate(x.dueDate) < util.now();
-                }), 'amount');
-                if (c.creditLimit && overdueTotal > c.creditLimit) {
-                    if (c.status !== 'suspended') {
-                        db.update('customers', c.id, { status: 'suspended', suspendReason: '逾期 ' + util.money(overdueTotal) + ' 超信用额度 ' + c.creditLimit });
-                        addAlert({ key: 'customer:credit:' + c.id, level: 'danger', title: '客户信用冻结', message: c.name + ' 逾期金额超信用额度，已暂停下单', category: 'finance', entity: 'customers', refId: c.id, owner: '财务部' });
-                    }
-                } else if (c.status === 'suspended' && String(c.suspendReason || '').indexOf('逾期') === 0) {
-                    db.update('customers', c.id, { status: 'active', suspendReason: '' });
-                    closeAlert('customer:credit:' + c.id, '逾期金额回落，自动恢复');
+        });
+        /* 逾期按客户汇总后再判信用：额度是「客户整体欠了多少」，逐条应收各算一遍会重复触发冻结 */
+        var byCustomer = util.groupBy(rows, 'customerId');
+        var freezeKeys = {};
+        db.col('customers').forEach(function (c) {
+            if (!c.id) return;
+            var overdueTotal = util.money(util.sum(byCustomer[c.id] || [], 'amount'));
+            if (c.creditLimit && overdueTotal > c.creditLimit) {
+                freezeKeys['customer:credit:' + c.id] = 1;
+                if (c.status !== 'suspended') {
+                    db.update('customers', c.id, { status: 'suspended', suspendReason: '逾期 ' + util.money(overdueTotal) + ' 超信用额度 ' + c.creditLimit });
+                    addAlert({ key: 'customer:credit:' + c.id, level: 'danger', title: '客户信用冻结', message: c.name + ' 逾期金额超信用额度，已暂停下单', category: 'finance', entity: 'customers', refId: c.id, owner: '财务部' });
                 }
+            } else if (c.status === 'suspended' && String(c.suspendReason || '').indexOf('逾期') === 0) {
+                /* 回款后必须自动解冻：逾期都清了还挂着冻结，客户会在页面上永远下不了单 */
+                db.update('customers', c.id, { status: 'active', suspendReason: '' });
+                closeAlert('customer:credit:' + c.id, '逾期金额回落至信用额度内，自动恢复');
             }
         });
-        return { overdue: rows.length, amount: util.money(util.sum(rows, 'amount')) };
+        return {
+            overdue: rows.length, amount: util.money(util.sum(rows, 'amount')),
+            resolved: resolveGone('ar:overdue:', keysOf(rows, 'ar:overdue:'), '应收已核销'),
+            unfrozen: resolveGone('customer:credit:', freezeKeys, '信用已恢复')
+        };
     }
 
     function vehicleMaintenance() {
@@ -121,17 +147,57 @@
         due.forEach(function (v) {
             addAlert({ key: 'vehicle:maintenance:' + v.id, level: 'warn', title: '车辆保养到期', message: v.plate + '（' + v.typeName + '）保养到期日 ' + v.nextCheckAt + '，里程 ' + v.odometer + ' km', category: 'asset', entity: 'vehicles', refId: v.id, owner: '车队长' });
         });
-        return { due: due.length };
+        return { due: due.length, resolved: resolveGone('vehicle:maintenance:', keysOf(due, 'vehicle:maintenance:'), '保养计划已顺延') };
     }
 
+    /* 物料档案的 stock 是各仓存量加总的派生值，状态也从库存重新判定；
+       回补到安全线以上的物料要顺手核销告警，否则「库存不足」会永远挂在台账上 */
     function materialStock() {
-        var low = db.col('materials').filter(function (m) { return m.stock < m.safeStock; });
-        low.forEach(function (m) {
-            m.status = m.stock <= 0 ? 'out' : 'low';
-            db.touch('materials');
-            addAlert({ key: 'material:low:' + m.id, level: m.stock <= 0 ? 'danger' : 'warn', title: '物料库存不足', message: m.name + ' 现存 ' + m.stock + m.unit + '，安全库存 ' + m.safeStock + m.unit, category: 'asset', entity: 'materials', refId: m.id, owner: '仓储部' });
+        var byMat = {};
+        db.col('stocks').forEach(function (s) { byMat[s.materialId] = (byMat[s.materialId] || 0) + (Number(s.qty) || 0); });
+        var low = [], recovered = [];
+        db.col('materials').forEach(function (m) {
+            /* 停用是人的决定，不是库存算出来的：巡检不许把 obsolete 改回 normal，
+               否则物料页刚停用，一轮巡检就复活 */
+            if (m.status === 'obsolete') return;
+            var stock = byMat[m.id] != null ? byMat[m.id] : (Number(m.stock) || 0);
+            if (stock !== m.stock) { m.stock = stock; db.touch('materials'); }
+            var st = stock <= 0 ? 'out' : (stock < m.safeStock ? 'low' : 'normal');
+            if (m.status !== st) { m.status = st; db.touch('materials'); }
+            if (st === 'normal') recovered.push(m); else low.push(m);
         });
-        return { low: low.length };
+        low.forEach(function (m) {
+            addAlert({ key: 'material:low:' + m.id, level: m.status === 'out' ? 'danger' : 'warn', title: '物料库存不足', message: m.name + ' 现存 ' + m.stock + m.unit + '，安全库存 ' + m.safeStock + m.unit, category: 'asset', entity: 'materials', refId: m.id, owner: '仓储部' });
+        });
+        return { low: low.length, resolved: resolveGone('material:low:', keysOf(low, 'material:low:'), recovered.length + ' 项库存已回补至安全线') };
+    }
+
+    /* 采购在途超期：下单挂账后约定天数没到货就报警，到货入库当场自动核销。
+       只看未收齐的凭证——已到货的行早就进了库存，再报就是噪音 */
+    function purchaseOverdue() {
+        var late = [];
+        db.col('stockMovements').forEach(function (m) {
+            if (m.kind !== 'purchase') return;
+            if (m.status && m.status !== 'pending' && m.status !== 'partial') return;
+            if (util.hoursBetween(m.date || m.createdAt, util.now()) < 7 * 24) return;
+            late.push(m);
+        });
+        late.forEach(function (m) {
+            var mat = db.get('materials', m.materialId) || {};
+            var wh = db.get('warehouses', m.warehouseId) || {};
+            var days = Math.round(util.hoursBetween(m.date || m.createdAt, util.now()) / 24);
+            var left = Math.max(0, (Number(m.qty) || 0) - (Number(m.receivedQty) || 0));
+            addAlert({
+                key: 'purchase:late:' + m.id, level: days > 14 ? 'danger' : 'warn', title: '采购到货超期',
+                message: (mat.name || m.materialId) + ' 采购单 ' + m.id + ' 下单 ' + days + ' 天仍未到货，' +
+                    '缺 ' + left + (mat.unit || '') + '，收货仓 ' + (wh.name || m.warehouseId) + '，应付已挂账',
+                category: 'asset', entity: 'stockMovements', refId: m.id, owner: (wh.manager || '仓储部')
+            });
+        });
+        return {
+            late: late.length,
+            resolved: resolveGone('purchase:late:', keysOf(late, 'purchase:late:'), '采购单已到货入库，在途冲平')
+        };
     }
 
     function deviceHealth() {
@@ -139,7 +205,7 @@
         bad.forEach(function (d) {
             addAlert({ key: 'device:' + d.id, level: d.status === 'fault' ? 'danger' : 'warn', title: '扫描设备异常', message: d.name + '（' + d.model + '）' + (d.status === 'fault' ? '上报故障' : '离线超 12 小时') + '，归属 ' + d.ownerName, category: 'system', entity: 'devices', refId: d.id, owner: '信息技术部' });
         });
-        return { faulty: bad.length };
+        return { faulty: bad.length, resolved: resolveGone('device:', keysOf(bad, 'device:'), '设备已恢复上报') };
     }
 
     function tripDeparture() {
@@ -151,7 +217,7 @@
         late.forEach(function (t) {
             addAlert({ key: 'trip:late:' + t.id, level: 'warn', title: '班次未按时发车', message: TMS.operation.labelOf(t) + ' 计划 ' + t.departAt + ' 发车，仍有 ' + t.orders + ' 单未装车发出', category: 'transport', entity: 'transports', refId: t.id, owner: '运输调度部' });
         });
-        return { late: late.length };
+        return { late: late.length, resolved: resolveGone('trip:late:', keysOf(late, 'trip:late:'), '班次已发车或已取消') };
     }
 
     function slaBacklog() {

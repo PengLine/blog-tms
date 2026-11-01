@@ -162,6 +162,31 @@ check('运单号符合 WB+10hash+4随机 规范', badWb.length === 0, badWb.slic
 const noTrace = orders.filter((o) => !scans.some((s) => s.orderId === o.id));
 check('每单均有轨迹扫描', noTrace.length === 0, '缺失 ' + noTrace.length);
 
+/* 库存台账三条不变量：流水加总 = 库存行、各仓相加 = 物料档案合计、未到货采购 = 在途数量。
+   任何一条对不上，页面的周转天数与补货建议就都是假数 */
+const LEDGER_SIGN = { in: 1, out: -1, adjust: 1, purchase: 0 };
+const ledger = {};
+const badKind = [];
+db.col('stockMovements').forEach((m) => {
+    if (!(m.kind in LEDGER_SIGN)) { badKind.push(m.kind); return; }
+    const k = m.warehouseId + '|' + m.materialId;
+    ledger[k] = (ledger[k] || 0) + LEDGER_SIGN[m.kind] * (Number(m.qty) || 0);
+});
+check('库存流水种类合法', badKind.length === 0, badKind.slice(0, 3).join(','));
+const stockDiff = db.col('stocks').filter((s) => (ledger[s.warehouseId + '|' + s.materialId] || 0) !== (Number(s.qty) || 0));
+check('库存流水与库存行账实一致', stockDiff.length === 0,
+    stockDiff.slice(0, 3).map((s) => s.id + '(' + (ledger[s.warehouseId + '|' + s.materialId] || 0) + '/' + s.qty + ')').join(','));
+const matDiff = db.col('materials').filter((m) => m.stock !== db.col('stocks')
+    .filter((s) => s.materialId === m.id).reduce((a, b) => a + (Number(b.qty) || 0), 0));
+check('物料合计等于各仓相加', matDiff.length === 0, matDiff.slice(0, 3).map((m) => m.name).join(','));
+const transit = {};
+db.col('stockMovements').filter((m) => m.kind === 'purchase' && m.status === 'pending')
+    .forEach((m) => { transit[m.materialId] = (transit[m.materialId] || 0) + (Number(m.qty) || 0); });
+const transitDiff = db.col('materials').filter((m) => (Number(m.inTransit) || 0) !== (transit[m.id] || 0));
+check('在途采购等于未到货流水', transitDiff.length === 0, transitDiff.slice(0, 3).map((m) => m.name).join(','));
+const orphanAp = db.col('payables').filter((p) => /^MAT/.test(String(p.refId || '')) && !db.get('materials', p.refId));
+check('物料应付挂到真实物料', orphanAp.length === 0, orphanAp.length + ' 张');
+
 /* 环节时间一律从扫描流水派生（订单行不再冗余存阶段戳） */
 const sidx = TMS.order.scanIndex();
 const STAGES = ['collected', 'inbound', 'sorted', 'transit', 'arrived', 'delivering', 'signed'];
@@ -483,7 +508,7 @@ check('单号直达按角色落地',
         cod: 'codRecords', rt: 'rateCards', ar: 'receivables', ap: 'payables', fin: 'finances',
         ck: 'rechecks', cust: 'customers', dv: 'devices', tr: 'transports', emp: 'employees',
         wh: 'warehouses', mat: 'materials', veh: 'vehicles', br: 'branches', usr: 'users',
-        gf: 'geofences', bill: 'bills', hb: 'hubs', cu: 'customers', cv: 'carriers'
+        gf: 'geofences', bill: 'bills', hb: 'hubs', cu: 'customers', cv: 'carriers', smv: 'stockMovements'
     };
     const argOf = (act) => {
         const pool = POOL_BY_PREFIX[String(act).split(':')[0]];

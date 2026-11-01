@@ -153,7 +153,85 @@
 
     function invalidateCache() { routeCache = {}; }
 
+    /* ---------- 电子围栏 ---------- */
+
+    /* 围栏按城市名片判定归属：扫描地点写的是「哈尔滨浦东新区营业部」这类网点/分拨名，
+       取文本里能命中的最长城市名作为作业城市；命中不了就是地点写得没法核对。
+       必须取最长匹配，短名先命中会把「吉林」算进「辽宁省」这类前缀冲突里。 */
+    function cityOfText(text) {
+        var s = String(text || '');
+        if (!s) return '';
+        var best = '';
+        master.CITIES.forEach(function (c) {
+            if (s.indexOf(c.name) > -1 && c.name.length > best.length) best = c.name;
+        });
+        return best;
+    }
+
+    /* 同城只要有一条在用围栏就算覆盖：围栏半径只有 1~3 km，而网点坐标就是城市中心，
+       所以覆盖判定落在城市粒度上，不是逐点算距离 */
+    function fenceOfCity(city) {
+        if (!city) return null;
+        return TMS.db.col('geofences').filter(function (g) {
+            return g.status === 'active' && g.city === city;
+        })[0] || null;
+    }
+
+    function pointInFence(point, fence) {
+        if (!point || !fence || !fence.center) return false;
+        return util.distanceKm(fence.center, point) * 1000 <= (Number(fence.radiusM) || 0);
+    }
+
+    /* 越界统计只吃「显式写了地点」的流水：常规作业地点由订单+节点派生、根本不落库，
+       留下的都是人工改判或异常上报，正好是要拿围栏核对的那批 */
+    function fenceAudit(days) {
+        var db = TMS.db;
+        var cutoff = util.addDays(util.now(), -(days || 30)).getTime();
+        var fences = db.col('geofences');
+        var activeCity = {};
+        fences.forEach(function (g) { if (g.status === 'active') activeCity[g.city] = g; });
+        var breaches = {}, unknown = 0, covered = 0, total = 0;
+        db.col('scans').forEach(function (s) {
+            if (!s.location) return;
+            if (util.toDate(s.opTime).getTime() < cutoff) return;
+            total++;
+            var city = cityOfText(s.location);
+            if (!city) { unknown++; return; }
+            if (activeCity[city]) { covered++; return; }
+            var b = breaches[city] || (breaches[city] = {
+                city: city, count: 0, orders: [], nodes: {},
+                branches: db.col('branches').filter(function (x) { return x.city === city; }).length
+            });
+            b.count++;
+            b.nodes[s.node] = (b.nodes[s.node] || 0) + 1;
+            if (b.orders.length < 4 && s.orderId) b.orders.push(s.orderId);
+        });
+        var list = Object.keys(breaches).map(function (k) {
+            var b = breaches[k];
+            var c = master.cityByName(b.city);
+            if (!c) return null;
+            var nearest = null, nearKm = Infinity;
+            fences.forEach(function (g) {
+                if (!g.center) return;
+                var km = util.distanceKm(c, g.center);
+                if (km < nearKm) { nearKm = km; nearest = g; }
+            });
+            b.center = { lat: c.lat, lng: c.lng };
+            b.fenceCount = b.branches ? Math.ceil(b.branches / 3) : 1;
+            b.nearestName = nearest ? nearest.name : '';
+            b.nearestKm = Math.round(nearKm);
+            b.hub = (master.nearestHub(c) || {}).name || '';
+            return b;
+        }).filter(Boolean);
+        return {
+            days: days || 30, total: total, covered: covered, unknown: unknown,
+            breaches: util.sortBy(list, 'count', 'desc'),
+            fenceCities: Object.keys(activeCity).length, fenceRows: fences.length
+        };
+    }
+
     TMS.network = {
+        cityOfText: cityOfText, fenceOfCity: fenceOfCity, pointInFence: pointInFence, fenceAudit: fenceAudit,
         cityInfo: cityInfo, hubOf: hubOf, hubById: hubById,
         branchesOf: branchesOf, branch: branch, collectBranch: collectBranch, deliverBranch: deliverBranch,
         planRoute: planRoute, planOf: planOf, tripFor: tripFor, pickVehicle: pickVehicle, loadPlan: loadPlan,

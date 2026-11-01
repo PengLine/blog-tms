@@ -533,6 +533,83 @@
         // 场地/班组/车队/系统这类不挂在票上的固定开支按月计提，账面才不只有单票成本
         util.unique(payablePeriods).forEach(function (p) { TMS.finance.accruePeriodExpenses(p); });
 
+        /* ---------- 仓储库存流水 ---------- */
+
+        /* 库存行只存「当前数量」不够：没有出入库凭证就核不出账实差异，也算不出消耗速率与周转天数。
+           按「期初建账 → 领用出库 → 补货入库 → 盘点调整」回放一串流水，并让 Σ带符号流水 恰好等于现有存量，
+           页面的账实核对必须对得上才是真账。跨仓调拨拆成「一出一入」两条配对流水，同样不落规则之外。
+           出库只减库存、不确认费用：包材的单票成本已在计费口径里按订单摊过，这里再入账就是双计。 */
+        var USE_TEXT = ['分拨包装领用', '网点耗材领用', '冷链冰袋周转', '面单打印消耗', '托盘周转调用'];
+        var mvDate = function (back) { return util.addDays(realNow, -back); };
+        db.col('stocks').forEach(function (s) {
+            var wh = db.get('warehouses', s.warehouseId) || {};
+            var keeper = wh.manager || '仓管员';
+            var cur = Math.max(0, Number(s.qty) || 0);
+            var ev = [];
+            var sumOut = 0, sumIn = 0, adj = 0;
+            var nOut = cur > 40 ? 2 + Math.floor(rand() * 2) : 1;
+            for (var i = 0; i < nOut; i++) {
+                var q = Math.max(1, Math.round(cur * (0.04 + rand() * 0.1)));
+                if (sumOut + q > cur * 0.45) break;
+                sumOut += q;
+                ev.push({ kind: 'out', qty: q, at: mvDate(3 + Math.floor(rand() * 38)),
+                    reason: util.pick(USE_TEXT, rand), operator: keeper });
+            }
+            var nIn = rand() < 0.5 ? 1 : 2;
+            for (var j = 0; j < nIn; j++) {
+                var qi = Math.max(2, Math.round(cur * (0.1 + rand() * 0.18)));
+                // 入库不能把期初压成负数：建仓时不可能「先卖后补」
+                if (sumIn + qi > cur + sumOut - 1) break;
+                sumIn += qi;
+                ev.push({ kind: 'in', qty: qi, at: mvDate(6 + Math.floor(rand() * 34)),
+                    reason: '采购到货入库', operator: keeper });
+            }
+            if (rand() < 0.18 && cur > 30) {
+                adj = (rand() < 0.5 ? -1 : 1) * Math.max(1, Math.round(cur * 0.012));
+                ev.push({ kind: 'adjust', qty: adj, at: mvDate(1 + Math.floor(rand() * 20)),
+                    reason: adj < 0 ? '月度盘点盘亏' : '月度盘点盘盈', operator: keeper });
+            }
+            ev.push({ kind: 'in', qty: cur + sumOut - sumIn - adj, at: mvDate(46 + Math.floor(rand() * 8)),
+                reason: '期初建账', operator: keeper });
+            ev.sort(function (a, b) { return a.at.getTime() - b.at.getTime(); });
+            ev.forEach(function (m) {
+                var at = util.addHours(m.at, 8 + Math.floor(rand() * 10));
+                db.create('stockMovements', {
+                    kind: m.kind, date: util.dateKey(at), warehouseId: s.warehouseId, materialId: s.materialId,
+                    qty: m.qty, reason: m.reason, operator: m.operator, createdAt: util.iso(at)
+                }, { stamp: false });
+            });
+            var last = ev[ev.length - 1];
+            if (last) s.updatedAt = util.iso(util.addHours(last.at, 12));
+        });
+
+        /* 缺料补货：低库存物料挂一张在途采购单 + 对应供应商应付，
+           到货入库时把在途冲平、库存加回、告警自动消除——补货链路在建库阶段就要是活的 */
+        db.col('materials').filter(function (m) { return m.stock < m.safeStock; }).forEach(function (m) {
+            var need = Math.max(10, Math.round((m.safeStock - m.stock) * 1.4));
+            var wh = db.col('warehouses')[Math.floor(rand() * Math.max(1, db.col('warehouses').length))];
+            if (!wh) return;
+            /* 一部分补货单故意压在 8~20 天前：到货超期是采购日常，
+               这样「采购到货超期」巡检与「催到货」动作在建库里就有真实对象可指 */
+            var back = rand() < 0.4 ? 8 + Math.floor(rand() * 13) : Math.floor(rand() * 6);
+            var at = util.addDays(realNow, -back);
+            var sup = db.get('suppliers', m.supplierId) || {};
+            var amount = util.money(util.round(need * (Number(m.price) || 1), 2));
+            var mv = db.create('stockMovements', {
+                kind: 'purchase', date: util.dateKey(at), warehouseId: wh.id, materialId: m.id,
+                qty: need, status: 'pending', reason: '安全库存不足，紧急补货',
+                operator: wh.manager || '仓管员', createdAt: util.iso(at)
+            }, { stamp: false });
+            var ap = db.create('payables', {
+                refId: m.id, refNo: mv.id, target: sup.name || m.supplier || '物料供应商', targetType: 'supplier',
+                category: '物料耗材', amount: amount, date: util.dateKey(at),
+                dueDate: util.dateKey(util.addDays(at, sup.settleCycle === '半月结' ? 15 : 30)),
+                status: 'pending', settledAt: '', remark: need + (m.unit || '件') + ' ' + m.name + ' 采购在途'
+            }, { stamp: false });
+            db.update('stockMovements', mv.id, { refId: ap.id });
+            m.inTransit = (Number(m.inTransit) || 0) + need;
+        });
+
         /* ---------- 考核与绩效 ---------- */
 
         var perfPeriods = util.unique(db.col('orders').map(function (o) { return util.monthKey(o.createdAt); })).slice(-1);

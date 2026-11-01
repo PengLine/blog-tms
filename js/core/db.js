@@ -43,6 +43,7 @@
         warehouses: { prefix: 'WH', label: '仓库' },
         materials: { prefix: 'MAT', label: '物料' },
         stocks: { prefix: 'STK', label: '库存' },
+        stockMovements: { prefix: 'SMV', label: '库存流水', trim: 120 },
         devices: { prefix: 'DEV', label: '扫描设备' },
         geofences: { prefix: 'GF', label: '电子围栏' },
         alerts: { prefix: 'ALR', label: '告警', trim: 30 },
@@ -476,6 +477,10 @@
         }
         if (opts.stamp !== false && !record.createdAt) record.createdAt = util.iso(util.now());
         col(name).push(record);
+        /* 行是原地改的对象，新行直接进记忆化表；否则 create 前查过一次「不存在」的号会被
+           NOT_FOUND 缓存留在表里，发号查重就会把刚建出来的单号当成空位 */
+        var map = idMaps[name];
+        if (map && record.id) map[record.id] = record;
         bump(name);
         return record;
     }
