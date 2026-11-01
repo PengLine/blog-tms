@@ -1,0 +1,160 @@
+
+### orders (667)
+  keys: id, waybillNo, customerId, contact, phone, channel, goods, pieces, weight, dims×661, chargeableWeight, service, paymentMethod, freight, fees, origin, destination, originBranchId, destBranchId, hubFrom, hubTo, senderAddress, receiverName, receiverAddress, receiverPhone, status, createdAt, updatedAt, distanceKm, receivableStatus, cost, tripId×635, courierId×513, courier×513, signedAt×496, pod×496, codAmount×53, declaredValue×232, remark×250, isInsured×158, exceptionCount×71, routeId×11, auditedAt×30, returnedAt×6, reverseOrderId×6, problemFrom×31, exceptionDeduction×31, orderType×6, reverseOf×6, cancelledAt×1
+  sample: {"id":"HLAH2026102964782084","waybillNo":"WB16746180695894","orderType":"reverse","customerId":"CU0027","contact":"唐捷磊","phone":"18644584672","channel":"客户经理","goods":"服装鞋帽","pieces":1,"weight":8.77,"chargeableWeight":9.14,"service":"加急","paymentMethod":"现付","freight":71.94,"fees":{"cardId":"RC0026","contRate":4.01,"km":1569},"origin":"合肥","destination":"大连","originBranchId":"BR0014","destBranchId":"BR0065","hubFrom":"HB0001","hubTo":"HB0007","senderAddress":"合肥市临港片区864号","receiverName":"唐捷磊","receiverAddress":"大连市闵行区工业园10号","receiverPhone":"18644584672","status":"signed","createdAt":"2026-10-29T00:44","updatedAt":"2026-10-31T12:58","distanceKm":1954,"remark":"逆向退货件 · 原单 HLLN2026102464784470
+
+### scans (4836)
+  keys: orderId, node, opTime, weight×913, location×736, operator, device×2426, remark×454, dueH×620, result×38
+  sample: {"orderId":"HLSH2026103152000930","node":"DEPARTURE","opTime":"2026-11-01T12:16","dueH":14,"operator":"杨杰"}
+
+### sortingTasks (640)
+  keys: orderId, status, actualMinutes, id, createdAt, finishedAt×635, operator×635, chute×635, result×635
+  sample: {"orderId":"HLAH2026102964782084","status":"done","actualMinutes":3,"id":"SRT202610290052","createdAt":"2026-10-29T07:44","finishedAt":"2026-10-29T13:06","operator":"何雪彬","chute":"","result":""}
+
+### loadingTasks (189)
+  keys: transportId, status, actualMinutes, id, createdAt, operator, finishedAt
+  sample: {"transportId":"TRP202610290011","status":"done","actualMinutes":23,"id":"LDG202610290011","createdAt":"2026-10-29T18:34","operator":"司机","finishedAt":"2026-10-29T18:34"}
+
+### transports (189)
+  keys: id, date, tripId×118, mode, dispatchType, fromHub, toHub, carrierId×177, departAt, status, cost, createdAt, orders, pieces, weight, loadRate, actualDepartAt, actualArriveAt×144, toCity×67, vehicleId×12, driverId×12
+  sample: {"id":"TRP202610290011","date":"2026-10-29","tripId":"TRP0006","mode":"陆运","dispatchType":"ltl","fromHub":"HB0001","toHub":"HB0007","carrierId":"CAR0001","departAt":"18:00","status":"completed","cost":{"t":90,"km":1189,"d":1,"r":1.11},"createdAt":"2026-10-29T18:34","orders":1,"pieces":1,"weight":9.14,"loadRate":0,"actualDepartAt":"2026-10-29T18:34","actualArriveAt":"2026-10-31T02:31"}
+
+### trips (57)
+  keys: id, code, fromHub, fromHubName, fromCity, toHub, toHubName, toCity, mode, distanceKm, transitHours, departAt, arriveAt, days, vehicleType, capacityKg, onTimeRate, status
+  sample: {"id":"TRP0057","code":"武汉—沈阳 空运","fromHub":"HB0004","fromHubName":"武汉分拨中心","fromCity":"武汉","toHub":"HB0007","toHubName":"沈阳分拨中心","toCity":"沈阳","mode":"空运","distanceKm":1489.7,"transitHours":11,"departAt":"22:00","arriveAt":"09:00","days":"每天","vehicleType":"-","capacityKg":4000,"onTimeRate":0.954,"status":"active"}
+
+### receivables (525)
+  keys: orderId, customerId, amount, codAmount, dueDate, status, date, id, signedAt×361, billId×524, paidAt×24, invoiceNo×24, voidReason×1, updatedAt×1
+  sample: {"orderId":"HLLN2026110140976809","customerId":"CU0026","amount":244.95,"codAmount":3100,"dueDate":"2026-11-08","status":"pending","date":"2026-11-01T13:06","id":"AR202611010024","billId":"BILL202611010035"}
+
+### payables (386)
+  keys: refId, target, targetType, targetId×189, category, amount, date×371, dueDate, status, id, createdAt×204, refNo×15, period×15, remark×197
+  sample: {"refId":"HB0002","target":"广州分拨中心","targetType":"branch","category":"操作费","amount":0.55,"date":"2026-11-28","dueDate":"2026-12-16","status":"pending","remark":"1 件分拣操作费","id":"AP202611010205"}
+
+### bills (35)
+  keys: billNo, customerId, customer, period, itemCount, totalAmount, receivedAmount, status, dueDate, issuedAt, id, createdAt
+  sample: {"billNo":"BILL202611035","customerId":"CU0026","customer":"万家贸易有限公司","period":"2026-11","itemCount":1,"totalAmount":244.95,"receivedAmount":0,"status":"draft","dueDate":"2026-11-08","issuedAt":"2026-11-01T14:27","id":"BILL202611010035","createdAt":"2026-11-01T14:27"}
+
+### finances (593)
+  keys: type, category, amount, status, date, orderId×576, remark, id, refId×61, signed×7, nature×22
+  sample: {"type":"expense","category":"客服人工","amount":13161.29,"status":"settled","date":"2026-11-01T07:03","refId":"2026-10","remark":"客服中心与理赔组人力（1 × ¥34,000.00 × 39%）","id":"FIN202611010084"}
+
+### rechecks (30)
+  keys: orderId, waybillNo, customer, originalWeight, auditedWeight, originalChargeable, auditedChargeable, originalFreight, auditedFreight, delta, type, reason, operator, auditedAt, id, createdAt
+  sample: {"orderId":"HLSX2026103132953368","waybillNo":"WB22452780068373","customer":"盛世服饰有限公司","originalWeight":3.16,"auditedWeight":2.61,"originalChargeable":5,"auditedChargeable":5,"originalFreight":48.25,"auditedFreight":48.25,"delta":0,"type":"一致","reason":"分称抽检","operator":"王敏彬","auditedAt":"2026-11-01T10:52","id":"CHK202611010013","createdAt":"2026-11-01T10:52"}
+
+### codRecords (42)
+  keys: orderId, waybillNo, shipper, shipperId, consignee, goodsValue, serviceFee, netPayable, collectedAt, courier, remitStatus, id, createdAt, remittedAt×22, operator×22
+  sample: {"orderId":"HLLN2026102740971340","waybillNo":"WB30804388193919","shipper":"万家贸易有限公司","shipperId":"CU0026","consignee":"同事代收","goodsValue":12011,"serviceFee":240.22,"netPayable":11770.78,"collectedAt":"2026-11-01T12:48","courier":"马敏","remitStatus":"pending","id":"COD202611010004","createdAt":"2026-11-01T12:48"}
+
+### exceptions (71)
+  keys: orderId, waybillNo, customer, type, description, occurredAt, reportedAt, source, reporter, status, level, slaDeadline, slaHours, escalated, deductionAmount, relatedOrder, flow, id, createdAt, handler×31, acceptedAt×31, responsibleParty×31, responsible×31, responsibilityAt×31, resolution×31, solution×31, rootCause×31, resolvedAt×31, closeOperator×31, linkedClaimId×8, escalateAt×5, updatedAt×5
+  sample: {"orderId":"HLSC2026102951528503","waybillNo":"WB19790637464438","customer":"南方医疗器械有限公司","type":"延迟送达","description":"节点[干线发出]超标准时限 18.7 小时未更新，系统自动预警","occurredAt":"2026-11-01T14:27","reportedAt":"2026-11-01T14:27","source":"系统预警","reporter":"超时巡检任务","status":"pending","level":"三级","slaDeadline":"2026-11-01T18:27","slaHours":4,"escalated":false,"deductionAmount":0,"relatedOrder":"青岛","flow":[{"time":"2026-11-01T14:27","actor":"超时巡检任务","action":"异常上报"}],"id":"EX202611010039","createdAt":"2026-11-01T14:27"}
+
+### tickets (31)
+  keys: orderId, waybillNo, customer, type, priority, content, channel, status, assignee, createdAt, deadline, id, acceptedAt×30, updatedAt×30, resolvedAt×30, result×30, satisfaction×30, closeOperator×30, linkedExceptionId×5
+  sample: {"orderId":"HLXJ2026101912408514","waybillNo":"WB11412846518981","customer":"天成供应链有限公司","type":"催件","priority":"低","content":"包裹显示异常请核实","channel":"电话","status":"resolved","assignee":"韩康斌","createdAt":"2026-11-01T12:44","deadline":"2026-11-02T12:44","id":"CS202611010002","acceptedAt":"2026-11-02T01:34","updatedAt":"2026-11-02T03:05","resolvedAt":"2026-11-02T03:05","result":"已改址并通知末端网点","satisfaction":"满意","closeOperator":"韩康斌"}
+
+### claims (8)
+  keys: orderId, waybillNo, customer, type, amount, reason, status, applicant, exceptionId, createdAt, deadline, id, declaredValue×2, isInsured×2
+  sample: {"orderId":"HLBJ2026102512946901","waybillNo":"WB15844556393195","customer":"锦程医疗器械有限公司","type":"货物破损","amount":106,"reason":"已与客户达成一致补发处理","status":"pending","applicant":"运营主管","exceptionId":"EX202610280003","createdAt":"2026-10-29T21:57","deadline":"2026-11-05","id":"CL202610290001"}
+
+### evaluations (26)
+  keys: employeeId, employee, role, deptId, deptName, period, kpiScore, abilityScore, attitudeScore, totalScore, evaluator, comment, promotion, status, createdAt, id, grade, evaluatedAt
+  sample: {"employeeId":"EMP0110","employee":"胡浩萌","role":"deliveryman","deptId":"DEP0004","deptName":"网点服务部","period":"2026-11","kpiScore":62.8,"abilityScore":66.6,"attitudeScore":67.5,"totalScore":64.5,"evaluator":"何静杰","comment":"履约质量稳定，客户零投诉","promotion":"绩效改进计划","status":"done","createdAt":"2026-11-01T07:03","id":"EVA202611010026","grade":"D","evaluatedAt":"2026-11-01T07:03"}
+
+### performances (292)
+  keys: employeeId, period, score, grade, id
+  sample: {"employeeId":"EMP0335","period":"2026-11","score":40,"grade":"D","id":"PRF202611010292"}
+
+### clockRecords (203)
+  keys: employeeId, date, clockIn, shiftCode, device×58, id, clockOut
+  sample: {"employeeId":"EMP0083","date":"2026-10-31","clockIn":"2026-10-31T06:19","shiftCode":"MID","id":"CLK202610310041","clockOut":"2026-10-31T16:30"}
+
+### shifts (299)
+  keys: employeeId, employee, role, date, shiftCode, orgId, hubId×182, attendance, id, createdAt
+  sample: {"employeeId":"EMP0083","employee":"陈涛辉","role":"branch","date":"2026-10-29","shiftCode":"NIGHT","orgId":"BR0005","attendance":"待确认","id":"SFT202610290050","createdAt":"2026-10-29T14:27"}
+
+### employees (335)
+  keys: id, name, role, deptId, deptName, orgId, orgName, position, phone, entryAt, status, salary, badge, city, plateNo, hubId, branchId
+  sample: {"id":"EMP0335","name":"彭伟","role":"transporter","deptId":"DEP0002","deptName":"运输调度部","orgId":"DEP0002","orgName":"运输调度部","position":"干线司机","phone":"18691961097","entryAt":"2025-10-12","status":"active","salary":9935,"badge":"HT1335","city":"上海","plateNo":"","hubId":"HB0001","branchId":""}
+
+### departments (9)
+  keys: id, name, parentId, manager
+  sample: {"id":"DEP0009","name":"信息技术部","parentId":"","manager":"褚技术"}
+
+### users (66)
+  keys: id, username, name, role, passwordHash, orgId, orgName, personId, customerId×6, phone, status, lastLoginAt, createdAt
+  sample: {"id":"USR0159","username":"emp0093","name":"黄磊","role":"deliveryman","passwordHash":"h:2576725674","orgId":"BR0008","orgName":"宁波闵行区营业部","personId":"EMP0093","phone":"18063457626","status":"active","lastLoginAt":"2026-10-28T14:27","createdAt":"2026-03-30"}
+
+### roles (6)
+  keys: id, code, name, permissionCodes, builtin, status, userCount
+  sample: {"id":"ROL0006","code":"client","name":"客户","permissionCodes":["order:view","order:create","tracking:view"],"builtin":true,"status":"active","userCount":0}
+
+### permissions (37)
+  keys: id, code, name, module
+  sample: {"id":"PER0037","code":"data:reset","name":"数据重建","module":"系统"}
+
+### customers (34)
+  keys: id, name, shortName, level, levelName, industry, city, province, code, zone, contact, phone, email, settleCycle, discountRate, creditLimit, monthlyVolume, contractFrom, contractTo, status, registerAt, senderAddress, balance, points×12
+  sample: {"id":"CU0034","name":"恒信电子商务有限公司","shortName":"C034","level":"C","levelName":"散客","industry":"医药健康","city":"合肥","province":"安徽省","code":"AH","zone":"华东","contact":"罗璐","phone":"18087549654","email":"","settleCycle":"现付","discountRate":0,"creditLimit":0,"monthlyVolume":34,"contractFrom":"2026-04-09","contractTo":"2027-07-29","status":"active","registerAt":"2026-02-11","senderAddress":"合肥市开发区工业园78号","balance":0}
+
+### branches (67)
+  keys: id, name, city, province, zone, code, lat, lng, hubId, hubName, type, manager, phone, address, area, staffCount, status, openAt, closeAt, dailyCapacity
+  sample: {"id":"BR0067","name":"哈尔滨浦东新区营业部","city":"哈尔滨","province":"黑龙江省","zone":"东北","code":"HL","lat":45.803,"lng":126.535,"hubId":"HB0007","hubName":"沈阳分拨中心","type":"直营枢纽网点","manager":"陈欣","phone":"13611645093","address":"哈尔滨市徐泾镇环城快速695号","area":275,"staffCount":5,"status":"active","openAt":"08:00","closeAt":"19:00","dailyCapacity":770}
+
+### hubs (7)
+  keys: id, name, city, zone, role, address, lat, lng, areaM2, capacityPieces, usedPieces, manager, phone, status, sortLines, updatedAt
+  sample: {"id":"HB0007","name":"沈阳分拨中心","city":"沈阳","zone":"东北","role":"区域枢纽","address":"沈阳市开发区物流大道 1 号","lat":41.806,"lng":123.432,"areaM2":20000,"capacityPieces":70000,"usedPieces":12605,"manager":"沈阳主管","phone":"15096900939","status":"active","sortLines":4,"updatedAt":"2026-11-01T14:27"}
+
+### vehicles (46)
+  keys: id, plate, typeCode, typeName, loadKg, volumeM3, lengthM, costPerKm, hubId, hubName, driverId, driver, driverPhone, status, odometer, insuredTo, nextCheckAt, fuelType, coldBox, purchaseAt
+  sample: {"id":"VEH0046","plate":"鲁E89131","typeCode":"TRL","typeName":"13.5 米半挂","loadKg":25000,"volumeM3":85,"lengthM":13.5,"costPerKm":7.4,"hubId":"HB0003","hubName":"北京分拨中心","driverId":"EMP0290","driver":"赵师傅","driverPhone":"18083513189","status":"available","odometer":23170,"insuredTo":"2027-09-20","nextCheckAt":"2026-12-28","fuelType":"柴油","coldBox":false,"purchaseAt":"2023-09-09"}
+
+### carriers (7)
+  keys: id, name, type, contact, phone, settleCycle, rate, onTimeRate, damageRate, contractTo, status
+  sample: {"id":"CAR0007","name":"云途航空物流","type":"空运","contact":"调度7","phone":"15081045475","settleCycle":"月结","rate":0.928,"onTimeRate":0.871,"damageRate":0.001,"contractTo":"2027-05-26","status":"active"}
+
+### suppliers (5)
+  keys: id, name, category, contact, phone, settleCycle, status
+  sample: {"id":"SUP0005","name":"锐捷条码","category":"包材","contact":"采购对接5","phone":"19992102538","settleCycle":"月结","status":"active"}
+
+### routes (22)
+  keys: id, origin, destination, originZone, destinationZone, mode, priority, segments, totalStdHours, distanceKm, deviationCount, status, updatedAt, isFallback×2
+  sample: {"id":"RT0022","origin":"全国","destination":"全国","originZone":"华东","destinationZone":"西南","mode":"陆运","priority":"低","segments":[{"seq":1,"from":"上海揽收","to":"上海分拨中心","mode":"陆运","stdHours":3,"legType":"collect","km":20},{"seq":2,"from":"上海分拨中心","to":"成都分拨中心","mode":"陆运","stdHours":38,"legType":"trunk","km":1661},{"seq":3,"from":"成都分拨中心","to":"成都派送","mode":"陆运","stdHours":7,"legType":"deliver","km":25}],"totalStdHours":48,"distanceKm":1706,"deviationCount":0,"status":"active","updatedAt":"2026-11-01T14:27","isFallback":true}
+
+### rateCards (198)
+  keys: id, name, originZone, destinationZone, origin, destination, service, lineKm, firstWeight, firstFee, continueFee, minCharge, throwRatio, fuelRate, insuredRate, codRate, remoteSurcharge, validFrom, validTo, status, version
+  sample: {"id":"RC0198","name":"同城直送 加急运价","originZone":"华东","destinationZone":"华东","origin":"上海","destination":"上海","service":"加急","lineKm":45,"firstWeight":3,"firstFee":15,"continueFee":1.35,"minCharge":18,"throwRatio":8000,"fuelRate":0.05,"insuredRate":0.003,"codRate":0.008,"remoteSurcharge":0,"validFrom":"2026-09-02","validTo":"2027-08-28","status":"active","version":"2026Q4"}
+
+### warehouses (6)
+  keys: id, name, hubId, city, type, areaM2, usedArea, capacityPieces, usedPieces, manager, status, costPerM2
+  sample: {"id":"WH0006","name":"西安中央仓","hubId":"HB0006","city":"西安","type":"租赁仓","areaM2":22000,"usedArea":13280,"capacityPieces":80000,"usedPieces":37650,"manager":"仓管6","status":"active","costPerM2":1.48}
+
+### materials (8)
+  keys: id, name, unit, price, stock, safeStock, supplierId, supplier, status, updatedAt
+  sample: {"id":"MAT0008","name":"封箱胶带","unit":"卷","price":4.5,"stock":1208,"safeStock":600,"supplierId":"SUP0003","supplier":"鑫源托盘","status":"normal","updatedAt":"2026-11-01T14:27"}
+
+### stocks (48)
+  keys: id, warehouseId, warehouseName, materialId, material, unit, qty, safeQty, updatedAt
+  sample: {"id":"STK00058","warehouseId":"WH0006","warehouseName":"西安中央仓","materialId":"MAT0008","material":"封箱胶带","unit":"卷","qty":104,"safeQty":100,"updatedAt":"2026-10-31T10:27"}
+
+### devices (45)
+  keys: id, name, model, ownerName, city, serial, status, battery, firmware, lastSyncAt, scanCount30d, errorRate
+  sample: {"id":"DEV0045","name":"PDA-7500-045","model":"PDA-7500","ownerName":"广州临港片区营业部","city":"广州","serial":"SN5083764688","status":"busy","battery":81,"firmware":"v2.4.4","lastSyncAt":"2026-11-01T08:27","scanCount30d":40339,"errorRate":0.0177}
+
+### geofences (7)
+  keys: id, name, type, refId, city, center, radiusM, polygon, status, alertCount, updatedAt
+  sample: {"id":"GF0007","name":"沈阳分拨中心电子围栏","type":"hub","refId":"HB0007","city":"沈阳","center":{"lat":41.806,"lng":123.432},"radiusM":2582,"polygon":[{"lat":41.818,"lng":123.417},{"lat":41.818,"lng":123.447},{"lat":41.794,"lng":123.447},{"lat":41.794,"lng":123.417}],"status":"active","alertCount":19,"updatedAt":"2026-09-23T14:27"}
+
+### alerts (12)
+  keys: key, level, title, message, category, owner, status, hitCount, firstAt, lastAt, id, createdAt, entity×10, refId×10
+  sample: {"key":"sla:backlog","level":"danger","title":"压单预警","message":"41 个订单滞留超 24 小时，最久 137 小时","category":"operation","owner":"运营管理部","status":"open","hitCount":1,"firstAt":"2026-11-01T14:27","lastAt":"2026-11-01T14:27","id":"ALR202611010012","createdAt":"2026-11-01T14:27"}
+
+### auditLogs (283)
+  keys: at, action, actionName, entity, refId, detail, actor, role, prev, hash, ip, id, createdAt
+  sample: {"at":"2026-11-01T14:27","action":"exception.create","actionName":"异常上报","entity":"exceptions","refId":"EX202611010039","detail":"延迟送达（三级）关联 HLSC2026102951528503","actor":"超时巡检任务","role":"system","prev":"h1413484149","hash":"h0774140183","ip":"10.20.124.159","id":"LOG202611010176","createdAt":"2026-11-01T14:27"}
+
+### points (450)
+  keys: id, customerId, orderId, points, createdAt
+  sample: {"id":"PTS000450","customerId":"CU0011","orderId":"HLSX2026103132954921","points":10,"createdAt":"2026-11-01T13:01"}
