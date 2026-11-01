@@ -118,14 +118,19 @@
         return s;
     }
 
+    /* 校验授权一律现读角色当前权限，不用登录时快照在 session 里的那份：
+       快照会让「用户权限页改了角色」只影响菜单、不影响路由守卫与按钮，
+       同一个角色两套答案比错到底层更糟。快照仅在数据库还没就绪时兜底 */
     function can(perm) {
         if (!perm) return true;
         var s = readSession();
         if (!s) return false;
-        if (!s.permissions) s.permissions = TMS.rbac.permissionsFor(s.role);
-        if (s.permissions.indexOf('*') > -1) return true;
-        return s.permissions.indexOf(perm) > -1 ||
-            s.permissions.indexOf(perm.split(':')[0] + ':*') > -1;
+        var perms;
+        try { perms = TMS.rbac.permissionsFor(s.role); }
+        catch (err) { perms = s.permissions || []; }
+        if (perms.indexOf('*') > -1) return true;
+        return perms.indexOf(perm) > -1 ||
+            perms.indexOf(perm.split(':')[0] + ':*') > -1;
     }
 
     TMS.auth = {

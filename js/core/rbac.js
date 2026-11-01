@@ -108,9 +108,7 @@
             { id: 'hr', file: 'tms-hr.html', label: '人事管理', icon: '☗', perm: 'hr:manage' },
             { id: 'user', file: 'tms-user.html', label: '用户权限', icon: '⚿', perm: 'user:manage' },
             { id: 'evaluation', file: 'tms-evaluation.html', label: '员工考核', icon: '★', perm: 'evaluation:manage' },
-            { id: 'performance', file: 'tms-performance.html', label: '绩效看板', icon: '♙', perm: 'evaluation:manage' },
-            { id: 'administration', file: 'tms-administration.html', label: '行政管理', icon: '⛁', perm: 'hr:manage' },
-            { id: 'architecture', file: 'tms-architecture.html', label: '架构说明', icon: '⛓', perm: 'monitor:view' }
+            { id: 'performance', file: 'tms-performance.html', label: '绩效看板', icon: '♙', perm: 'evaluation:manage' }
         ] }
     ];
 
@@ -166,9 +164,86 @@
         ]
     };
 
-    function permissionsFor(roleKey) {
+    /* roles 集合由种子引擎按出厂默认建好（code + permissionCodes），
+       用户权限页改写的就是这个字段；菜单、路由守卫、门户导航一律经 permissionsFor 取权限，
+       所以改一处全站生效，不需要第二份「谁是什么角色」的表 */
+    function roleRow(roleKey) {
+        try {
+            if (!TMS.db) return null;
+            return TMS.db.findOne('roles', function (r) { return r.code === roleKey; });
+        } catch (err) { return null; }
+    }
+
+    function defaultPerms(roleKey) {
         if (roleKey === 'admin') return ['*'];
         return (ROLE_PERMS[roleKey] || []).slice();
+    }
+
+    function permissionsFor(roleKey) {
+        var row = roleRow(roleKey);
+        if (row && row.permissionCodes) return row.permissionCodes.slice();
+        return defaultPerms(roleKey);
+    }
+
+    function isSameSet(a, b) {
+        if (a.length !== b.length) return false;
+        var m = {};
+        a.forEach(function (x) { m[x] = 1; });
+        return b.every(function (x) { return !!m[x]; });
+    }
+
+    /* 角色清单：矩阵与统计都从这里出，权限点定义在 PERMISSIONS、名称在 cfg.roles */
+    function menuItems(roleKey) {
+        return roleKey === 'admin'
+            ? ADMIN_MENU.reduce(function (a, g) { return a.concat(g.items); }, [])
+            : (PORTAL_MENU[roleKey] || []);
+    }
+
+    function roles() {
+        return Object.keys(ROLE_PERMS).map(function (key) {
+            var info = (TMS.cfg.roles || {})[key] || {};
+            var row = roleRow(key);
+            var perms = permissionsFor(key);
+            var def = defaultPerms(key);
+            var all = perms.indexOf('*') > -1;
+            var menu = menuItems(key);
+            var visible = menu.filter(function (it) { return all || !it.perm || perms.indexOf(it.perm) > -1; }).length;
+            return {
+                code: key, id: row ? row.id : '', name: (row && row.name) || info.name || key,
+                portal: info.portal || 'index.html', home: info.home || '',
+                perms: perms, defaultPerms: def, count: all ? PERMISSIONS.length : perms.length,
+                full: all, overridden: !isSameSet(perms, def),
+                menuTotal: menu.length, menuVisible: visible,
+                accounts: (TMS.db ? TMS.db.col('users') : []).filter(function (u) { return u.role === key; }).length,
+                updatedAt: (row && row.updatedAt) || ''
+            };
+        });
+    }
+
+    /* 改写角色权限：权限点以字典为准，字典里查不到的 code 永远不会被菜单命中，
+       留着只会让矩阵出现幽灵行；角色行由种子建好，这里只更新不新建 */
+    function setRolePerms(roleKey, perms, actor) {
+        var list = (perms || []).filter(function (code) {
+            return code === '*' || PERMISSIONS.some(function (p) { return p.code === code; });
+        });
+        var row = roleRow(roleKey);
+        var at = TMS.util.iso(TMS.util.now());
+        var saved;
+        TMS.db.batch(function () {
+            saved = row
+                ? TMS.db.update('roles', row.id, { permissionCodes: list, updatedAt: at, actor: actor || '' })
+                : TMS.db.create('roles', {
+                    code: roleKey, name: ((TMS.cfg.roles || {})[roleKey] || {}).name || roleKey,
+                    permissionCodes: list, builtin: false, status: 'active', updatedAt: at, actor: actor || ''
+                });
+            TMS.db.commit('roles', saved.id, 'role:perms');
+        }, 'role:perms');
+        return saved;
+    }
+
+    /* 恢复出厂：写回 ROLE_PERMS，而不是删行——roles 行还挂着账号数与角色名，删了矩阵就缺一格 */
+    function clearRolePerms(roleKey) {
+        return setRolePerms(roleKey, defaultPerms(roleKey), '恢复默认');
     }
 
     function modules() {
@@ -221,6 +296,11 @@
         ADMIN_MENU: ADMIN_MENU,
         PORTAL_MENU: PORTAL_MENU,
         permissionsFor: permissionsFor,
+        defaultPerms: defaultPerms,
+        roles: roles,
+        roleRow: roleRow,
+        setRolePerms: setRolePerms,
+        clearRolePerms: clearRolePerms,
         modules: modules,
         adminMenu: adminMenu,
         portalMenu: portalMenu,

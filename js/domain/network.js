@@ -168,18 +168,30 @@
         return best;
     }
 
-    /* 同城只要有一条在用围栏就算覆盖：围栏半径只有 1~3 km，而网点坐标就是城市中心，
-       所以覆盖判定落在城市粒度上，不是逐点算距离 */
-    function fenceOfCity(city) {
-        if (!city) return null;
-        return TMS.db.col('geofences').filter(function (g) {
-            return g.status === 'active' && g.city === city;
-        })[0] || null;
-    }
-
+    /* 覆盖判定按几何算：围栏是圆，圆心到目标点的距离小于半径即算在网内。
+       半径因此是活性参数——调小它，边缘城市会掉出覆盖；调大它，一张围栏能罩住邻市。
+       同城网点在档案里共用城市质心（master.buildBranches 直接取 CITIES 的经纬度），
+       所以逐网点算距离只会得到「要么全在圈内要么全不在」，判定落在城市粒度上才是真的 */
     function pointInFence(point, fence) {
         if (!point || !fence || !fence.center) return false;
         return util.distanceKm(fence.center, point) * 1000 <= (Number(fence.radiusM) || 0);
+    }
+
+    function fenceOfCity(city) {
+        var c = typeof city === 'string' ? master.cityByName(city) : city;
+        if (!c) return null;
+        var hit = null;
+        TMS.db.col('geofences').forEach(function (g) {
+            if (hit || g.status !== 'active' || !g.center) return;
+            if (pointInFence(c, g)) hit = g;
+        });
+        return hit;
+    }
+
+    /* 一张围栏罩住了哪些城市：半径改动的直接后果，围栏详情要拿它说话 */
+    function citiesInFence(fence) {
+        if (!fence || !fence.center) return [];
+        return master.CITIES.filter(function (c) { return pointInFence(c, fence); });
     }
 
     /* 越界统计只吃「显式写了地点」的流水：常规作业地点由订单+节点派生、根本不落库，
@@ -188,8 +200,11 @@
         var db = TMS.db;
         var cutoff = util.addDays(util.now(), -(days || 30)).getTime();
         var fences = db.col('geofences');
-        var activeCity = {};
-        fences.forEach(function (g) { if (g.status === 'active') activeCity[g.city] = g; });
+        var coveredCache = {};
+        function coveredBy(city) {
+            if (coveredCache[city] === undefined) coveredCache[city] = fenceOfCity(city);
+            return coveredCache[city];
+        }
         var breaches = {}, unknown = 0, covered = 0, total = 0;
         db.col('scans').forEach(function (s) {
             if (!s.location) return;
@@ -197,7 +212,7 @@
             total++;
             var city = cityOfText(s.location);
             if (!city) { unknown++; return; }
-            if (activeCity[city]) { covered++; return; }
+            if (coveredBy(city)) { covered++; return; }
             var b = breaches[city] || (breaches[city] = {
                 city: city, count: 0, orders: [], nodes: {},
                 branches: db.col('branches').filter(function (x) { return x.city === city; }).length
@@ -212,12 +227,14 @@
             if (!c) return null;
             var nearest = null, nearKm = Infinity;
             fences.forEach(function (g) {
-                if (!g.center) return;
+                if (!g.center || g.status !== 'active') return;
                 var km = util.distanceKm(c, g.center);
                 if (km < nearKm) { nearKm = km; nearest = g; }
             });
             b.center = { lat: c.lat, lng: c.lng };
-            b.fenceCount = b.branches ? Math.ceil(b.branches / 3) : 1;
+            /* 建议半径：罩住本市质心是底线，再把最近的在用围栏纳进半程，
+               一张 25 km 的城市围栏能顺手管住广佛这类近距城市群，比一城一张更贴近实际布点 */
+            b.radiusM = Math.max(6000, Math.min(60000, Math.round(nearKm * 500 / 500) * 500));
             b.nearestName = nearest ? nearest.name : '';
             b.nearestKm = Math.round(nearKm);
             b.hub = (master.nearestHub(c) || {}).name || '';
@@ -226,12 +243,16 @@
         return {
             days: days || 30, total: total, covered: covered, unknown: unknown,
             breaches: util.sortBy(list, 'count', 'desc'),
-            fenceCities: Object.keys(activeCity).length, fenceRows: fences.length
+            coveredCities: master.CITIES.filter(function (x) { return !!fenceOfCity(x); }).length,
+            cityCount: master.CITIES.length,
+            fenceRows: fences.length,
+            activeRows: fences.filter(function (g) { return g.status === 'active'; }).length
         };
     }
 
     TMS.network = {
-        cityOfText: cityOfText, fenceOfCity: fenceOfCity, pointInFence: pointInFence, fenceAudit: fenceAudit,
+        cityOfText: cityOfText, fenceOfCity: fenceOfCity, pointInFence: pointInFence,
+        citiesInFence: citiesInFence, fenceAudit: fenceAudit,
         cityInfo: cityInfo, hubOf: hubOf, hubById: hubById,
         branchesOf: branchesOf, branch: branch, collectBranch: collectBranch, deliverBranch: deliverBranch,
         planRoute: planRoute, planOf: planOf, tripFor: tripFor, pickVehicle: pickVehicle, loadPlan: loadPlan,

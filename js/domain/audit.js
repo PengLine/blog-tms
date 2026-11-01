@@ -11,6 +11,7 @@
         'exception.create': '异常上报', 'exception.assign': '异常定责', 'exception.close': '异常闭环',
         'claim.approve': '理赔审批', 'finance.settle': '收付结算', 'cod.remit': '代收款上划',
         'rate.update': '运价调整', 'user.login': '用户登录', 'user.manage': '账号变更',
+        'hr.manage': '人事变更', 'perf.calc': '绩效核算',
         'network.update': '网络变更', 'vehicle.manage': '车辆变更', 'data.rebuild': '数据重建'
     };
 

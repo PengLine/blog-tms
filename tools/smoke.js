@@ -508,6 +508,7 @@ check('单号直达按角色落地',
         cod: 'codRecords', rt: 'rateCards', ar: 'receivables', ap: 'payables', fin: 'finances',
         ck: 'rechecks', cust: 'customers', dv: 'devices', tr: 'transports', emp: 'employees',
         wh: 'warehouses', mat: 'materials', veh: 'vehicles', br: 'branches', usr: 'users',
+        dept: 'departments',
         gf: 'geofences', bill: 'bills', hb: 'hubs', cu: 'customers', cv: 'carriers', smv: 'stockMovements'
     };
     const argOf = (act) => {

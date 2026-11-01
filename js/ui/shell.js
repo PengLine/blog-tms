@@ -159,7 +159,7 @@
             '<button type="button" class="tms-iconbtn tms-burger" data-act="shell:menu">☰</button>' +
             '<div class="tms-crumb">' + crumb + '<b>' + esc(title) + '</b></div>' +
             '<div class="tms-topbar-spacer"></div>' +
-            '<div class="tms-search" style="flex:0 1 220px;max-width:220px">' +
+            '<div class="tms-search tms-jump">' +
             '<span class="tms-ico">⌕</span><input class="tms-input" id="tms-jump" placeholder="单号 / 运单号，回车直达" autocomplete="off"></div>' +
             '<span class="tms-clock" id="tms-clock"></span>' +
             '<span id="tms-days">' + daysSeg(shell.state.days) + '</span>' +
@@ -399,9 +399,7 @@
             ui.popup(el, [
                 { icon: '⟳', label: '重建演示数据', act: 'shell:rebuild', tone: 'danger' },
                 { icon: '⤓', label: '导出当前库 JSON', act: 'shell:export' },
-                { icon: '▤', label: '存储与容量', act: 'shell:capacity' },
-                '-',
-                { icon: '⛓', label: '系统架构说明', act: 'shell:arch' }
+                { icon: '▤', label: '存储与容量', act: 'shell:capacity' }
             ], { onPick: function (act, a) { shell.actions[act](a); } });
         },
         'shell:user': function (arg, el) {
@@ -499,7 +497,6 @@
                 footer: ui.btn('关闭', { act: 'ui:close' })
             });
         },
-        'shell:arch': function () { global.location.href = 'tms-architecture.html'; },
         'shell:logout': function () { TMS.auth.logout(); },
         'shell:days': function (n) { shell.state.days = Number(n) || 7; shell.refresh(); },
         'sort': function (key) {

@@ -79,6 +79,11 @@
         return row;
     }
 
+    /* ui.optionsOf 只吃数组，{key: 文案} 形式的状态/类型字典要自己摊平成 {value,label} */
+    function dictOptions(dict) {
+        return Object.keys(dict).map(function (k) { return { value: k, label: dict[k] }; });
+    }
+
     /* 动作表合并（页面动作 + 跨页共享动作），ES5 环境下不依赖 Object.assign */
     function merge() {
         var out = {};
@@ -10662,6 +10667,1483 @@
         })
     });
 
+    /* ---------- 二十八、电子围栏 ---------- */
+
+    /* 围栏表只存几何与归属（圆心、半径、绑定对象、状态），覆盖 / 越界 / 命中一律读时现算：
+       扫描流水每天在长，把统计落库等于第二天就开始说谎 */
+    var GF_TYPE_TEXT = { hub: '分拨场地围栏', city: '城市作业围栏' };
+    var GF_STATUS_TEXT = { active: '在用', draft: '草稿', disabled: '已停用' };
+
+    function gfRefName(g) {
+        if (!g.refId) return '不绑定场地';
+        var h = TMS.master.hubByNameOrId(g.refId);
+        return h ? h.name : g.refId;
+    }
+
+    /* 每座城市归第一张罩住它的在用围栏所有：归属唯一，命中数才不会在两张围栏间重复计 */
+    function gfOwners() {
+        var map = {};
+        TMS.master.CITIES.forEach(function (c) {
+            var g = TMS.network.fenceOfCity(c.name);
+            if (g) map[c.name] = g.id;
+        });
+        return map;
+    }
+
+    /* 一次遍历扫描流水，同时得出「每张围栏命中多少」「哪些城市没人管」，
+       页面三块区域共用这份结果，避免各算各的口径对不上 */
+    function gfScanStats(days) {
+        var owners = gfOwners();
+        var cutoff = util.addDays(util.now(), -days).getTime();
+        var byFence = {}, byCity = {}, orphan = [], located = 0;
+        db.col('scans').forEach(function (s) {
+            if (!s.location) return;
+            if (util.toDate(s.opTime).getTime() < cutoff) return;
+            located++;
+            var city = TMS.network.cityOfText(s.location);
+            if (!city) return;
+            byCity[city] = (byCity[city] || 0) + 1;
+            var fid = owners[city];
+            if (!fid) { orphan.push({ city: city, scan: s }); return; }
+            var b = byFence[fid] || (byFence[fid] = { hit: 0, lastAt: '', orders: {} });
+            b.hit++;
+            if (s.orderId) b.orders[s.orderId] = 1;
+            if (!b.lastAt || String(s.opTime) > String(b.lastAt)) b.lastAt = s.opTime;
+        });
+        return { owners: owners, byFence: byFence, byCity: byCity, orphan: orphan, located: located };
+    }
+
+    /* 半径是这张表上唯一能改变结论的参数：调小会放走边缘城市，调大会顺手罩住邻市 */
+    function gfRadiusEffect(g) {
+        var c = TMS.master.cityByName(g.city);
+        var inside = [], outside = [];
+        TMS.master.CITIES.forEach(function (x) {
+            if (!c) return;
+            var km = util.distanceKm(c, x);
+            if (TMS.network.pointInFence(x, g)) inside.push({ city: x.name, km: util.round(km, 1) });
+            else outside.push({ city: x.name, km: util.round(km, 1) });
+        });
+        outside.sort(function (a, b) { return a.km - b.km; });
+        return { inside: inside, nearMiss: outside.slice(0, 3) };
+    }
+
+    function gfModal(id) {
+        var g = db.get('geofences', id);
+        if (!g) { ui.toast('未找到围栏 ' + id, 'warn'); return; }
+        var days = Math.max(7, Number(curCtx().days) || 7);
+        var stats = gfScanStats(days);
+        var st = stats.byFence[id] || { hit: 0, lastAt: '', orders: {} };
+        var eff = gfRadiusEffect(g);
+        var branches = db.col('branches').filter(function (b) { return b.city === g.city; });
+        var orderIds = Object.keys(st.orders).slice(0, 6);
+        ui.modal({
+            title: g.name,
+            sub: (GF_TYPE_TEXT[g.type] || g.type) + ' · ' + g.city + ' · 半径 ' + fmt.number(g.radiusM) + ' m',
+            body: ui.stack([
+                ui.kpis([
+                    { label: '罩住城市', value: eff.inside.length, unit: '座', tone: eff.inside.length ? 'success' : 'danger', sub: '圆心在本市质心' },
+                    { label: '窗口命中', value: st.hit, unit: '次', tone: 'brand', sub: '近 ' + days + ' 天写在地点的流水' },
+                    { label: '涉及订单', value: Object.keys(st.orders).length, unit: '票', tone: 'info' },
+                    { label: '半径', value: util.round(Number(g.radiusM) / 1000, 2), unit: 'km', tone: 'warn', sub: '决定覆盖范围' },
+                    { label: '同城网点', value: branches.length, unit: '个', tone: 'muted' },
+                    { label: '同城终端', value: db.col('devices').filter(function (d) { return d.city === g.city; }).length, unit: '台', tone: 'muted' }
+                ]),
+                ui.card({
+                    title: '覆盖判定', sub: '城市质心到圆心的距离与半径对照，超出即算越界', flat: true,
+                    body: ui.desc([
+                        { label: '绑定对象', value: esc(gfRefName(g)) + (g.refId ? ' ' + ui.idCell(g.refId, '') : '') },
+                        { label: '围栏状态', value: statusBadge(g.status, GF_STATUS_TEXT) },
+                        { label: '罩住的城市', value: eff.inside.length ? util.unique(eff.inside.map(function (x) { return x.city; })).join('、') : ui.badge('一座也没有', 'danger') },
+                        { label: '半径外最近城市', value: eff.nearMiss.length ? eff.nearMiss.map(function (x) { return esc(x.city) + ' ' + x.km + ' km'; }).join(' · ') : '—' },
+                        { label: '最近命中', value: st.lastAt ? fmt.dateTime(st.lastAt) : '<span class="tms-dim">窗口内无地点流水</span>' },
+                        { label: '建档时间', value: g.updatedAt ? fmt.dateTime(g.updatedAt) : '<span class="tms-dim">未记录</span>' }
+                    ]),
+                    foot: orderIds.length ? '<div class="tms-row">' + orderIds.map(function (o) {
+                        return ui.link((db.get('orders', o) || {}).waybillNo || o, 'order:open', o, { tone: 'ghost' });
+                    }).join(' ') + '<span class="tms-dim">等 ' + Object.keys(st.orders).length + ' 票在本围栏内作业</span></div>' : ''
+                }),
+                ui.card({
+                    title: '同城网点', sub: branches.length + ' 个 · 网点坐标即城市质心，因此同城网点必然同进同出', flat: true,
+                    body: ui.table({
+                        dense: true, keyName: 'id', emptyText: '该市暂无登记网点',
+                        columns: [
+                            { key: 'id', label: '编号', render: function (b) { return ui.idCell(b.id, ''); } },
+                            { key: 'name', label: '网点' },
+                            { key: 'type', label: '类型' },
+                            { key: 'hubName', label: '归属分拨' },
+                            { key: 'staffCount', label: '人数', align: 'right' },
+                            { key: 'status', label: '状态', render: function (b) { return b.status === 'active' ? ui.badge('营业', 'success') : ui.badge('停业', 'muted'); } }
+                        ],
+                        rows: branches.slice(0, 8)
+                    })
+                })
+            ]),
+            footer: ui.btn('调整半径', { tone: 'primary', act: 'gf:resize', arg: g.id }) +
+                ui.btn(g.status === 'active' ? '停用' : '启用', { act: 'gf:toggle', arg: g.id }) +
+                ui.btn('编辑档案', { act: 'gf:edit', arg: g.id }) +
+                ui.btn('关闭', { act: 'ui:close' })
+        });
+    }
+
+    /* 圆心不接受手填：手填经纬度迟早和 cities 表分家，城市一选圆心就定 */
+    function gfFormModal(id, presetCity) {
+        var g = id ? db.get('geofences', id) : null;
+        var hubOptions = ui.optionsOf(db.col('hubs'), 'id', 'name');
+        ui.formModal({
+            title: g ? '编辑围栏 ' + g.name : '新建电子围栏',
+            sub: g ? '改半径会立刻改变覆盖判定与越界告警' : '城市作业围栏建议 20~40 km，分拨场地围栏 1~3 km',
+            notice: g ? '' : '新围栏落库后立刻重跑「电子围栏覆盖缺口」巡检：该城市的越界告警当场核销，不需要等下一轮。',
+            values: g ? {
+                name: g.name, city: g.city, type: g.type, refId: g.refId || '',
+                radiusM: g.radiusM, status: g.status
+            } : {
+                name: presetCity ? presetCity + '作业围栏' : '', city: presetCity || '', type: 'city',
+                refId: '', radiusM: (function () {
+                    var a = TMS.network.fenceAudit(Math.max(7, Number(curCtx().days) || 7));
+                    var b = a.breaches.filter(function (x) { return x.city === presetCity; })[0];
+                    return b ? b.radiusM : 25000;
+                })(),
+                status: 'active'
+            },
+            fields: [
+                { key: 'name', label: '围栏名称', required: true, span: 2, placeholder: '例：福州作业围栏' },
+                { key: 'city', label: '所在城市', type: 'city', required: true, tip: '圆心取该城市质心，不可手填经纬度' },
+                { key: 'type', label: '围栏类型', type: 'select', options: dictOptions(GF_TYPE_TEXT) },
+                { key: 'refId', label: '绑定分拨', type: 'select', options: [{ value: '', label: '不绑定（城市作业围栏）' }].concat(hubOptions) },
+                { key: 'radiusM', label: '覆盖半径', type: 'number', required: true, min: 300, max: 120000, step: 500, unit: '米', tip: '城市质心到圆心的距离小于半径即算覆盖' },
+                { key: 'status', label: '状态', type: 'select', options: dictOptions(GF_STATUS_TEXT) }
+            ],
+            okText: g ? '保存并重跑巡检' : '建立并重跑巡检',
+            onSubmit: function (v) {
+                var city = TMS.master.cityByName(v.city);
+                if (!city) return '城市「' + v.city + '」不在城市档案里，请先在主数据里补';
+                var patch = {
+                    name: v.name, city: v.city, type: v.type, refId: v.type === 'hub' ? v.refId : '',
+                    radiusM: Math.max(300, Number(v.radiusM) || 0), status: v.status,
+                    center: { lat: city.lat, lng: city.lng }, updatedAt: util.iso(util.now())
+                };
+                var saved;
+                db.batch(function () {
+                    saved = g ? db.update('geofences', g.id, patch) : db.create('geofences', patch);
+                    if (saved) db.commit('geofences', saved.id, 'geofence:save');
+                }, 'geofence:save');
+                if (!saved) return '保存失败';
+                TMS.audit.log(g ? 'geofence.update' : 'geofence.create', 'geofences', saved.id,
+                    saved.name + ' 半径 ' + saved.radiusM + ' m', actor());
+                var out = TMS.jobs.run('fenceCoverage').out || {};
+                ui.toast((g ? '已更新围栏' : '已建立围栏') + '，' + v.city + ' 越界告警核销 ' + (out.resolved || 0) +
+                    ' 条，剩余缺口 ' + out.gap + ' 座城市', 'success');
+                TMS.shell.refresh();
+            }
+        });
+    }
+
+    /* 半径单独调：这是围栏上唯一「改了立刻变结论」的参数，给它一条独立入口 */
+    function gfResizeModal(id) {
+        var g = db.get('geofences', id);
+        if (!g) return;
+        var eff = gfRadiusEffect(g);
+        ui.formModal({
+            title: '调整 ' + g.name + ' 的覆盖半径',
+            sub: '当前 ' + fmt.number(g.radiusM) + ' m，罩住 ' + eff.inside.length + ' 座城市',
+            notice: eff.nearMiss.length ? '半径外最近的是 ' + eff.nearMiss[0].city + '（' + eff.nearMiss[0].km +
+                ' km），放大到该距离以上即可一并覆盖。' : '',
+            values: { radiusM: g.radiusM },
+            fields: [{ key: 'radiusM', label: '覆盖半径', type: 'number', required: true, min: 300, max: 120000, step: 500, unit: '米', span: 2 }],
+            okText: '保存并重跑巡检',
+            onSubmit: function (v) { gfApply(id, { radiusM: Math.max(300, Number(v.radiusM) || 0) }, '半径'); }
+        });
+    }
+
+    function gfApply(id, patch, what) {
+        var g = db.get('geofences', id);
+        if (!g) return;
+        db.batch(function () {
+            db.update('geofences', id, patch);
+            db.commit('geofences', id, 'geofence:' + what);
+        }, 'geofence:' + what);
+        TMS.audit.log('geofence.update', 'geofences', id, g.name + ' 调整' + what, actor());
+        var out = TMS.jobs.run('fenceCoverage').out || {};
+        ui.toast('已调整' + what + '，越界缺口剩 ' + out.gap + ' 座城市，本轮核销 ' + (out.resolved || 0) + ' 条告警', 'success');
+        TMS.shell.refresh();
+    }
+
+    /* 批量补围栏：按缺口从大到小建城市作业围栏，半径用审计给出的建议值。
+       一次建完再跑巡检，所以告警是一次性核销掉一批，而不是建一张响一轮 */
+    function gfBulkCover() {
+        var days = Math.max(7, Number(curCtx().days) || 7);
+        var audit = TMS.network.fenceAudit(days);
+        var targets = audit.breaches.slice(0, 10);
+        if (!targets.length) { ui.toast('所有作业城市都已在围栏覆盖内', 'success'); return; }
+        ui.confirm({
+            title: '为 ' + targets.length + ' 座缺口城市建立作业围栏',
+            message: '这些城市的扫描地点写在任何在用围栏之外，系统无法判定作业是否合规。',
+            detail: targets.map(function (b) {
+                return esc(b.city + '：越界 ' + b.count + ' 次 / ' + b.branches + ' 个网点，建议半径 ' + Math.round(b.radiusM / 1000) + ' km');
+            }).join('<br>') + '<br>建完立即重跑巡检，覆盖到的城市告警当场核销。'
+        }).then(function (yes) {
+            if (!yes) return;
+            var created = [];
+            db.batch(function () {
+                targets.forEach(function (b) {
+                    var c = TMS.master.cityByName(b.city);
+                    if (!c) return;
+                    var row = db.create('geofences', {
+                        name: b.city + '作业围栏', type: 'city', refId: '', city: b.city,
+                        center: { lat: c.lat, lng: c.lng }, radiusM: b.radiusM,
+                        status: 'active', updatedAt: util.iso(util.now())
+                    });
+                    if (row) { db.commit('geofences', row.id, 'geofence:bulk'); created.push(row.name); }
+                });
+            }, 'geofence:bulk');
+            if (!created.length) { ui.toast('没有可建立的城市', 'warn'); return; }
+            TMS.audit.log('geofence.bulk', 'geofences', '', '批量建立作业围栏：' + created.join('、'), actor());
+            var out = TMS.jobs.run('fenceCoverage').out || {};
+            ui.toast('已建立 ' + created.length + ' 张围栏，核销 ' + (out.resolved || 0) + ' 条越界告警，剩 ' + out.gap + ' 座城市缺口', 'success');
+            TMS.shell.refresh();
+        });
+    }
+
+    /* 越界不是画个红点就完事：拿它开一张异常工单，责任落到分拨，闭环走异常页那套定责、扣款与理赔。
+       动作只带订单号，越界城市从这单的扫描里现算——拼 "订单|城市" 的参数串改一个字段就错位，
+       且要和 fenceAudit 同口径，所以只认显式写了 location 的流水 */
+    function gfException(orderId) {
+        var o = db.get('orders', orderId);
+        if (!o) { ui.toast('未找到订单 ' + orderId + '，无法登记越界异常', 'warn'); return; }
+        var hit = null;
+        db.col('scans').forEach(function (s) {
+            if (hit || s.orderId !== orderId || !s.location) return;
+            var c = TMS.network.cityOfText(s.location);
+            if (c && !TMS.network.fenceOfCity(c)) hit = { city: c, node: s.node, at: s.opTime, location: s.location };
+        });
+        if (!hit) { ui.toast(o.waybillNo + ' 的作业地点已都能对应到在用围栏，无需登记异常', 'info'); return; }
+        var res = TMS.service.createException({
+            orderId: orderId, type: '其他异常', level: '三级',
+            description: '作业环节 ' + cfg.nodeOf(hit.node).name + ' 登记地点「' + hit.location +
+                '」解析为 ' + hit.city + '，不在任何电子围栏内，无法核验该环节是否真实发生在归属场地，需复核网点布点与操作规范',
+            actor: actor(), source: '围栏预警'
+        });
+        if (!res) { ui.toast('异常工单创建失败', 'danger'); return; }
+        ui.toast('已就 ' + hit.city + ' 越界作业登记异常工单 ' + res.id, 'success');
+        TMS.shell.refresh();
+    }
+
+    var gfActions = {
+        'gf:open': function (id) { gfModal(id); },
+        'gf:edit': function (id) { gfFormModal(id); },
+        'gf:new': function () { gfFormModal(''); },
+        'gf:cover': function (city) { gfFormModal('', city); },
+        'gf:bulk': function () { gfBulkCover(); },
+        'gf:resize': function (id) { gfResizeModal(id); },
+        'gf:toggle': function (id) {
+            var g = db.get('geofences', id);
+            if (!g) return;
+            gfApply(id, { status: g.status === 'active' ? 'disabled' : 'active', updatedAt: util.iso(util.now()) },
+                g.status === 'active' ? '停用' : '启用');
+        },
+        'gf:audit': function () {
+            var out = TMS.jobs.run('fenceCoverage').out || {};
+            ui.toast('巡检完成：' + out.gap + ' 座城市存在越界作业，核销 ' + (out.resolved || 0) + ' 条已消除的告警', 'info');
+            TMS.shell.refresh();
+        },
+        'gf:exception': function (orderId) { gfException(orderId); },
+        'gf:goOrders': function (city) { ui.closeTop(); TMS.shell.go('order', { q: city }); }
+    };
+
+    /* 「重复布点」借用 status 这一列筛选位：它不是状态而是归属冲突，单独一档 */
+    function gfRowFilter(r, fs) {
+        if (fs.status === 'redundant') { if (!r.redundant) return false; }
+        else if (fs.status && r.status !== fs.status) return false;
+        if (fs.type && r.type !== fs.type) return false;
+        if (fs.city && r.city !== fs.city) return false;
+        return true;
+    }
+
+    /* 台账行 + 越界明细一次算完，页面取数与 CSV 导出共用同一份结果：
+       导出走另一条取数路径迟早和表格对不上号 */
+    function gfView(days) {
+        var audit = TMS.network.fenceAudit(days);
+        var stats = gfScanStats(days);
+        var rows = db.col('geofences').map(function (g) {
+            var st = stats.byFence[g.id] || { hit: 0, lastAt: '', orders: {} };
+            var eff = gfRadiusEffect(g);
+            var same = db.col('branches').filter(function (b) { return b.city === g.city; });
+            return {
+                id: g.id, name: g.name, type: g.type, city: g.city, status: g.status,
+                radiusM: Number(g.radiusM) || 0, refId: g.refId || '', refName: gfRefName(g),
+                coverCount: eff.inside.length, coverNames: util.unique(eff.inside.map(function (x) { return x.city; })),
+                nearMiss: eff.nearMiss.length ? eff.nearMiss[0].city + ' ' + eff.nearMiss[0].km + ' km' : '',
+                staff: util.sum(same, 'staffCount'), branchCount: same.length,
+                devices: db.col('devices').filter(function (d) { return d.city === g.city; }).length,
+                hit: st.hit, orderCount: Object.keys(st.orders).length, lastAt: st.lastAt,
+                redundant: g.status === 'active' && !!stats.owners[g.city] && stats.owners[g.city] !== g.id,
+                updatedAt: g.updatedAt || ''
+            };
+        });
+        var orphanTickets = {};
+        var orphan = util.sortBy(stats.orphan, function (x) { return x.scan.opTime; }, 'desc');
+        orphan.forEach(function (x) { if (x.scan.orderId) orphanTickets[x.scan.orderId] = 1; });
+        return {
+            days: days, audit: audit, rows: rows, stats: stats, gaps: audit.breaches,
+            orphan: orphan, orphanTickets: Object.keys(orphanTickets).length,
+            alerts: db.col('alerts').filter(function (a) { return a.status === 'open' && String(a.key).indexOf('fence:gap:') === 0; })
+        };
+    }
+
+    pg.define('geofence', {
+        sub: '围栏决定「这个城市的作业地点算不算在网内」：缺口由巡检自动报警，补齐围栏当场自动核销',
+        load: function (ctx) {
+            applyParamFilter(ctx, ['type', 'city', 'q']);
+            return gfView(ctx.days);
+        },
+        render: function (ctx, d) {
+            var a = d.audit;
+            var kpi = ui.kpis([
+                { label: '围栏总数', value: d.rows.length, unit: '张', tone: 'brand', sub: '在用 ' + a.activeRows + ' 张' },
+                { label: '覆盖城市', value: a.coveredCities, unit: '/ ' + a.cityCount, tone: 'success', sub: '城市质心落在任一在用围栏内' },
+                { label: '缺口城市', value: d.gaps.length, unit: '座', tone: d.gaps.length ? 'danger' : 'success', sub: '窗口内有越界作业的城市' },
+                { label: '带地点扫描', value: a.total, unit: '次', tone: 'info', sub: '常规作业地点由订单派生，不落库' },
+                { label: '围栏内命中', value: a.covered, unit: '次', tone: 'brand', sub: '占比 ' + util.pct(a.covered, a.total) + '%，另有 ' + a.unknown + ' 次地点认不出城市' },
+                { label: '越界作业', value: d.orphan.length, unit: '次', tone: d.orphan.length ? 'danger' : 'success', sub: '涉及 ' + d.orphanTickets + ' 票' },
+                { label: '未决告警', value: d.alerts.length, unit: '条', tone: d.alerts.length ? 'warn' : 'success', sub: '补齐围栏即自动核销' }
+            ]);
+            var gapCard = ui.card({
+                title: '覆盖缺口', sub: '越界次数从多到少 · 点「补围栏」直接带城市建档', icon: '⬡',
+                tools: ui.btn('批量补前 10 座城市', { tone: 'primary', act: 'gf:bulk', icon: '⚑' }) +
+                    ui.btn('重跑巡检', { act: 'gf:audit', icon: '⟳' }),
+                body: d.gaps.length ? ui.list(d.gaps.slice(0, 10).map(function (b) {
+                    return {
+                        title: esc(b.city) + ' ' + ui.badge(b.count + ' 次越界', b.count > 40 ? 'danger' : 'warn'),
+                        sub: b.branches + ' 个网点归属 ' + esc(b.hub || '未指派分拨') +
+                            ' · 最近在用围栏 ' + esc(b.nearestName || '无') + '（' + b.nearestKm + ' km）' +
+                            ' · 建议半径 ' + Math.round(b.radiusM / 1000) + ' km · 涉及 ' + b.orders.length + ' 票可抽查',
+                        right: ui.link('补围栏', 'gf:cover', b.city, { tone: 'ghost' })
+                    };
+                })) : ui.empty('所有作业城市都已在围栏内', '近 ' + d.days + ' 天没有任何扫描写在覆盖范围之外'),
+                foot: d.gaps.length > 10 ? '<span class="tms-dim">另有 ' + (d.gaps.length - 10) + ' 座城市未列出，合计越界 ' +
+                    util.sum(d.gaps.slice(10), 'count') + ' 次</span>' : ''
+            });
+            var cityCard = ui.card({
+                title: '越界城市分布', sub: '近 ' + d.days + ' 天写在围栏外的扫描次数', flat: true,
+                body: ch.bars({
+                    data: d.gaps.slice(0, 12).map(function (b) { return { label: b.city, value: b.count }; }),
+                    height: 230, barWidth: 26
+                })
+            });
+            var orphanCard = ui.card({
+                title: '越界作业明细', sub: d.orphan.length + ' 条 · 最多列 60 条，可按城市继续筛',
+                tools: ui.btn('导出缺口', { act: 'gf:exportGap', icon: '⤓', size: 'sm' }),
+                body: d.orphan.length ? ui.table({
+                    dense: true, keyName: 'key',
+                    columns: [
+                        { key: 'city', label: '城市', width: '86px', sortable: false, render: function (r) { return '<b>' + esc(r.city) + '</b>'; } },
+                        { key: 'order', label: '运单', sortable: false, render: function (r) { var o = db.get('orders', r.scan.orderId) || {}; return ui.idCell(o.waybillNo || r.scan.orderId, 'order:open'); } },
+                        { key: 'node', label: '环节', sortable: false, render: function (r) { return ui.badge(esc(cfg.nodeOf(r.scan.node).name), 'muted'); } },
+                        { key: 'location', label: '登记地点', sortable: false, render: function (r) { return esc(r.scan.location); } },
+                        { key: 'opTime', label: '时间', align: 'right', sortable: false, render: function (r) { return '<span class="tms-nowrap">' + fmt.dateTime(r.scan.opTime) + '</span>'; } },
+                        { key: 'operator', label: '操作人', sortable: false, render: function (r) { return dim(r.scan.operator); } },
+                        {
+                            key: 'ops', label: '操作', align: 'right', sortable: false, render: function (r) {
+                                return r.scan.orderId ? ui.link('转异常', 'gf:exception', r.scan.orderId, { tone: 'ghost' }) : '<span class="tms-dim">无关联单</span>';
+                            }
+                        }
+                    ],
+                    rows: d.orphan.slice(0, 60).map(function (r, i) { return { key: i, city: r.city, scan: r.scan }; })
+                }) : ui.empty('窗口内没有越界作业', '所有带地点的扫描都能对应到在用围栏')
+            });
+            var listCard = grid(ctx, {
+                title: '围栏台账', sub: '半径决定覆盖、状态决定是否参与判定',
+                rows: d.rows, searchKey: 'q',
+                search: function (r) { return [r.id, r.name, r.city, r.refName].join(' '); },
+                fields: [
+                    { key: 'q', type: 'search', label: '编号 / 名称 / 城市' },
+                    { key: 'type', label: '类型', options: [{ value: '', label: '全部类型' }].concat(dictOptions(GF_TYPE_TEXT)) },
+                    { key: 'city', label: '城市', type: 'city', placeholder: '城市名，留空为全部' }
+                ],
+                filter: gfRowFilter,
+                chips: [
+                    { label: '全部', value: '', count: d.rows.length },
+                    { label: '在用', value: 'active', count: util.countBy(d.rows, 'status').active || 0 },
+                    { label: '已停用', value: 'disabled', count: util.countBy(d.rows, 'status').disabled || 0 },
+                    { label: '重复布点', value: 'redundant', count: d.rows.filter(function (r) { return r.redundant; }).length }
+                ],
+                chipsName: 'status',
+                tools: ui.btn('新建围栏', { tone: 'primary', act: 'gf:new', icon: '+' }) +
+                    ui.btn('导出台账', { act: 'gf:export', icon: '⤓' }),
+                columns: [
+                    {
+                        key: 'name', label: '围栏', render: function (r) {
+                            return ui.link(esc(r.name), 'gf:open', r.id) +
+                                '<div class="tms-dim">' + esc(GF_TYPE_TEXT[r.type] || r.type) + ' · ' + esc(r.refName) + '</div>';
+                        }
+                    },
+                    { key: 'city', label: '城市', width: '86px' },
+                    { key: 'radiusM', label: '半径', align: 'right', width: '92px', render: function (r) { return util.round(r.radiusM / 1000, 2) + ' km'; } },
+                    { key: 'coverCount', label: '罩住城市', align: 'right', width: '104px', render: function (r) { return r.coverCount ? ui.badge(r.coverCount + ' 座', r.coverCount > 1 ? 'success' : 'muted') : ui.badge('未覆盖', 'danger'); } },
+                    { key: 'branchCount', label: '同城网点', align: 'right', width: '100px', render: function (r) { return r.branchCount + ' 个 · ' + r.staff + ' 人'; } },
+                    { key: 'hit', label: '窗口命中', align: 'right', width: '104px', render: function (r) { return r.hit ? fmt.number(r.hit) + ' 次' : '<span class="tms-dim">无流水</span>'; } },
+                    { key: 'orderCount', label: '涉及订单', align: 'right', width: '96px', render: function (r) { return r.orderCount ? fmt.number(r.orderCount) : '<span class="tms-dim">—</span>'; } },
+                    { key: 'lastAt', label: '最近命中', align: 'right', width: '132px', render: function (r) { return r.lastAt ? '<span class="tms-nowrap">' + fmt.dateTime(r.lastAt) + '</span>' : '<span class="tms-dim">—</span>'; } },
+                    {
+                        key: 'status', label: '状态', width: '112px', sortable: false, render: function (r) {
+                            return statusBadge(r.status, GF_STATUS_TEXT) + (r.redundant ? ' ' + ui.badge('重复', 'warn') : '');
+                        }
+                    },
+                    {
+                        key: 'ops', label: '操作', align: 'right', width: '168px', sortable: false, render: function (r) {
+                            return ui.link('半径', 'gf:resize', r.id, { tone: 'ghost' }) + ' ' +
+                                ui.link('编辑', 'gf:edit', r.id, { tone: 'ghost' }) + ' ' +
+                                ui.link(r.status === 'active' ? '停用' : '启用', 'gf:toggle', r.id, { tone: 'ghost' });
+                        }
+                    }
+                ],
+                emptyText: '没有符合条件的围栏'
+            });
+            return wrap(ctx, {
+                actions: ui.btn('新建围栏', { tone: 'primary', act: 'gf:new', icon: '+' }) +
+                    ui.btn('批量补缺口', { act: 'gf:bulk', icon: '⚑' }),
+                sub: '窗口 ' + d.days + ' 天 · ' + fmt.number(a.total) + ' 次带地点扫描 · ' +
+                    a.coveredCities + '/' + a.cityCount + ' 座城市在网内 · ' + d.gaps.length + ' 座城市越界',
+                body: [kpi, ui.split('2', [gapCard, cityCard]), orphanCard, listCard, ui.card({
+                    title: '口径说明', flat: true,
+                    body: ui.desc([
+                        { label: '为什么只统计带地点的扫描', value: '常规环节的地点由订单与节点派生、根本不落库；显式写了 location 的都是人工改判或异常上报，正是需要拿围栏核对的那批（本窗口 ' + a.total + ' 条）' },
+                        { label: '覆盖怎么判', value: '城市质心到圆心的距离 ≤ 半径即算覆盖。同城网点在档案里共用城市质心，逐点算距离得到的是同一个答案，因此判定落在城市粒度' },
+                        { label: '半径有什么用', value: '它是围栏上唯一能改变结论的参数：调小会放走边缘城市，调大可顺手罩住邻市（例如 25 km 能同时管住广佛）' },
+                        { label: '缺口怎么消', value: '「电子围栏覆盖缺口」巡检按城市建告警（键 fence:gap:城市），补一张覆盖该城市的在用围栏后重跑巡检即自动核销，不需要手工关单。巡检固定按近 30 天窗口跑，与顶栏时间窗无关，所以页面显示的缺口城市数与告警数可能有几天差' },
+                        { label: '重复布点', value: '同一城市被多张在用围栏罩住时，命中数只归第一张，其余标「重复」提示可以停用' },
+                        { label: '越界了怎么办', value: '明细里可一键转异常工单，走异常页那套定责、扣款与理赔闭环；围栏本身不改订单状态' }
+                    ])
+                })]
+            });
+        },
+        actions: merge(gfActions, {
+            'gf:export': function () {
+                var d = gfView(Math.max(7, Number(curCtx().days) || 7));
+                exportGrid({
+                    name: '电子围栏台账.csv', rows: d.rows, searchKey: 'q', filter: gfRowFilter,
+                    search: function (r) { return [r.id, r.name, r.city, r.refName].join(' '); },
+                    cols: [
+                        { key: 'id', label: '围栏编号' }, { key: 'name', label: '名称' },
+                        { key: 'type', label: '类型', value: function (r) { return GF_TYPE_TEXT[r.type] || r.type; } },
+                        { key: 'city', label: '城市' }, { key: 'refName', label: '绑定分拨' },
+                        { key: 'radiusM', label: '半径(米)' },
+                        { key: 'coverCount', label: '罩住城市数' },
+                        { key: 'coverNames', label: '罩住城市', value: function (r) { return (r.coverNames || []).join('、'); } },
+                        { key: 'nearMiss', label: '半径外最近城市' },
+                        { key: 'branchCount', label: '同城网点' }, { key: 'staff', label: '同城员工' },
+                        { key: 'devices', label: '同城终端' },
+                        { key: 'hit', label: '窗口命中' }, { key: 'orderCount', label: '涉及订单' },
+                        { key: 'lastAt', label: '最近命中' },
+                        { key: 'status', label: '状态', value: function (r) { return GF_STATUS_TEXT[r.status] || r.status; } }
+                    ]
+                }, 'geofence');
+            },
+            'gf:exportGap': function () {
+                exportGrid({
+                    name: '围栏覆盖缺口.csv', rows: gfView(Math.max(7, Number(curCtx().days) || 7)).gaps, searchKey: 'q',
+                    cols: [
+                        { key: 'city', label: '城市' }, { key: 'count', label: '越界次数' },
+                        { key: 'branches', label: '网点数' }, { key: 'hub', label: '归属分拨' },
+                        { key: 'nearestName', label: '最近在用围栏' }, { key: 'nearestKm', label: '相距(km)' },
+                        { key: 'radiusM', label: '建议半径(米)' }
+                    ]
+                }, 'geofence');
+            }
+        })
+    });
+
+    /* ---------- 二十九、人事管理 ---------- */
+
+    /* 员工档案是「人」的唯一事实源：登录账号（users.personId）、排班（shifts）、打卡（clockRecords）、
+       绩效（performances）、考核（evaluations）、固定司机（vehicles.driverId）全部反向挂在档案 id 上。
+       人事页不另建花名册，只做「档案与下游对象」的一致性核对——缺口列出来就得能就地补掉，
+       否则这张页和一张报表没有区别 */
+
+    var EMP_STATUS_TEXT = { active: '在职', on_leave: '休假', resigned: '离职' };
+    var EMP_ROLE_LIST = ['admin', 'branch', 'sorter', 'transporter', 'deliveryman'];
+    /* 一线作业岗才有单量/件数可加权，职能岗的绩效只能拿出勤折算，不纳入批量核算 */
+    var FRONT_ROLES = ['branch', 'sorter', 'transporter', 'deliveryman'];
+    var TRIP_OPEN_STATUS = ['pending', 'loading', 'departed'];
+    var INIT_PASSWORD = '123456';
+
+    /* computeMetrics 返回的键随岗位而变，页面用同一套字典渲染，未登记的键按普通数值出 */
+    var METRIC_TEXT = {
+        signed: '签收票', assigned: '派下票', pending: '在途未收', onTimeRate: '签收及时率',
+        podRate: 'POD 回单率', codCollected: '代收货款', exceptions: '名下异常', revenue: '签收收入',
+        firstAttempt: '首派成功率', tasks: '任务量', pieces: '作业件数', weight: '作业重量',
+        stdMinutes: '标准工时', actualMinutes: '实际工时', efficiency: '时均件', accuracy: '分拣准确率',
+        trips: '执行车次', km: '干线里程', orders: '载运订单', loadRate: '平均装载率',
+        fuelCost: '油费成本', accidents: '责任事故', overtime: '出差天数', branch: '归属网点',
+        collected: '揽收票', cost: '签收成本', deduction: '名下扣款', margin: '网点毛利',
+        attendanceDays: '出勤天数', overtimeHours: '加班时长', lateTimes: '迟到早退'
+    };
+    var METRIC_MONEY = { codCollected: 1, revenue: 1, fuelCost: 1, cost: 1, deduction: 1 };
+    var METRIC_RATE = { onTimeRate: 1, podRate: 1, firstAttempt: 1, accuracy: 1, loadRate: 1, margin: 1 };
+    var METRIC_UNIT = {
+        signed: '票', assigned: '票', pending: '票', tasks: '项', pieces: '件', weight: 'kg',
+        stdMinutes: '分钟', actualMinutes: '分钟', efficiency: '件/时', km: 'km', orders: '单',
+        trips: '趟', exceptions: '起', accidents: '起', overtime: '天', attendanceDays: '天',
+        overtimeHours: '小时', lateTimes: '次', collected: '票'
+    };
+
+    function empRoleOptions() {
+        return EMP_ROLE_LIST.map(function (r) { return { value: r, label: TMS.people.roleName(r) }; });
+    }
+
+    function metricCell(key, v) {
+        if (v == null || v === '') return '<span class="tms-dim">—</span>';
+        if (key === 'branch') return esc(String(v));
+        if (METRIC_MONEY[key]) return fmt.money(v);
+        if (METRIC_RATE[key]) return fmt.percent(v);
+        if (typeof v === 'number') {
+            return fmt.number(util.round(v, 2)) +
+                (METRIC_UNIT[key] ? ' <span class="tms-dim">' + esc(METRIC_UNIT[key]) + '</span>' : '');
+        }
+        return esc(String(v));
+    }
+
+    /* 工龄按月：30.6 天一月，够档案阅读用，不值得为此引一套日期库 */
+    function empTenure(entryAt) {
+        if (!entryAt) return 0;
+        return util.round(Math.max(0, util.hoursBetween(entryAt, util.now()) / 734), 1);
+    }
+
+    function dayAt(day, hhmm) {
+        var d = util.toDate(day + 'T' + hhmm + ':00');
+        return isNaN(d) ? util.iso(util.now()) : util.iso(d);
+    }
+
+    /* 一次遍历把档案下游的所有对象索引好，台账、缺口、部门、导出共用同一份口径 */
+    function hrIndex(days) {
+        var period = util.monthKey(util.now());
+        var cutoff = util.addDays(util.now(), -days).getTime();
+        var today = util.dateKey(util.now());
+        var out = {
+            period: period, userBy: {}, clockBy: {}, perfBy: {}, evalBy: {},
+            evalPending: 0, clockKeys: {}, missedShifts: [],
+            openByCourier: {}, openByDriver: {}, platesByDriver: {}
+        };
+        db.col('users').forEach(function (u) {
+            if (u.personId && !out.userBy[u.personId]) out.userBy[u.personId] = u;
+        });
+        db.col('clockRecords').forEach(function (c) {
+            out.clockKeys[c.employeeId + '|' + c.date] = c;
+            var b = out.clockBy[c.employeeId] || (out.clockBy[c.employeeId] = { win: 0, lastAt: '', open: 0, late: 0, hours: 0 });
+            if (util.toDate(c.clockIn).getTime() >= cutoff) b.win++;
+            if (!c.clockOut) b.open++;
+            if (String(c.clockIn) > String(b.lastAt)) b.lastAt = c.clockIn;
+            if (TMS.people.clockView(c).late) b.late++;
+            b.hours = util.round(b.hours + (TMS.people.clockView(c).workHours || 0), 1);
+        });
+        db.col('performances').forEach(function (p) {
+            var cur = out.perfBy[p.employeeId];
+            if (!cur || String(p.period) > String(cur.period)) out.perfBy[p.employeeId] = p;
+        });
+        db.col('evaluations').forEach(function (x) {
+            var cur = out.evalBy[x.employeeId];
+            if (!cur || String(x.createdAt) > String(cur.createdAt)) out.evalBy[x.employeeId] = x;
+            if (x.status === 'pending') out.evalPending++;
+        });
+        /* 有排班没打卡＝漏卡。打卡是事实、排班是计划，两者对不上就是考勤缺口，
+           补卡后这条立刻从缺口里消失，绩效里的出勤天数同口径变化 */
+        db.col('shifts').forEach(function (s) {
+            if (String(s.date) > today || out.clockKeys[s.employeeId + '|' + s.date]) return;
+            if (!db.get('employees', s.employeeId)) return;
+            out.missedShifts.push(s);
+        });
+        out.missedShifts = util.sortBy(out.missedShifts, 'date', 'desc');
+        db.col('orders').forEach(function (o) {
+            if (o.courierId && !TMS.order.isTerminal(o)) out.openByCourier[o.courierId] = (out.openByCourier[o.courierId] || 0) + 1;
+        });
+        db.col('transports').forEach(function (t) {
+            if (t.driverId && TRIP_OPEN_STATUS.indexOf(t.status) > -1) out.openByDriver[t.driverId] = (out.openByDriver[t.driverId] || 0) + 1;
+        });
+        db.col('vehicles').forEach(function (v) {
+            if (!v.driverId) return;
+            (out.platesByDriver[v.driverId] = out.platesByDriver[v.driverId] || []).push(v.plate);
+        });
+        return out;
+    }
+
+    function hrRows(days, idx) {
+        idx = idx || hrIndex(days);
+        var period = idx.period;
+        return db.col('employees').map(function (e) {
+            var c = idx.clockBy[e.id] || { win: 0, lastAt: '', open: 0, late: 0, hours: 0 };
+            var u = idx.userBy[e.id];
+            var p = idx.perfBy[e.id];
+            var ev = idx.evalBy[e.id];
+            var busy = idx.openByCourier[e.id] || 0;
+            var trips = idx.openByDriver[e.id] || 0;
+            return {
+                id: e.id, name: e.name, role: e.role, roleName: TMS.people.roleName(e.role),
+                position: e.position || '', deptId: e.deptId || '', deptName: e.deptName || '',
+                orgId: e.orgId || '', orgName: e.orgName || '', city: e.city || '', phone: e.phone || '',
+                badge: e.badge || '', entryAt: e.entryAt || '', tenure: empTenure(e.entryAt),
+                status: e.status, salary: Number(e.salary) || 0, plateNo: e.plateNo || '',
+                hubId: e.hubId || '', branchId: e.branchId || '',
+                userId: u ? u.id : '', username: u ? u.username : '', userStatus: u ? (u.status || 'active') : '',
+                noAccount: !u && e.status !== 'resigned',
+                liveAccount: !!u && e.status === 'resigned' && (u.status || 'active') !== 'inactive',
+                clockDays: c.win, clockLate: c.late, clockHours: c.hours, openClock: c.open, lastClockAt: c.lastAt,
+                score: p ? Number(p.score) : 0, grade: p ? p.grade : '', perfPeriod: p ? p.period : '',
+                hasPerf: !!(p && p.period === period),
+                isFront: FRONT_ROLES.indexOf(e.role) > -1,
+                evalTotal: ev ? Number(ev.totalScore) : 0, evalStatus: ev ? ev.status : '', evalPeriod: ev ? ev.period : '',
+                busyOrders: busy, busyTrips: trips, plates: (idx.platesByDriver[e.id] || []).join('、'),
+                leftOver: e.status !== 'active' && (busy > 0 || trips > 0)
+            };
+        });
+    }
+
+    function hrRowFilter(r, fs) {
+        if (fs.role && r.role !== fs.role) return false;
+        if (fs.deptId && r.deptId !== fs.deptId) return false;
+        if (fs.status && r.status !== fs.status) return false;
+        var c = fs.chip || '';
+        if (c === 'noaccount' && !r.noAccount) return false;
+        if (c === 'liveaccount' && !r.liveAccount) return false;
+        if (c === 'noperf' && !(r.isFront && r.status === 'active' && !r.hasPerf)) return false;
+        if (c === 'noclock' && !(r.isFront && r.clockDays === 0)) return false;
+        if (c === 'leftover' && !r.leftOver) return false;
+        return true;
+    }
+
+    /* 缺口按「补掉之后下游会怎么变」排序：账号决定能不能登录，绩效决定工资，漏卡决定出勤天数 */
+    function hrGaps(rows, idx) {
+        return {
+            noAccount: rows.filter(function (r) { return r.noAccount && r.isFront; }),
+            liveAccount: rows.filter(function (r) { return r.liveAccount; }),
+            noPerf: rows.filter(function (r) { return r.isFront && r.status === 'active' && !r.hasPerf; }),
+            noclock: rows.filter(function (r) { return r.isFront && r.clockDays === 0; }),
+            missedShifts: idx.missedShifts,
+            evalPending: idx.evalPending,
+            leftOver: rows.filter(function (r) { return r.leftOver; })
+        };
+    }
+
+    function hrDepts(rows) {
+        var by = util.groupBy(rows, 'deptId');
+        return db.col('departments').map(function (d) {
+            var list = by[d.id] || [];
+            var active = list.filter(function (r) { return r.status === 'active'; });
+            return {
+                id: d.id, name: d.name, manager: d.manager, parentId: d.parentId || '',
+                total: list.length, active: active.length,
+                front: list.filter(function (r) { return r.isFront; }).length,
+                noAccount: list.filter(function (r) { return r.noAccount && r.isFront; }).length,
+                salary: util.money(util.sum(active, 'salary'))
+            };
+        }).filter(function (x) { return x.total; }).sort(function (a, b) { return b.total - a.total; });
+    }
+
+    /* users.personId 指向员工 id、登录名统一取工号小写，口令走 util.hash 前缀 h:，
+       与种子引擎建的账号完全同构——这样新开的账号在用户权限页和登录页都是真账号 */
+    function hrCreateAccount(emp) {
+        var dup = db.findOne('users', function (u) { return u.personId === emp.id || u.username === String(emp.id).toLowerCase(); });
+        if (dup) return { created: false, row: dup };
+        var saved;
+        db.batch(function () {
+            saved = db.create('users', {
+                username: String(emp.id).toLowerCase(), name: emp.name, role: emp.role,
+                passwordHash: 'h:' + util.hash(INIT_PASSWORD), orgId: emp.orgId, orgName: emp.orgName,
+                personId: emp.id, phone: emp.phone, status: 'active',
+                createdAt: emp.entryAt || util.dateKey(util.now())
+            });
+            db.commit('users', saved.id, 'user:create');
+        }, 'user:create');
+        TMS.audit.log('user.manage', 'users', saved.id, '为 ' + emp.name + '（' + emp.id + '）开通登录账号 ' + saved.username + '，初始口令 ' + INIT_PASSWORD, actor());
+        return { created: true, row: saved };
+    }
+
+    /* 离职不只是档案上改一个字：登录必须同时关掉，否则工号还在、密码还在，门户还进得去。
+       auth.verify 只认 status !== 'inactive' 的行，所以停用统一写 inactive */
+    function hrSyncAccount(user, status, reason) {
+        if (!user) return null;
+        var want = status === 'resigned' ? 'inactive' : 'active';
+        if ((user.status || 'active') === want) return null;
+        var saved;
+        db.batch(function () {
+            saved = db.update('users', user.id, { status: want, disabledReason: want === 'inactive' ? reason || '离职停号' : null });
+            db.commit('users', saved.id, 'user:status');
+        }, 'user:status');
+        TMS.audit.log('user.manage', 'users', user.id, user.username + ' 账号' + (want === 'inactive' ? '停用：' : '恢复：') + reason, actor());
+        return saved;
+    }
+
+    /* 车牌是档案与车队之间唯一的连接：填了就把自己写成该车的固定驾驶员（一车一司机），
+       调度派单默认沿用；清空车牌则解除绑定 */
+    function hrBindVehicle(emp, plateNo) {
+        var plate = String(plateNo || '').trim();
+        var old = emp.plateNo ? db.findOne('vehicles', function (v) { return v.plate === emp.plateNo && v.driverId === emp.id; }) : null;
+        if (old) db.update('vehicles', old.id, { driverId: null, driver: null, driverPhone: null });
+        if (!plate) return old ? '解绑 ' + emp.plateNo : '';
+        var v = db.findOne('vehicles', function (x) { return x.plate === plate; });
+        if (!v) return '车牌「' + plate + '」不在车辆档案里，绑定未生效';
+        db.update('vehicles', v.id, { driverId: emp.id, driver: emp.name, driverPhone: emp.phone });
+        return '已将 ' + plate + ' 的固定驾驶员设为 ' + emp.name;
+    }
+
+    function empFormModal(id) {
+        var e = id ? db.get('employees', id) : null;
+        var deptOptions = ui.optionsOf(db.col('departments'), 'id', 'name');
+        var hubOptions = ui.optionsOf(db.col('hubs'), 'id', 'name');
+        var branchOptions = ui.optionsOf(db.col('branches'), 'id', 'name');
+        ui.formModal({
+            title: e ? '编辑员工档案 ' + e.name : '新增员工档案',
+            sub: e ? '工号 ' + e.id + ' · 工牌 ' + (e.badge || '—') + ' · 入职 ' + (e.entryAt || '—') : '归属由「部门 / 分拨 / 网点」推导，不手填',
+            notice: e ? '' : '勾选同步开通账号后，该员工即可用 ' + '工号小写' + ' / ' + INIT_PASSWORD + ' 登录对应门户。',
+            values: e ? {
+                name: e.name, role: e.role, deptId: e.deptId, position: e.position, phone: e.phone,
+                city: e.city, entryAt: e.entryAt, status: e.status, salary: e.salary, plateNo: e.plateNo || '',
+                hubId: e.hubId || '', branchId: e.branchId || '', account: false
+            } : {
+                name: '', role: 'sorter', deptId: 'DEP0003', position: '分拣员', phone: '', city: '',
+                entryAt: util.dateKey(util.now()), status: 'active', salary: 6000, plateNo: '',
+                hubId: '', branchId: '', account: true
+            },
+            fields: [
+                { key: 'name', label: '姓名', required: true, placeholder: '例：林知远' },
+                { key: 'role', label: '岗位', type: 'select', required: true, options: empRoleOptions(), hint: '决定绩效口径与可见菜单' },
+                { key: 'deptId', label: '所属部门', type: 'select', required: true, options: deptOptions },
+                { key: 'position', label: '职务', required: true, placeholder: '例：干线司机 / 派送组长' },
+                { key: 'hubId', label: '归属分拨', type: 'select', options: [{ value: '', label: '不限' }].concat(hubOptions), hint: '分拣员、司机按分拨排班与派车' },
+                { key: 'branchId', label: '归属网点', type: 'select', options: [{ value: '', label: '不限' }].concat(branchOptions), hint: '网点主管、派送员按网点分单' },
+                { key: 'city', label: '常驻城市', type: 'city' },
+                { key: 'phone', label: '手机号', required: true, placeholder: '11 位手机号', maxlength: 11 },
+                { key: 'entryAt', label: '入职日期', type: 'date', required: true },
+                { key: 'status', label: '在职状态', type: 'select', required: true, options: dictOptions(EMP_STATUS_TEXT) },
+                { key: 'salary', label: '月薪酬', type: 'number', min: 0, max: 200000, step: 100, unit: '元' },
+                { key: 'plateNo', label: '驾驶车牌', placeholder: '例：沪A12345', hint: '填了就把自己设为该车的固定驾驶员' },
+                { key: 'account', label: '同步开通登录账号', type: 'checkbox' }
+            ],
+            okText: e ? '保存档案' : '建档',
+            onSubmit: function (v) {
+                if (!/^1[3-9]\d{9}$/.test(String(v.phone || ''))) return '手机号格式不对：需要 11 位且以 1 开头';
+                var org = hrOrgOf(v.role, v.deptId, v.hubId, v.branchId);
+                var patch = {
+                    name: String(v.name || '').trim(), role: v.role, deptId: v.deptId,
+                    deptName: (db.get('departments', v.deptId) || {}).name || '',
+                    position: v.position, phone: v.phone, city: v.city, entryAt: v.entryAt,
+                    status: v.status, salary: Number(v.salary) || 0, plateNo: String(v.plateNo || '').trim(),
+                    orgId: org.orgId, orgName: org.orgName, hubId: org.hubId, branchId: org.branchId
+                };
+                if (e && e.status !== 'resigned' && v.status === 'resigned') {
+                    return '离职请走台账里的「状态流转」：那里会同时停登录账号并清点名下在途单据';
+                }
+                var saved;
+                db.batch(function () {
+                    saved = e ? db.update('employees', e.id, patch) : db.create('employees', patch);
+                    if (saved) db.commit('employees', saved.id, 'employee:save');
+                }, 'employee:save');
+                if (!saved) return '保存失败';
+                var bindNote = hrBindVehicle(e || saved, v.plateNo);
+                var accNote = '';
+                if (!e || v.account) {
+                    var res = hrCreateAccount(saved);
+                    accNote = res.created ? '，账号 ' + res.row.username + ' 已开通' : '';
+                }
+                if (e) hrSyncAccount(hrUserOf(e.id), v.status, '档案状态改为' + EMP_STATUS_TEXT[v.status]);
+                TMS.audit.log('hr.manage', 'employees', saved.id, (e ? '更新档案' : '新建档案') + ' ' + saved.name + '·' + saved.position +
+                    (bindNote ? '；' + bindNote : '') + accNote, actor());
+                ui.toast('已保存 ' + saved.name + ' 的档案' + bindNote + accNote, 'success');
+                TMS.shell.refresh();
+            }
+        });
+    }
+
+    /* 归属推导：职能岗挂部门、一线岗挂分拨或网点，两者都填了以角色为准，
+       避免出现 orgId 指向部门而 hubId 指向分拨的双头档案 */
+    function hrOrgOf(role, deptId, hubId, branchId) {
+        if (role === 'admin') {
+            var d = db.get('departments', deptId);
+            return { orgId: deptId, orgName: d ? d.name : '', hubId: '', branchId: '' };
+        }
+        if (role === 'branch' && branchId) {
+            var b = db.get('branches', branchId);
+            return { orgId: branchId, orgName: b ? b.name : '', hubId: '', branchId: branchId };
+        }
+        if (role === 'deliveryman' && branchId) {
+            var bb = db.get('branches', branchId);
+            return { orgId: branchId, orgName: bb ? bb.name : '', hubId: '', branchId: branchId };
+        }
+        if (hubId) {
+            var h = db.get('hubs', hubId);
+            return { orgId: hubId, orgName: h ? h.name : '', hubId: hubId, branchId: '' };
+        }
+        if (branchId) {
+            var x = db.get('branches', branchId);
+            return { orgId: branchId, orgName: x ? x.name : '', hubId: '', branchId: branchId };
+        }
+        return { orgId: deptId, orgName: (db.get('departments', deptId) || {}).name || '', hubId: '', branchId: '' };
+    }
+
+    function hrUserOf(empId) {
+        return db.findOne('users', function (u) { return u.personId === empId; });
+    }
+
+    function hrShiftOf(empId, day) {
+        return db.findOne('shifts', function (s) { return s.employeeId === empId && s.date === day; });
+    }
+
+    /* 补卡：写进与打卡机同构的 clockRecords 行，并把 device 标成 HR 补录，
+       留下「这条不是本人打的」的痕迹，审计时能区分补录与漏卡 */
+    function hrSaveClock(empId, day, inAt, outAt, device) {
+        if (!inAt) return '上班时间必填：没有上班卡的记录在考勤口径里等于没出勤';
+        var inDate = util.dateKey(util.toDate(inAt));
+        if (inDate !== day) return '上班卡时间（' + inDate + '）与补录日期（' + day + '）不在同一天';
+        if (outAt && util.toDate(outAt).getTime() <= util.toDate(inAt).getTime()) return '下班卡必须晚于上班卡';
+        var rec = db.findOne('clockRecords', function (c) { return c.employeeId === empId && c.date === day; });
+        var shift = hrShiftOf(empId, day);
+        var saved;
+        db.batch(function () {
+            if (rec) {
+                saved = db.update('clockRecords', rec.id, { clockIn: util.iso(util.toDate(inAt)), clockOut: outAt ? util.iso(util.toDate(outAt)) : null });
+            } else {
+                saved = db.create('clockRecords', {
+                    employeeId: empId, date: day, clockIn: util.iso(util.toDate(inAt)),
+                    clockOut: outAt ? util.iso(util.toDate(outAt)) : '',
+                    shiftCode: shift ? shift.shiftCode : 'MID', device: device || 'HR 补录'
+                }, { stamp: false });
+            }
+            db.commit('clockRecords', saved.id, 'clock:patch');
+            if (shift) {
+                var v = TMS.people.clockView(db.get('clockRecords', saved.id));
+                db.update('shifts', shift.id, { attendance: v ? v.attendance : '已打卡' });
+                db.commit('shifts', shift.id, 'clock:patch');
+            }
+        }, 'clock:patch');
+        var view = TMS.people.clockView(saved);
+        TMS.audit.log('hr.manage', 'employees', empId, '补录 ' + day + ' 考勤：' + fmt.time(saved.clockIn) +
+            (saved.clockOut ? ' — ' + fmt.time(saved.clockOut) : ' 未打下班卡') + '（' + view.attendance + '）', actor());
+        return null;
+    }
+
+    function empClockModal(id, presetDate) {
+        var e = db.get('employees', id);
+        if (!e) { ui.toast('未找到员工 ' + id, 'warn'); return; }
+        var day = presetDate || util.dateKey(util.now());
+        var rec = db.findOne('clockRecords', function (c) { return c.employeeId === e.id && c.date === day; });
+        var shift = hrShiftOf(e.id, day);
+        var def = TMS.people.shiftDef(shift ? shift.shiftCode : 'MID');
+        var recent = util.sortBy(db.col('clockRecords').filter(function (c) { return c.employeeId === e.id; }), 'date', 'desc').slice(0, 6);
+        ui.formModal({
+            title: '考勤补录 · ' + e.name,
+            sub: day + ' · ' + (shift ? '排班 ' + def.name + '（' + def.start + '—' + def.end + '）' : '该日无排班，按正常班默认工时'),
+            notice: rec ? '该日已有打卡记录：上班 ' + fmt.time(rec.clockIn) + (rec.clockOut ? '、下班 ' + fmt.time(rec.clockOut) : '、下班未打') + '。补录会覆盖原时间并在审计日志留下痕迹。'
+                : '该日排了班却没有打卡流水，绩效里的出勤天数按打卡记录计，漏卡会直接压低得分。',
+            values: {
+                date: day,
+                clockInAt: rec ? rec.clockIn : dayAt(day, def.start),
+                clockOutAt: rec && rec.clockOut ? rec.clockOut : (rec ? '' : dayAt(day, def.end)),
+                device: rec && rec.device ? rec.device : 'HR 补录'
+            },
+            fields: [
+                { key: 'date', label: '补录日期', type: 'date', required: true },
+                { key: 'clockInAt', label: '上班卡时间', type: 'datetime', required: true },
+                { key: 'clockOutAt', label: '下班卡时间', type: 'datetime', hint: '留空表示当日只打了上班卡' },
+                { key: 'device', label: '补录来源', type: 'select', options: [{ value: 'HR 补录', label: 'HR 补录' }, { value: '工位考勤机', label: '工位考勤机' }, { value: '手机 APP', label: '手机 APP' }] }
+            ],
+            okText: '写入考勤',
+            onSubmit: function (v) {
+                var err = hrSaveClock(e.id, v.date, v.clockInAt, v.clockOutAt, v.device);
+                if (err) return err;
+                ui.toast('已补录 ' + e.name + ' ' + v.date + ' 的考勤，出勤口径与绩效同步更新', 'success');
+                TMS.shell.refresh();
+            },
+            extra: recent.length ? '<div class="span-2">' + ui.card({
+                title: '最近考勤', flat: true,
+                body: ui.table({
+                    dense: true, keyName: 'id', rows: recent.map(TMS.people.clockView),
+                    columns: [
+                        { key: 'date', label: '日期', sortable: false },
+                        { key: 'shiftName', label: '班次', sortable: false },
+                        { key: 'clockIn', label: '上班', sortable: false, render: function (r) { return fmt.time(r.clockIn); } },
+                        { key: 'clockOut', label: '下班', sortable: false, render: function (r) { return r.clockOut ? fmt.time(r.clockOut) : '<span class="tms-dim">未打</span>'; } },
+                        { key: 'workHours', label: '工时', sortable: false, align: 'right' },
+                        { key: 'attendance', label: '判定', sortable: false, render: function (r) { return ui.badge(r.attendance, r.attendance === '正常' ? 'success' : r.attendance === '加班' ? 'info' : 'warn'); } }
+                    ]
+                })
+            }) + '</div>' : ''
+        });
+    }
+
+    function empShiftModal(id) {
+        var e = db.get('employees', id);
+        if (!e) { ui.toast('未找到员工 ' + id, 'warn'); return; }
+        var day = util.dateKey(util.now());
+        var existed = hrShiftOf(e.id, day);
+        var history = util.sortBy(db.col('shifts').filter(function (s) { return s.employeeId === e.id; }), 'date', 'desc').slice(0, 6);
+        ui.formModal({
+            title: '排班 · ' + e.name,
+            sub: e.position + ' · ' + (e.orgName || e.deptName || '未归属') + (existed ? ' · 今日已排 ' + TMS.people.shiftDef(existed.shiftCode).name : ''),
+            notice: '排班是计划，打卡是事实：排了班没打卡会进「漏打卡」缺口，补卡后两边同时收口。',
+            values: {
+                date: day, shiftCode: existed ? existed.shiftCode : TMS.people.shiftDef('MID').code,
+                hubId: e.hubId || '', remark: '', force: false
+            },
+            fields: [
+                { key: 'date', label: '排班日期', type: 'date', required: true },
+                { key: 'shiftCode', label: '班次', type: 'select', required: true, options: ui.optionsOf(TMS.people.SHIFT_DEFS, 'code', 'name') },
+                { key: 'hubId', label: '作业分拨', type: 'select', options: [{ value: '', label: '按档案归属' }].concat(ui.optionsOf(db.col('hubs'), 'id', 'name')) },
+                { key: 'remark', label: '备注', placeholder: '例：替班、旺季加开' },
+                { key: 'force', label: '该日已有排班时覆盖', type: 'checkbox' }
+            ],
+            okText: '排班',
+            onSubmit: function (v) {
+                var def = TMS.people.shiftDef(v.shiftCode);
+                var res = TMS.people.assignShift({
+                    employeeId: e.id, date: v.date, shiftCode: v.shiftCode,
+                    orgId: e.orgId, hubId: v.hubId || e.hubId, remark: v.remark, force: !!v.force
+                });
+                if (res && res.ok === false) return res.message + '（勾选覆盖可改排）';
+                db.batch(function () {
+                    db.commit('shifts', res.id, 'shift:assign');
+                }, 'shift:assign');
+                TMS.audit.log('hr.manage', 'employees', e.id, v.date + ' 排 ' + def.name + '（' + def.start + '—' + def.end + '）' + (v.remark ? '：' + v.remark : ''), actor());
+                ui.toast('已为 ' + e.name + ' 排 ' + v.date + ' ' + def.name, 'success');
+                TMS.shell.refresh();
+            },
+            extra: history.length ? '<div class="span-2">' + ui.list(history.map(function (s) {
+                var sv = TMS.people.shiftView(s);
+                var clock = db.findOne('clockRecords', function (c) { return c.employeeId === s.employeeId && c.date === s.date; });
+                return {
+                    title: sv.date + ' ' + sv.shiftName + ' ' + sv.startAt + '—' + sv.endAt,
+                    sub: sv.hubId ? '分拨 ' + ((db.get('hubs', sv.hubId) || {}).name || sv.hubId) : '按档案归属',
+                    right: ui.badge(clock ? '已打卡' : (sv.date > util.dateKey(util.now()) ? '计划' : '漏卡'), clock ? 'success' : sv.date > util.dateKey(util.now()) ? 'info' : 'warn')
+                };
+            })) + '</div>' : ''
+        });
+    }
+
+    function empStatusModal(id) {
+        var e = db.get('employees', id);
+        if (!e) { ui.toast('未找到员工 ' + id, 'warn'); return; }
+        var u = hrUserOf(e.id);
+        var idx = hrIndex(7);
+        var busy = idx.openByCourier[e.id] || 0;
+        var trips = idx.openByDriver[e.id] || 0;
+        ui.formModal({
+            title: '状态流转 · ' + e.name,
+            sub: '当前 ' + EMP_STATUS_TEXT[e.status] + ' · 工号 ' + e.id + (u ? ' · 账号 ' + u.username : ' · 未开账号'),
+            notice: busy || trips ? '名下还有 ' + busy + ' 票未签收、' + trips + ' 趟未跑完，改状态前请先走订单页与调度页改派。'
+                : '名下已无在途单据，可以安全流转。',
+            values: { status: e.status, reason: '' },
+            fields: [
+                { key: 'status', label: '新状态', type: 'radio', options: dictOptions(EMP_STATUS_TEXT) },
+                { key: 'reason', label: '流转事由', required: true, span: 2, placeholder: '例：转正 / 产假 / 主动离职' }
+            ],
+            okText: '流转',
+            danger: e.status !== 'resigned',
+            onSubmit: function (v) {
+                if (v.status === e.status) return '状态没有变化';
+                if (v.status === 'resigned' && (busy || trips)) return '名下仍有在途单据，先改派再离职：派送 ' + busy + ' 票 / 车次 ' + trips + ' 趟';
+                var saved;
+                db.batch(function () {
+                    saved = db.update('employees', e.id, { status: v.status });
+                    db.commit('employees', e.id, 'employee:status');
+                }, 'employee:status');
+                var acc = hrSyncAccount(u, v.status, v.reason);
+                TMS.audit.log('hr.manage', 'employees', e.id, e.name + ' 状态 ' + EMP_STATUS_TEXT[e.status] + '→' + EMP_STATUS_TEXT[v.status] +
+                    '：' + v.reason + (acc ? '（账号 ' + u.username + (v.status === 'resigned' ? ' 已停用' : ' 已恢复') + '）' : ''), actor());
+                ui.toast('已流转为' + EMP_STATUS_TEXT[v.status] + (acc ? '，登录账号同步' + (v.status === 'resigned' ? '停用' : '恢复') : ''), 'success');
+                TMS.shell.refresh();
+            }
+        });
+    }
+
+    function hrAccountModal(id) {
+        var e = db.get('employees', id);
+        if (!e) { ui.toast('未找到员工 ' + id, 'warn'); return; }
+        var u = hrUserOf(e.id);
+        if (!u) {
+            ui.confirm({
+                title: '为 ' + e.name + ' 开通登录账号',
+                message: '登录名 ' + String(e.id).toLowerCase() + '，初始口令 ' + INIT_PASSWORD + '，角色随档案岗位（' + TMS.people.roleName(e.role) + '）。',
+                detail: '开通后该员工可登录对应门户，看到的任务、打卡、绩效全部由 personId 反查到自己。',
+                okText: '开通'
+            }).then(function (yes) {
+                if (!yes) return;
+                var res = hrCreateAccount(e);
+                ui.toast(res.created ? '账号 ' + res.row.username + ' 已开通，初始口令 ' + INIT_PASSWORD : '该员工已有账号 ' + res.row.username, res.created ? 'success' : 'info');
+                TMS.shell.refresh();
+            });
+            return;
+        }
+        ui.modal({
+            title: '登录账号 · ' + u.username,
+            sub: e.name + ' · ' + TMS.people.roleName(u.role) + ' · ' + (u.orgName || '未归属'),
+            body: ui.stack([
+                ui.desc([
+                    { label: '账号', value: '<span class="tms-mono">' + esc(u.id) + '</span> ' + esc(u.username) },
+                    { label: '状态', value: statusBadge(u.status || 'active', { active: '可登录', inactive: '已停用', locked: '已锁定' }) },
+                    { label: '绑定档案', value: ui.idCell(e.id, 'emp:open') + ' <span class="tms-dim">' + esc(e.position || '') + '</span>' },
+                    { label: '登录门户', value: esc((cfg.roles[u.role] || {}).portal || '—') },
+                    { label: '最近登录', value: u.lastLoginAt ? fmt.dateTime(u.lastLoginAt) : '<span class="tms-dim">从未登录</span>' },
+                    { label: '开通时间', value: u.createdAt ? fmt.date(u.createdAt) : '<span class="tms-dim">—</span>' },
+                    { label: '权限', value: TMS.rbac.permissionsFor(u.role).length + ' 个权限点（按角色授权，可在用户权限页调整）' }
+                ]),
+                ui.notice(e.status === 'resigned'
+                    ? '该员工档案已是「离职」：账号应处于停用状态，否则工号密码仍然能登进门户。'
+                    : '停用写 users.status=inactive，登录校验查不到启用行即拒绝；重置口令会把初始口令改回 ' + INIT_PASSWORD + '。',
+                    e.status === 'resigned' && (u.status || 'active') !== 'inactive' ? 'danger' : 'info')
+            ]),
+            footer: ui.btn('重置为初始口令', { tone: 'primary', size: 'sm', act: 'emp:resetPwd', arg: u.id }) +
+                ui.btn((u.status || 'active') === 'inactive' ? '恢复登录' : '停用账号', { size: 'sm', act: 'emp:toggleUser', arg: u.id }) +
+                ui.btn('去用户权限页', { size: 'sm', tone: 'ghost', act: 'hr:goUser', arg: u.id }) +
+                ui.btn('关闭', { act: 'ui:close' })
+        });
+    }
+
+    function empModal(id) {
+        var e = db.get('employees', id);
+        if (!e) { ui.toast('未找到员工 ' + id, 'warn'); return; }
+        var idx = hrIndex(Math.max(7, Number(curCtx().days) || 7));
+        var u = idx.userBy[e.id];
+        var p = idx.perfBy[e.id];
+        var ev = idx.evalBy[e.id];
+        var period = idx.period;
+        var metrics = TMS.people.computeMetrics(e, period);
+        var clockRows = util.sortBy(db.col('clockRecords').filter(function (c) { return c.employeeId === e.id; }), 'date', 'desc')
+            .slice(0, 8).map(TMS.people.clockView);
+        var c = idx.clockBy[e.id] || { win: 0, late: 0, hours: 0, open: 0, lastAt: '' };
+        var kpi = ui.kpis([
+            { label: '本期得分', value: p && p.period === period ? p.score : '—', unit: p && p.period === period ? p.grade : '', tone: p && p.period === period ? (p.grade === 'D' ? 'danger' : 'brand') : 'muted', sub: period },
+            { label: '窗口出勤', value: c.win, unit: '天', tone: c.win ? 'info' : 'warn', sub: '累计 ' + c.hours + ' 工时' },
+            { label: '迟到早退', value: c.late, unit: '次', tone: c.late ? 'warn' : 'success', sub: '按班次开始时间判' },
+            { label: '工龄', value: empTenure(e.entryAt), unit: '月', tone: 'muted', sub: '入职 ' + fmt.date(e.entryAt) },
+            { label: '月薪酬', value: fmt.money(e.salary || 0), tone: 'success', sub: EMP_STATUS_TEXT[e.status] },
+            { label: '登录账号', value: u ? '已开通' : '未开通', tone: u ? 'brand' : 'danger', sub: u ? u.username : '在岗却进不了系统' }
+        ]);
+        ui.modal({
+            size: 'wide',
+            title: e.name + ' · ' + (e.position || TMS.people.roleName(e.role)),
+            sub: e.id + ' · 工牌 ' + (e.badge || '—') + ' · ' + (e.deptName || '—') + (e.orgName ? ' / ' + e.orgName : '') + ' · ' + (e.phone || '无电话'),
+            body: ui.stack([
+                kpi,
+                ui.split('2', [
+                    ui.card({
+                        title: '档案与下游', flat: true,
+                        body: ui.desc([
+                            { label: '在职状态', value: statusBadge(e.status, EMP_STATUS_TEXT) },
+                            { label: '岗位', value: esc(TMS.people.roleName(e.role)) + ' <span class="tms-dim">' + esc(e.role) + '</span>' },
+                            { label: '常驻城市', value: dim(e.city) },
+                            { label: '驾驶车牌', value: e.plateNo ? esc(e.plateNo) + (idx.platesByDriver[e.id] ? ' ' + ui.badge('已绑固定驾驶员', 'success') : ' ' + ui.badge('车辆档案未回绑', 'warn')) : '<span class="tms-dim">未登记</span>' },
+                            { label: '最近打卡', value: c.lastAt ? fmt.dateTime(c.lastAt) : '<span class="tms-dim">窗口内无打卡</span>' },
+                            { label: '本期绩效', value: p && p.period === period ? (p.score + ' 分 ' + ui.badge(p.grade, p.grade === 'D' ? 'danger' : p.score >= 85 ? 'success' : 'info')) : '<span class="tms-badge tone-warn">待生成</span>' },
+                            { label: '最近考核', value: ev ? (ev.totalScore + ' 分 · ' + esc(ev.period) + ' · ' + (ev.status === 'done' ? '已定级' : '待评定')) : '<span class="tms-dim">无</span>' },
+                            { label: '名下在途', value: (idx.openByCourier[e.id] || 0) + ' 票待签收 / ' + (idx.openByDriver[e.id] || 0) + ' 趟未跑完' }
+                        ])
+                    }),
+                    ui.card({
+                        title: '本期作业指标', sub: '读取时由订单 / 任务 / 车次反推，不落库', flat: true,
+                        body: ui.desc(Object.keys(metrics).map(function (k) {
+                            return { label: METRIC_TEXT[k] || k, value: metricCell(k, metrics[k]) };
+                        }))
+                    })
+                ]),
+                ui.card({
+                    title: '最近考勤', sub: clockRows.length ? '共 ' + (idx.clockBy[e.id] ? idx.clockBy[e.id].win : 0) + ' 天在窗口内' : '', flat: true,
+                    body: clockRows.length ? ui.table({
+                        dense: true, keyName: 'id', rows: clockRows,
+                        columns: [
+                            { key: 'date', label: '日期', sortable: false },
+                            { key: 'shiftName', label: '班次', sortable: false },
+                            { key: 'clockIn', label: '上班', sortable: false, render: function (r) { return fmt.time(r.clockIn); } },
+                            { key: 'clockOut', label: '下班', sortable: false, render: function (r) { return r.clockOut ? fmt.time(r.clockOut) : '<span class="tms-dim">未打</span>'; } },
+                            { key: 'workHours', label: '工时', sortable: false, align: 'right' },
+                            { key: 'attendance', label: '判定', sortable: false, render: function (r) { return ui.badge(r.attendance, r.attendance === '正常' ? 'success' : r.attendance === '加班' ? 'info' : 'warn'); } },
+                            { key: 'device', label: '终端', sortable: false },
+                            { key: 'location', label: '地点', sortable: false }
+                        ]
+                    }) : ui.empty('还没有打卡流水', '一线作业岗可在上方「补卡」按日补录')
+                })
+            ]),
+            footer: ui.btn('编辑档案', { tone: 'primary', act: 'emp:edit', arg: e.id }) +
+                ui.btn('排班', { act: 'emp:shift', arg: e.id }) +
+                ui.btn('补卡', { act: 'emp:clock', arg: e.id }) +
+                ui.btn('核算本期绩效', { act: 'emp:perf', arg: e.id }) +
+                ui.btn('状态流转', { act: 'emp:status', arg: e.id }) +
+                ui.btn('账号', { act: 'emp:account', arg: e.id }) +
+                ui.btn('关闭', { tone: 'ghost', act: 'ui:close' })
+        });
+    }
+
+    function deptModal(deptId) {
+        var d = db.get('departments', deptId);
+        if (!d) { ui.toast('未找到部门 ' + deptId, 'warn'); return; }
+        var rows = hrRows(7).filter(function (r) { return r.deptId === deptId; });
+        var byStatus = util.countBy(rows, 'status');
+        ui.modal({
+            size: 'wide',
+            title: d.name,
+            sub: '部门负责人 ' + (d.manager || '—') + (d.parentId ? ' · 上级 ' + ((db.get('departments', d.parentId) || {}).name || d.parentId) : ' · 一级部门') + ' · 在册 ' + rows.length + ' 人',
+            body: ui.stack([
+                ui.desc([
+                    { label: '在职结构', value: EMP_STATUS_TEXT.active + ' ' + (byStatus.active || 0) + ' · ' + EMP_STATUS_TEXT.on_leave + ' ' + (byStatus.on_leave || 0) + ' · ' + EMP_STATUS_TEXT.resigned + ' ' + (byStatus.resigned || 0) },
+                    { label: '缺登录账号', value: rows.filter(function (r) { return r.noAccount && r.isFront; }).length + ' 人' },
+                    { label: '离职未停号', value: rows.filter(function (r) { return r.liveAccount; }).length + ' 人' },
+                    { label: '月度薪酬', value: fmt.money(util.sum(rows.filter(function (r) { return r.status === 'active'; }), 'salary')) }
+                ]),
+                ui.table({
+                    dense: true, keyName: 'id', rows: rows.slice(0, 14), onRow: 'emp:open',
+                    columns: [
+                        { key: 'id', label: '工号', sortable: false, render: function (r) { return ui.idCell(r.id, 'emp:open'); } },
+                        { key: 'name', label: '姓名', sortable: false },
+                        { key: 'position', label: '职务', sortable: false },
+                        { key: 'status', label: '状态', sortable: false, render: function (r) { return statusBadge(r.status, EMP_STATUS_TEXT); } },
+                        { key: 'username', label: '账号', sortable: false, render: function (r) { return r.username ? '<span class="tms-mono">' + esc(r.username) + '</span>' : '<span class="tms-badge tone-danger">未开通</span>'; } },
+                        { key: 'clockDays', label: '出勤', sortable: false, align: 'right' },
+                        { key: 'grade', label: '绩效', sortable: false, render: function (r) { return r.hasPerf ? (r.score + ' ' + ui.badge(r.grade, r.grade === 'D' ? 'danger' : 'info')) : '<span class="tms-dim">待生成</span>'; } }
+                    ]
+                }),
+                rows.length > 14 ? '<div class="tms-dim" style="font-size:12px">仅列前 14 人，全量请用台账筛选到本部门后导出</div>' : ''
+            ]),
+            footer: ui.btn('在台账中筛出本部门', { tone: 'primary', act: 'hr:deptFilter', arg: d.id }) +
+                ui.btn('关闭', { act: 'ui:close' })
+        });
+    }
+
+    /* 离职人员名下还有活：这是人事最容易漏的一环。
+       单子挂在已停用的账号上，派送端永远刷不出任务，压单预警也只会归到网点头上 */
+    function hrBusyModal() {
+        var idx = hrIndex(7);
+        var rows = hrRows(7, idx).filter(function (r) { return r.leftOver; });
+        ui.modal({
+            size: 'wide',
+            title: '非在岗人员名下在途',
+            sub: rows.length + ' 人 · 待签收 ' + util.sum(rows, 'busyOrders') + ' 票 · 未跑完 ' + util.sum(rows, 'busyTrips') + ' 趟',
+            body: rows.length ? ui.table({
+                dense: true, keyName: 'id', rows: rows, onRow: 'emp:open',
+                columns: [
+                    { key: 'id', label: '工号', sortable: false, render: function (r) { return ui.idCell(r.id, 'emp:open'); } },
+                    { key: 'name', label: '姓名/岗位', sortable: false, render: function (r) { return esc(r.name) + ' <span class="tms-dim">' + esc(r.roleName) + ' · ' + esc(r.orgName || r.deptName) + '</span>'; } },
+                    { key: 'status', label: '状态', sortable: false, render: function (r) { return statusBadge(r.status, EMP_STATUS_TEXT); } },
+                    { key: 'busyOrders', label: '待签收', sortable: false, align: 'right', render: function (r) { return r.busyOrders ? ui.badge(r.busyOrders + ' 票', 'danger') : '—'; } },
+                    { key: 'busyTrips', label: '未跑完车次', sortable: false, align: 'right', render: function (r) { return r.busyTrips ? ui.badge(r.busyTrips + ' 趟', 'warn') : '—'; } },
+                    { key: 'username', label: '账号', sortable: false, render: function (r) { return r.userStatus === 'inactive' ? ui.badge('已停用', 'muted') : ui.badge('仍可登录', 'danger'); } },
+                    { key: 'act', label: '处理', sortable: false, render: function (r) {
+                        return (r.busyOrders ? ui.link('看订单', 'hr:goOrders', r.id, { tone: 'ghost' }) : '') +
+                            (r.busyTrips ? ui.link('看车次', 'hr:goTrips', r.id, { tone: 'ghost' }) : '') +
+                            ui.link('状态流转', 'emp:status', r.id, { tone: 'ghost' });
+                    } }
+                ]
+            }) : ui.empty('没有非在岗人员背着在途单', '档案、账号、任务三者当前一致')
+        });
+    }
+
+    var hrActions = {
+        'emp:open': function (id) { empModal(id); },
+        'emp:edit': function (id) { empFormModal(id); },
+        'emp:new': function () { empFormModal(''); },
+        'emp:shift': function (id) { empShiftModal(id); },
+        'emp:clock': function (id) { empClockModal(id); },
+        'emp:status': function (id) { empStatusModal(id); },
+        'emp:account': function (id) { hrAccountModal(id); },
+        'dept:open': function (id) { deptModal(id); },
+        'hr:deptFilter': function (id) {
+            var st = ui.state('hr');
+            pg.filtersOf(st).deptId = id;
+            st.page = 1;
+            TMS.ui.closeTop();
+            TMS.shell.refresh();
+        },
+        /* 绩效是「读时算、落结论」：得分与等级进 performances，指标每次读都从订单反推，
+           所以重跑一次就是把当期快照刷新一次，不会产生第二行 */
+        'emp:perf': function (id) {
+            if (!id) return;
+            var e = db.get('employees', id);
+            if (!e) { ui.toast('未找到员工 ' + id, 'warn'); return; }
+            var period = util.monthKey(util.now());
+            var row = TMS.people.computePerformance(id, period);
+            db.batch(function () { db.commit('performances', row.id, 'perf:calc'); }, 'perf:calc');
+            TMS.audit.log('perf.calc', 'employees', id, e.name + ' ' + period + ' 绩效 ' + row.score + ' 分（' + row.grade + '）', actor());
+            ui.toast(e.name + ' ' + period + ' 绩效：' + row.score + ' 分 · ' + row.grade, row.grade === 'D' ? 'warn' : 'success');
+            TMS.shell.refresh();
+        },
+        'hr:bulkAccount': function () {
+            var idx = hrIndex(7);
+            var list = db.col('employees').filter(function (e) {
+                return e.status === 'active' && FRONT_ROLES.indexOf(e.role) > -1 && !idx.userBy[e.id];
+            });
+            if (!list.length) { ui.toast('在岗一线人员已全部开通账号', 'info'); return; }
+            ui.confirm({
+                title: '批量开通登录账号',
+                message: list.length + ' 名在岗一线人员还没有账号，将按工号小写开通、初始口令 ' + INIT_PASSWORD + '。',
+                detail: '账号会绑定 personId，登录后只看到自己网点的单、自己的班次与绩效。',
+                okText: '开通 ' + list.length + ' 个'
+            }).then(function (yes) {
+                if (!yes) return;
+                var n = 0;
+                db.batch(function () {
+                    list.forEach(function (e) { if (hrCreateAccount(e).created) n++; });
+                }, 'user:bulk');
+                ui.toast('已开通 ' + n + ' 个账号，初始口令 ' + INIT_PASSWORD, 'success');
+                TMS.shell.refresh();
+            });
+        },
+        'hr:bulkDisable': function () {
+            var rows = hrRows(7).filter(function (r) { return r.liveAccount; });
+            if (!rows.length) { ui.toast('没有离职但还能登录的账号', 'info'); return; }
+            var n = 0;
+            db.batch(function () {
+                rows.forEach(function (r) { if (hrSyncAccount(db.get('users', r.userId), 'resigned', '离职自动停号')) n++; });
+            }, 'user:bulkDisable');
+            ui.toast('已停用 ' + n + ' 个离职账号，这些用户名再登录会被拒绝', 'success');
+            TMS.shell.refresh();
+        },
+        'hr:runPerf': function () {
+            var period = util.monthKey(util.now());
+            var rows = TMS.people.generatePerformances(period);
+            TMS.audit.log('perf.calc', 'performances', '', period + ' 批量核算 ' + rows.length + ' 人一线绩效', actor());
+            var d = rows.filter(function (x) { return x.grade === 'D'; });
+            ui.toast(period + ' 绩效已核算 ' + rows.length + ' 人' + (d.length ? '，其中 ' + d.length + ' 人 D 档待绩效改进' : ''), d.length ? 'warn' : 'success');
+            TMS.shell.refresh();
+        },
+        'hr:busy': function () { hrBusyModal(); },
+        'hr:goUser': function (id) {
+            TMS.ui.closeTop();
+            TMS.shell.go('user', { q: id ? (db.get('users', id) || {}).username : '' });
+        },
+        'hr:goOrders': function (id) {
+            var e = db.get('employees', id);
+            if (!e) return;
+            TMS.ui.closeTop();
+            TMS.shell.go('order', { q: e.name });
+        },
+        'hr:goTrips': function (id) {
+            var e = db.get('employees', id);
+            if (!e) return;
+            TMS.ui.closeTop();
+            TMS.shell.go('transport', { q: e.name });
+        },
+        'hr:goEval': function () {
+            TMS.ui.closeTop();
+            TMS.shell.go('evaluation', { chip: 'pending' });
+        },
+        'hr:goVehicle': function () {
+            TMS.ui.closeTop();
+            TMS.shell.go('vehicle');
+        },
+        'emp:resetPwd': function (id) {
+            var u = db.get('users', id);
+            if (!u) return;
+            ui.confirm({ title: '重置口令', message: u.username + ' 的口令将重置为 ' + INIT_PASSWORD + '。', okText: '重置', danger: true })
+                .then(function (yes) {
+                    if (!yes) return;
+                    db.batch(function () {
+                        db.update('users', u.id, { passwordHash: 'h:' + util.hash(INIT_PASSWORD) });
+                        db.commit('users', u.id, 'user:resetPwd');
+                    }, 'user:resetPwd');
+                    TMS.audit.log('user.manage', 'users', u.id, '重置 ' + u.username + ' 登录口令', actor());
+                    ui.toast('已重置为初始口令 ' + INIT_PASSWORD, 'success');
+                });
+        },
+        'emp:toggleUser': function (id) {
+            var u = db.get('users', id);
+            if (!u) return;
+            var off = (u.status || 'active') !== 'inactive';
+            db.batch(function () {
+                db.update('users', u.id, { status: off ? 'inactive' : 'active', disabledReason: off ? '手工停用' : null });
+                db.commit('users', u.id, 'user:status');
+            }, 'user:status');
+            TMS.audit.log('user.manage', 'users', u.id, u.username + (off ? ' 停用' : ' 恢复'), actor());
+            ui.toast(u.username + (off ? ' 已停用，登录会被拒绝' : ' 已恢复登录'), 'success');
+            TMS.shell.refresh();
+        }
+    };
+
+    pg.define('hr', {
+        sub: '员工档案 · 登录账号 · 排班打卡 · 绩效考核的一致性核对与补齐',
+        load: function (ctx) {
+            applyParamFilter(ctx, ['role', 'deptId', 'q']);
+            var idx = hrIndex(ctx.days);
+            var rows = hrRows(ctx.days, idx);
+            return { days: ctx.days, idx: idx, rows: rows, gaps: hrGaps(rows, idx), depts: hrDepts(rows) };
+        },
+        render: function (ctx, d) {
+            var rows = d.rows, g = d.gaps, idx = d.idx;
+            var byStatus = util.countBy(rows, 'status');
+            var activeRows = rows.filter(function (r) { return r.status === 'active'; });
+            var front = rows.filter(function (r) { return r.isFront; });
+            var covered = front.filter(function (r) { return r.clockDays > 0; }).length;
+            var kpi = ui.kpis([
+                { label: '在册人力', value: fmt.number(rows.length), unit: '人', tone: 'brand', icon: '☗', sub: '在职 ' + (byStatus.active || 0) + ' · 休假 ' + (byStatus.on_leave || 0) + ' · 离职 ' + (byStatus.resigned || 0) },
+                { label: '缺登录账号', value: g.noAccount.length, unit: '人', tone: g.noAccount.length ? 'danger' : 'success', sub: '在岗一线，进不了系统' },
+                { label: '离职未停号', value: g.liveAccount.length, unit: '个', tone: g.liveAccount.length ? 'warn' : 'success', sub: '工号密码仍可用' },
+                { label: idx.period + ' 绩效', value: rows.filter(function (r) { return r.hasPerf; }).length, unit: '人', tone: 'info', sub: '待补 ' + g.noPerf.length + ' 人' },
+                { label: '漏打卡班次', value: g.missedShifts.length, unit: '条', tone: g.missedShifts.length ? 'warn' : 'success', sub: '有排班无流水' },
+                { label: '月度薪酬', value: fmt.money(util.sum(activeRows, 'salary')), tone: 'success', sub: '在职 ' + activeRows.length + ' 人口径' }
+            ]);
+            var roleCard = ui.card({
+                title: '岗位结构', flat: true,
+                sub: '一线作业 ' + front.length + ' 人 · 占 ' + fmt.percent(util.pct(front.length, rows.length)) + ' · 窗口内出勤覆盖 ' + fmt.percent(util.pct(covered, front.length)),
+                body: ch.hbars({
+                    data: util.sortBy(EMP_ROLE_LIST.map(function (r) {
+                        return { label: TMS.people.roleName(r), value: rows.filter(function (x) { return x.role === r; }).length };
+                    }), 'value', 'desc'),
+                    rowH: 26, labelWidth: 92, valueWidth: 56
+                })
+            });
+            var deptCard = ui.card({
+                title: '部门人力', sub: d.depts.length + ' 个部门有编制 · 点开看名册与缺口', flat: true,
+                body: ui.table({
+                    dense: true, keyName: 'id', rows: d.depts, onRow: 'dept:open', emptyText: '没有部门档案',
+                    columns: [
+                        { key: 'name', label: '部门', sortable: false, render: function (r) { return '<b>' + esc(r.name) + '</b><div class="tms-dim">' + esc(r.id) + ' · 负责人 ' + esc(r.manager || '—') + '</div>'; } },
+                        { key: 'total', label: '在册', sortable: false, align: 'right' },
+                        { key: 'active', label: '在职', sortable: false, align: 'right' },
+                        { key: 'front', label: '一线', sortable: false, align: 'right' },
+                        { key: 'noAccount', label: '缺账号', sortable: false, align: 'right', render: function (r) { return r.noAccount ? ui.badge(r.noAccount, 'danger') : '0'; } },
+                        { key: 'salary', label: '月薪酬', sortable: false, align: 'right' }
+                    ]
+                })
+            });
+            var gapItems = [];
+            if (g.noAccount.length) gapItems.push({
+                title: g.noAccount.length + ' 名在岗一线没有登录账号',
+                sub: '账号绑 personId 后，派送/分拣/司机门户才看得到自己的任务：例 ' + g.noAccount.slice(0, 3).map(function (r) { return esc(r.name); }).join('、'),
+                right: ui.btn('批量开通', { size: 'sm', tone: 'primary', act: 'hr:bulkAccount' })
+            });
+            if (g.liveAccount.length) gapItems.push({
+                title: g.liveAccount.length + ' 个离职账号仍可登录',
+                sub: '例 ' + g.liveAccount.slice(0, 3).map(function (r) { return esc(r.username); }).join('、') + '，停用后登录立即被拒',
+                right: ui.btn('批量停用', { size: 'sm', tone: 'danger', act: 'hr:bulkDisable' })
+            });
+            if (g.noPerf.length) gapItems.push({
+                title: g.noPerf.length + ' 名一线人员本期未出绩效',
+                sub: idx.period + '：得分从订单、车次、任务流水即时反推，跑一次即落一行快照',
+                right: ui.btn('批量核算', { size: 'sm', act: 'hr:runPerf' })
+            });
+            if (g.missedShifts.length) gapItems.push({
+                title: g.missedShifts.length + ' 个班次排了班却没有打卡流水',
+                sub: '例 ' + g.missedShifts.slice(0, 3).map(function (s) { return esc((s.employee || '') + ' ' + s.date); }).join('、'),
+                right: ui.btn('补第一条', { size: 'sm', act: 'emp:clock', arg: g.missedShifts[0].employeeId })
+            });
+            if (g.evalPending) gapItems.push({
+                title: g.evalPending + ' 条考核待评定',
+                sub: '考核定三级分（业绩 60% + 能力 25% + 态度 15%），定级后写入 D 档改进计划',
+                right: ui.btn('去考核页', { size: 'sm', tone: 'ghost', act: 'hr:goEval' })
+            });
+            if (g.leftOver.length) gapItems.push({
+                title: g.leftOver.length + ' 名非在岗人员背着在途单',
+                sub: '单子挂在停用账号上，作业端永远刷不出来，需要改派后再流转状态',
+                right: ui.btn('查看清单', { size: 'sm', tone: 'warn', act: 'hr:busy' })
+            });
+            var gapCard = ui.card({
+                title: '待补的缺口', sub: gapItems.length ? gapItems.length + ' 项，均可就地闭环' : '档案与下游一致', flat: true,
+                body: gapItems.length ? ui.list(gapItems) : ui.empty('没有缺口', '账号、绩效、考勤、在途单四项都对得上')
+            });
+            var listCard = grid(ctx, {
+                title: '员工台账', sub: rows.length + ' 人 · 窗口近 ' + d.days + ' 天出勤',
+                rows: rows, keyName: 'id', dense: true, onRow: 'emp:open', searchKey: 'q', pageSize: 20,
+                filter: hrRowFilter,
+                search: function (r) { return [r.id, r.name, r.badge, r.phone, r.position, r.deptName, r.orgName, r.city, r.username, r.plateNo].join(' '); },
+                chips: [
+                    { label: '全部', value: '', count: rows.length },
+                    { label: '缺账号', value: 'noaccount', count: g.noAccount.length },
+                    { label: '离职未停号', value: 'liveaccount', count: g.liveAccount.length },
+                    { label: '本期无绩效', value: 'noperf', count: g.noPerf.length },
+                    { label: '窗口无出勤', value: 'noclock', count: rows.filter(function (r) { return r.isFront && r.clockDays === 0; }).length },
+                    { label: '非在岗有在途', value: 'leftover', count: g.leftOver.length }
+                ], chipsName: 'chip',
+                fields: [
+                    { key: 'role', label: '岗位', options: [{ value: '', label: '全部岗位' }].concat(empRoleOptions()) },
+                    { key: 'deptId', label: '部门', options: [{ value: '', label: '全部部门' }].concat(ui.optionsOf(db.col('departments'), 'id', 'name')) },
+                    { key: 'status', label: '在职状态', options: [{ value: '', label: '全部' }].concat(dictOptions(EMP_STATUS_TEXT)) }
+                ],
+                tools: ui.btn('导出考勤', { size: 'sm', tone: 'ghost', act: 'hr:exportClock', icon: '↓' }) +
+                    ui.btn('导出台账', { size: 'sm', tone: 'ghost', act: 'hr:export', icon: '↓' }),
+                columns: [
+                    { key: 'id', label: '工号', width: '96px', render: function (r) { return ui.idCell(r.id, 'emp:open'); } },
+                    { key: 'name', label: '姓名 / 职务', width: '168px', render: function (r) { return '<b>' + esc(r.name) + '</b><div class="tms-dim">' + esc(r.roleName) + ' · ' + esc(r.position) + '</div>'; } },
+                    { key: 'deptName', label: '部门 / 归属', sortable: false, render: function (r) { return esc(r.deptName || '—') + '<div class="tms-dim">' + esc(r.orgName || '未归属') + (r.city ? ' · ' + esc(r.city) : '') + '</div>'; } },
+                    { key: 'status', label: '状态', width: '80px', sortable: false, render: function (r) { return statusBadge(r.status, EMP_STATUS_TEXT); } },
+                    { key: 'username', label: '登录账号', width: '120px', render: function (r) {
+                        if (!r.userId) return r.noAccount ? ui.link('未开通', 'emp:account', r.id, { tone: 'danger' }) : '<span class="tms-dim">—</span>';
+                        return '<span class="tms-mono">' + esc(r.username) + '</span>' + (r.liveAccount ? ' ' + ui.badge('应停用', 'danger') : '');
+                    } },
+                    { key: 'clockDays', label: '窗口出勤', width: '104px', align: 'right', render: function (r) {
+                        return r.clockDays ? (r.clockDays + ' 天' + (r.clockLate ? ' ' + ui.badge('迟 ' + r.clockLate, 'warn') : '')) : (r.isFront ? ui.badge('无', 'warn') : '<span class="tms-dim">职能岗</span>');
+                    } },
+                    { key: 'score', label: idx.period + ' 绩效', width: '108px', align: 'right', render: function (r) {
+                        return r.hasPerf ? (r.score + ' ' + ui.badge(r.grade, r.grade === 'D' ? 'danger' : r.score >= 85 ? 'success' : 'info')) : '<span class="tms-dim">待生成</span>';
+                    } },
+                    { key: 'evalTotal', label: '最近考核', width: '96px', align: 'right', render: function (r) {
+                        return r.evalTotal ? (r.evalTotal + ' <span class="tms-dim">' + esc(r.evalStatus === 'done' ? '已定级' : '待评定') + '</span>') : '<span class="tms-dim">—</span>';
+                    } },
+                    { key: 'ops', label: '操作', width: '152px', sortable: false, render: function (r) {
+                        return ui.link('编辑', 'emp:edit', r.id, { tone: 'ghost' }) + ui.link('排班', 'emp:shift', r.id, { tone: 'ghost' }) + ui.link('补卡', 'emp:clock', r.id, { tone: 'ghost' });
+                    } }
+                ],
+                emptyText: '没有符合条件的员工'
+            });
+            return wrap(ctx, {
+                actions: ui.btn('新增员工', { tone: 'primary', act: 'emp:new', icon: '+' }) +
+                    ui.btn('批量开账号', { act: 'hr:bulkAccount', icon: '⚿' }),
+                sub: '在册 ' + rows.length + ' 人 · 在职 ' + (byStatus.active || 0) + ' · ' + idx.period + ' 已出绩效 ' + rows.filter(function (r) { return r.hasPerf; }).length + ' 人',
+                body: [kpi, ui.split('2', [roleCard, gapCard]), deptCard, listCard, ui.card({
+                    title: '口径说明', flat: true,
+                    body: ui.desc([
+                        { label: '账号怎么绑', value: 'users.personId 指向员工 id，登录名统一为工号小写（' + 'emp0001' + ' 这种），初始口令 ' + INIT_PASSWORD + '；档案与账号同名同人，用户权限页看到的列表和这里完全一致' },
+                        { label: '离职为什么连带停号', value: 'auth.verify 只认 status 不为 inactive 的行，离职流转把账号写成 inactive，下一次登录直接被拒；反向恢复同样在状态流转里做' },
+                        { label: '出勤看什么', value: 'clockRecords 一行一天，工时/加班/迟到都由上下班卡推算；考勤流水只为一线作业样本落库（全量 90 天会把 localStorage 吃掉一整块），职能岗以登录留痕代替' },
+                        { label: '漏打卡怎么判', value: '某员工某天有排班行却没有同日打卡行。补录后这条立即从缺口消失，排班行的状态同步改判，出勤天数进入绩效' },
+                        { label: '绩效为什么只算一线', value: '得分公式按派送、分拣、司机、网点四类口径写死，需要单量/件数/里程加权；职能岗没有可加权的作业流水，批量核算不覆盖，可在个人档案里单独算' },
+                        { label: '车牌的作用', value: '填车牌即把车辆档案的固定驾驶员改成本人（一车一司机），调度派单默认沿用；清空车牌自动解绑。车辆页会校验固定司机是否仍在岗' },
+                        { label: '在途单为什么要拦离职', value: '单子挂在停用账号上，派送端刷不出任务、签收率也会算到离职人头上。状态流转要求先改派，改派走订单页与调度页' }
+                    ])
+                })]
+            });
+        },
+        actions: merge(hrActions, {
+            'hr:export': function () {
+                var idx = hrIndex(Math.max(7, Number(curCtx().days) || 7));
+                exportGrid({
+                    name: '员工台账.csv', rows: hrRows(Math.max(7, Number(curCtx().days) || 7), idx), searchKey: 'q', filter: hrRowFilter,
+                    search: function (r) { return [r.id, r.name, r.badge, r.phone, r.position, r.deptName, r.orgName, r.city, r.username, r.plateNo].join(' '); },
+                    cols: [
+                        { key: 'id', label: '工号' }, { key: 'name', label: '姓名' }, { key: 'badge', label: '工牌' },
+                        { key: 'roleName', label: '岗位' }, { key: 'position', label: '职务' },
+                        { key: 'deptName', label: '部门' }, { key: 'orgName', label: '归属机构' }, { key: 'city', label: '常驻城市' },
+                        { key: 'phone', label: '手机号' }, { key: 'entryAt', label: '入职日期' },
+                        { key: 'tenure', label: '工龄(月)' },
+                        { key: 'status', label: '在职状态', value: function (r) { return EMP_STATUS_TEXT[r.status] || r.status; } },
+                        { key: 'salary', label: '月薪酬' },
+                        { key: 'username', label: '登录账号' },
+                        { key: 'userStatus', label: '账号状态', value: function (r) { return r.userStatus === 'inactive' ? '已停用' : (r.userId ? '正常' : '未开通'); } },
+                        { key: 'clockDays', label: '窗口出勤天数' }, { key: 'clockLate', label: '迟到早退' },
+                        { key: 'perfPeriod', label: '绩效期' }, { key: 'score', label: '绩效得分' }, { key: 'grade', label: '等级' },
+                        { key: 'evalPeriod', label: '考核期' }, { key: 'evalTotal', label: '考核总分' },
+                        { key: 'evalStatus', label: '考核状态', value: function (r) { return r.evalStatus === 'done' ? '已定级' : (r.evalStatus ? '待评定' : ''); } },
+                        { key: 'plateNo', label: '驾驶车牌' },
+                        { key: 'busyOrders', label: '名下待签收' }, { key: 'busyTrips', label: '名下未跑完车次' }
+                    ]
+                }, 'hr');
+            },
+            'hr:exportClock': function () {
+                var cutoff = util.addDays(util.now(), -(Math.max(7, Number(curCtx().days) || 7))).getTime();
+                exportGrid({
+                    name: '考勤明细.csv', searchKey: 'q',
+                    rows: db.col('clockRecords').filter(function (c) { return util.toDate(c.clockIn).getTime() >= cutoff; })
+                        .map(TMS.people.clockView),
+                    search: function (r) { return [r.employee, r.orgName, r.date, r.location].join(' '); },
+                    cols: [
+                        { key: 'employeeId', label: '工号' }, { key: 'employee', label: '姓名' },
+                        { key: 'role', label: '岗位', value: function (r) { return TMS.people.roleName(r.role); } },
+                        { key: 'orgName', label: '归属' }, { key: 'date', label: '日期' },
+                        { key: 'shiftName', label: '班次' },
+                        { key: 'clockIn', label: '上班卡', value: function (r) { return fmt.dateTime(r.clockIn); } },
+                        { key: 'clockOut', label: '下班卡', value: function (r) { return r.clockOut ? fmt.dateTime(r.clockOut) : ''; } },
+                        { key: 'workHours', label: '工时' }, { key: 'overtimeHours', label: '加班时长' },
+                        { key: 'attendance', label: '出勤判定' }, { key: 'device', label: '终端' }, { key: 'location', label: '打卡地点' }
+                    ]
+                }, 'hr');
+            }
+        })
+    });
+
     TMS.pages.admin = {
         wrap: wrap, grid: grid, toCsv: toCsv, download: download, exportGrid: exportGrid,
         curCtx: curCtx, rateBar: rateBar, actor: actor, applyParamFilter: applyParamFilter,
@@ -10683,6 +12165,6 @@
         receiveMovement: receiveMovement, WH_TEXT: WH_TEXT, WH_TYPES: WH_TYPES, MOV_TEXT: MOV_TEXT,
         matView: matView, matRowsOf: matRowsOf, matGaps: matGaps, MAT_TEXT: MAT_TEXT,
         materialModal: materialModal, materialFormModal: materialFormModal,
-        materialCountModal: materialCountModal, stockActions: stockActions
+        materialCountModal: materialCountModal, stockActions: stockActions, gfActions: gfActions
     };
 })(window);

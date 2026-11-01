@@ -13,6 +13,7 @@
         { key: 'materialStock', name: '物料安全库存', run: materialStock },
         { key: 'purchaseOverdue', name: '采购到货超期', run: purchaseOverdue },
         { key: 'deviceHealth', name: '扫描设备健康', run: deviceHealth },
+        { key: 'fenceCoverage', name: '电子围栏覆盖缺口', run: fenceCoverage },
         { key: 'tripDeparture', name: '班次未按时发车', run: tripDeparture },
         { key: 'slaBacklog', name: '压单预警', run: slaBacklog },
         { key: 'purgeAlerts', name: '告警归档清理', run: purgeAlerts }
@@ -206,6 +207,30 @@
             addAlert({ key: 'device:' + d.id, level: d.status === 'fault' ? 'danger' : 'warn', title: '扫描设备异常', message: d.name + '（' + d.model + '）' + (d.status === 'fault' ? '上报故障' : '离线超 12 小时') + '，归属 ' + d.ownerName, category: 'system', entity: 'devices', refId: d.id, owner: '信息技术部' });
         });
         return { faulty: bad.length, resolved: resolveGone('device:', keysOf(bad, 'device:'), '设备已恢复上报') };
+    }
+
+    /* 围栏覆盖缺口：作业城市的扫描地点落在任何在用围栏之外就报警，补一张同城围栏即自动核销。
+       围栏不是画图好看——它管的是「这个城市的作业地点有没有被系统认定过」，
+       所以判据取城市粒度：半径只有 1~3 km，而网点坐标本身就是城市中心，逐点算必然全是越界 */
+    function fenceCoverage(days) {
+        var audit = TMS.network.fenceAudit(days || 30);
+        var active = {};
+        audit.breaches.forEach(function (b) {
+            active['fence:gap:' + b.city] = 1;
+            addAlert({
+                key: 'fence:gap:' + b.city, level: b.count > 40 ? 'danger' : 'warn',
+                title: '作业城市无电子围栏',
+                message: b.city + ' 近 ' + audit.days + ' 天有 ' + b.count + ' 次扫描写在围栏外，' +
+                    '该市 ' + b.branches + ' 个网点归属 ' + (b.hub || '未指派分拨') +
+                    '，建议补一张半径 ' + Math.round(b.radiusM / 1000) + ' km 的城市围栏（最近在用围栏 ' +
+                    (b.nearestName || '无') + '，相距 ' + (b.nearestKm || '—') + ' km）',
+                category: 'system', entity: 'geofences', refId: '', owner: '信息技术部'
+            });
+        });
+        return {
+            gap: audit.breaches.length,
+            resolved: resolveGone('fence:gap:', active, '该作业城市已建立在用围栏，越界告警自动核销')
+        };
     }
 
     function tripDeparture() {

@@ -17,6 +17,7 @@
        避免同一个页面在 rbac 和页面定义里写两个文件名而漂移 */
     var MENU_FILE = {};
     var MENU_PERM = {};
+    var MENU_LABEL = {};
     /* 两种菜单形状都要吃：运营端是 {group,items} 分组，角色端是平铺的条目数组 */
     function collectMenu(list) {
         (list || []).forEach(function (g) {
@@ -25,6 +26,7 @@
                 if (!it || !it.id) return;
                 if (!MENU_FILE[it.id]) MENU_FILE[it.id] = it.file;
                 if (it.perm) MENU_PERM[it.id] = it.perm;
+                if (it.label && !MENU_LABEL[it.id]) MENU_LABEL[it.id] = it.label;
             });
         });
     }
@@ -45,7 +47,7 @@
         d.id = id;
         d.file = d.file || MENU_FILE[id] || '';
         d.perm = d.perm || MENU_PERM[id] || '';
-        d.title = d.title || id;
+        d.title = d.title || MENU_LABEL[id] || id;
         if (!d.render) {
             d.render = function () {
                 return ui.empty('页面「' + id + '」尚未实现内容', '请在 js/pages/ 下补全 render');

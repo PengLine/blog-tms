@@ -121,9 +121,14 @@ body.tms-body img { max-width: 100%; }
     position: sticky; top: 0; z-index: 30;
 }
 
-.tms-crumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--tms-ink-3); }
-.tms-crumb b { color: var(--tms-ink); font-weight: 600; font-size: 15px; }
+.tms-crumb {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--tms-ink-3);
+    min-width: 0; white-space: nowrap; overflow: hidden;
+}
+.tms-crumb b { color: var(--tms-ink); font-weight: 600; font-size: 15px; flex: 0 0 auto; }
 .tms-topbar-spacer { flex: 1; }
+/* 顶栏挤不下时先让搜索框退场：标题和天数窗口是读盘面的锚点，跳转框随时能用列表页筛选替代 */
+.tms-jump { flex: 0 1 220px; max-width: 220px; }
 
 .tms-clock {
     font-size: 12px; color: var(--tms-ink-3); padding: 4px 10px;
@@ -619,6 +624,7 @@ body.tms-body img { max-width: 100%; }
     .tms-kpis { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
     .tms-topbar { gap: 8px; padding: 0 12px; }
     .tms-clock, .tms-user-txt { display: none; }
+    .tms-jump { display: none; }
 }
 
 @media (min-width: 901px) {
