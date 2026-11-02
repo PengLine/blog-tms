@@ -45,9 +45,14 @@ const el = () => {
         querySelectorAll: () => [], closest: () => null
     };
 };
+const byId = new Map();
 global.document = {
     currentScript: { getAttribute: () => 'js/boot.js?v=smoke' },
     addEventListener: () => {}, querySelector: () => null, querySelectorAll: () => [],
+    getElementById: (id) => {
+        if (!byId.has(id)) byId.set(id, el());
+        return byId.get(id);
+    },
     createElement: () => el(), body: el()
 };
 global.window = global;
@@ -59,7 +64,9 @@ const MODULES = [
     'js/data/master.js', 'js/domain/pricing.js', 'js/domain/network.js', 'js/data/seed.js',
     'js/domain/order.js', 'js/domain/operation.js', 'js/domain/finance.js', 'js/domain/service.js',
     'js/domain/people.js', 'js/domain/stats.js', 'js/domain/audit.js', 'js/domain/jobs.js',
-    'js/ui/kit.js', 'js/ui/charts.js', 'js/ui/shell.js', 'js/pages/registry.js', 'js/pages/admin.js'
+    'js/ui/kit.js', 'js/ui/charts.js', 'js/ui/shell.js', 'js/pages/registry.js',
+    'js/pages/portal.js', 'js/pages/admin.js', 'js/pages/branch.js', 'js/pages/sorter.js',
+    'js/pages/transporter.js', 'js/pages/deliveryman.js', 'js/pages/client.js'
 ];
 
 const events = [];
@@ -273,7 +280,9 @@ const IDENTITY_EXPECT = {
     },
     transporter: (s) => {
         const mine = transports.filter((t) => t.driverId === s.personId);
-        return { name: '挂车车次', hit: mine.length > 0, detail: mine.length + ' 次' };
+        // 司机端要的不是「历史上有过车次」，是「今天进来有活可干」：装车→发车→回场一路都得能点
+        const open = mine.filter((t) => ['pending', 'loading', 'departed', 'arrived'].indexOf(t.status) > -1);
+        return { name: '挂车车次', hit: mine.length > 0 && open.length > 0, detail: mine.length + ' 次 / 在办 ' + open.length + ' 次' };
     },
     deliveryman: (s) => {
         const mine = orders.filter((o) => o.courierId === s.personId);
@@ -331,7 +340,6 @@ section('只读统计 API');
 /* 页面只调领域层的只读函数，这些函数一旦拼错工具方法（例如把 util.fmt.monthDay 写成 util.monthDay）
    就是整页空白，而业务不变量校验完全看不出来。这里逐个调用并检查产出结构 */
 (() => {
-    const month = util.monthKey(util.now());
     const day = util.dateKey(util.now());
     const apis = {
         'stats.overview': () => TMS.stats.overview(7),
@@ -358,7 +366,7 @@ section('只读统计 API');
         'service.claimStats': () => TMS.service.claimStats(),
         'operation.tripStats': () => TMS.operation.tripStats(7),
         'operation.costView': () => TMS.operation.costView(transports[0]),
-        'people.performanceSummary': () => TMS.people.performanceSummary(month),
+        'people.performanceSummary': () => TMS.people.performanceSummary(),
         'people.roster': () => TMS.people.roster(day),
         'audit.list': () => TMS.audit.list(5),
         'db.info': () => TMS.db.info()
@@ -371,12 +379,52 @@ section('只读统计 API');
     });
     const trend = TMS.stats.orderTrend(7);
     check('趋势按日补齐 7 天', trend.length === 7 && trend.every((d) => /^\d{2}-\d{2}$/.test(d.label)), trend.map((d) => d.label).join(' '));
-    check('绩效汇总命中当期账期', TMS.people.performanceSummary(month).count > 0, TMS.people.performanceSummary(month).count + ' 人');
+    /* 绩效是月度账。月初几天就按当月核算，账期里只有一两票，档位会整体塌到 D，
+       所以账期必须是 people.defaultPeriod() 认定的那个已关账月份；
+       历史回放不足整月时（月中），靠 scoreOf 的覆盖天数折算兜住分布 */
+    const perfPeriods = util.unique(db.col('performances').map((p) => p.period)).sort();
+    const perfMonth = perfPeriods[perfPeriods.length - 1];
+    const dayOfToday = Number(util.dateKey(util.now()).slice(-2));
+    const summary = TMS.people.performanceSummary(perfMonth);
+    const dCount = (summary.byGrade.filter((g) => g.label === 'D')[0] || { value: 0 }).value;
+    check('绩效账期唯一且走关账规则', perfPeriods.length === 1 && perfMonth === TMS.people.defaultPeriod(), perfPeriods.join(' '));
+    check('绩效账期不落进刚开头的月份', perfMonth !== util.monthKey(util.now()) || dayOfToday >= 14,
+        perfMonth + ' · 今日 ' + util.dateKey(util.now()));
+    check('绩效档位分布不是一边倒', summary.count > 0 && dCount / summary.count < 0.6,
+        perfMonth + ' · ' + summary.count + ' 人 · 均分 ' + summary.avgScore + ' · D 档 ' + dCount + ' 人 · 覆盖 ' +
+        TMS.people.computeMetrics(db.get('employees', db.col('performances')[0].employeeId), perfMonth).windowDays + ' 天');
+    check('考核留有未定级草稿', db.col('evaluations').some((e) => e.status === 'pending'),
+        db.col('evaluations').filter((e) => e.status === 'pending').length + ' 条 pending');
+    /* 岗位内不能整岗塌陷：某个岗位全员同分，多半是指标归属拼错了字段（比如异常按全网计数） */
+    const byRole = {};
+    db.col('performances').filter((p) => p.period === perfMonth).forEach((p) => {
+        const r = TMS.people.roleName((db.get('employees', p.employeeId) || {}).role || '?');
+        (byRole[r] = byRole[r] || []).push(p.score);
+    });
+    check('档位按岗位分散，不是整岗塌陷', Object.keys(byRole).every((k) => {
+        const s = byRole[k];
+        return s.length < 10 || Math.max.apply(null, s) - Math.min.apply(null, s) > 12;
+    }), Object.keys(byRole).map((k) => {
+        const s = byRole[k].slice().sort((a, b) => a - b);
+        return TMS.people.roleName(k) + ' ' + s[0] + '~' + s[s.length - 1] + '（均 ' +
+            (s.reduce((a, b) => a + b, 0) / s.length).toFixed(0) + '）';
+    }).join(' · '));
 })();
 
 section('UI 层与页面注册器');/* UI 模块在无浏览器环境下只做字符串渲染，这里验三件事：
    能装配、管线正确、渲染结果不泄露内部字段（undefined/NaN/裸 ID 都是字段名抄错的信号） */
 check('外壳与注册器已装配', !!(TMS.ui && TMS.charts && TMS.shell && TMS.pages));
+/* bundle 文件写了却没进 boot.js 的 MODULES，浏览器里就是「页面尚未注册」的空白，
+   而冒烟脚本自己 import 全量模块，永远测不出来——所以这里直接比对目录与 boot 的清单 */
+(() => {
+    const bootSrc = fs.readFileSync(path.join(ROOT, 'js/boot.js'), 'utf8');
+    const files = fs.readdirSync(path.join(ROOT, 'js/pages')).filter((f) => /\.js$/.test(f));
+    const missing = files.filter((f) => bootSrc.indexOf("'js/pages/" + f + "'") === -1);
+    check('boot.js 登记了全部页面模块', missing.length === 0, missing.join('、') || files.length + ' 个模块');
+    // 冒烟清单和浏览器清单不一致 = 测了一套、跑的是另一套
+    const notInSmoke = files.filter((f) => MODULES.indexOf('js/pages/' + f) === -1);
+    check('冒烟与 boot 加载同一组页面模块', notInSmoke.length === 0, notInSmoke.join('、') || files.length + ' 个');
+})();
 check('注册表与菜单文件同源', TMS.pages.MENU_FILE['overview'] === 'tms-index.html' && TMS.pages.MENU_FILE['b-home'] === 'branch-index.html');
 (() => {
     const d = TMS.pages.define('__smoke_page', { title: '冒烟页' });
@@ -453,54 +501,88 @@ check('单号直达按角色落地',
     TMS.pages.closeOrder();
 })();
 
-/* 菜单里每个页面都必须真的渲染出内容：
-   「定义了但没实现」的页面在浏览器里只是空白，在这里要当场失败 */
+/* 六个角色端各自一套菜单，「定义了但没实现」的页面在浏览器里只是空白，
+   在冒烟里要当场失败。这里按角色逐个跑三关：菜单页面全部注册 → 每页渲染干净 → 每页按钮动作有主。
+   一线端的取数口径靠的是活会话：po.session() 读 shell.state，TMS.auth.can() 读 localStorage，
+   两者都要按角色切过去，否则整页读到的都是「未绑定档案」的假正常 */
+const ROLE_TARGETS = ['admin', 'branch', 'sorter', 'transporter', 'deliveryman', 'client'];
+const SESSION_BY_ROLE = {};
+TMS.cfg.demoAccounts.forEach((a) => {
+    const r = TMS.auth.login(a.username, a.password);
+    if (r.ok && !SESSION_BY_ROLE[r.session.role]) SESSION_BY_ROLE[r.session.role] = r.session;
+});
+const menuIdsOf = (role) => (role === 'admin'
+    ? TMS.rbac.ADMIN_MENU.reduce((a, g) => a.concat(g.items), [])
+    : (TMS.rbac.PORTAL_MENU[role] || [])).map((it) => it.id);
+const autoYes = { then: (cb) => { cb(true); return autoYes; }, catch: () => autoYes };
+/* 动作里调 ui.toast / shell.refresh 要有落笔的地方；此节点只建一次，
+   免得它落进 domLog 的切片窗口里被当成「弹层脏值」 */
+TMS.shell.state.content = realCreateElement('div');
+
+/* 抽屉是六端共用组件，页签必须按角色裁剪：客户和一线看见同一张运单时，
+   不该读到干线分摊与间接摊销——那是「这单我们赚多少」，不是「你的运费为什么是这个数」 */
+TMS.shell.state.session = SESSION_BY_ROLE.admin;
+const adminTabs = TMS.pages.visibleTabs().map((t) => t.value);
+TMS.shell.state.session = SESSION_BY_ROLE.client;
+const clientTabs = TMS.pages.visibleTabs().map((t) => t.value);
+check('成本页签只对运营端开放', adminTabs.indexOf('cost') > -1 && clientTabs.indexOf('cost') === -1,
+    '运营 ' + adminTabs.join('/') + ' · 客户 ' + clientTabs.join('/'));
+TMS.shell.state.session = null;
+
 (() => {
-    const session = TMS.auth.login('admin', '123456').session;
-    const ids = TMS.rbac.ADMIN_MENU.reduce((a, g) => a.concat(g.items), []).map((it) => it.id);
-    const missing = ids.filter((id) => !TMS.pages.get(id));
-    check('运营端菜单页面全部注册', missing.length === 0, missing.join('、') || ids.length + ' 页');
-    const globalActs = Object.keys(TMS.shell.actions).concat(Object.keys(TMS.pages.shared));
-    let dirty = 0;
-    let drawn = 0;
-    ids.forEach((id) => {
-        const def = TMS.pages.get(id);
-        if (!def || !def.render) return;
-        drawn++;
-        const st = TMS.ui.state(id);
-        const ctx = {
-            shell: TMS.shell, session, params: {}, days: 7, layout: 'full', pageId: id,
-            role: 'admin', go: () => {}, refresh: () => {}, toast: () => {}, confirm: () => Promise.resolve(true),
-            modal: () => ({ close() {} }), drawer: () => ({ close() {} }), formModal: () => ({ close() {} }),
-            state: st, data: {}
-        };
-        try {
-            const data = def.load ? def.load(ctx) : {};
-            ctx.data = data;
-            const html = String(def.render(ctx, data) || '');
-            if (html.length < 40) { dirty++; console.error('  ✗ ' + id + ' 渲染内容过少：' + html.length + ' 字符'); }
-            else if (/undefined|NaN|\[object Object\]/.test(html)) {
+    const globalActs = Object.keys(TMS.shell.actions).concat(Object.keys(TMS.pages.shared || {}));
+    const unreg = [];
+    let dirty = 0, drawn = 0;
+    ROLE_TARGETS.forEach((role) => {
+        const session = SESSION_BY_ROLE[role];
+        if (!session) { check('角色 ' + role + ' 有演示账号', false); return; }
+        const ids = menuIdsOf(role);
+        ids.forEach((id) => { if (!TMS.pages.get(id)) unreg.push(role + '/' + id); });
+        TMS.auth.write(session);
+        TMS.shell.state.session = session;
+        TMS.shell.state.portal = role;
+        TMS.shell.state.pageId = '';
+        ids.forEach((id) => {
+            const def = TMS.pages.get(id);
+            if (!def || !def.render) return;
+            drawn++;
+            const ctx = {
+                shell: TMS.shell, session, params: {}, days: 7, layout: 'full', pageId: id,
+                role, go: () => {}, refresh: () => {}, toast: () => {}, confirm: () => autoYes,
+                modal: () => ({ close() {} }), drawer: () => ({ close() {} }), formModal: () => ({ close() {} }),
+                state: TMS.ui.state(id), data: {}
+            };
+            try {
+                const data = def.load ? def.load(ctx) : {};
+                ctx.data = data;
+                const html = String(def.render(ctx, data) || '');
+                if (html.length < 40) { dirty++; console.error('  ✗ ' + role + '/' + id + ' 渲染内容过少：' + html.length + ' 字符'); }
+                else if (/undefined|NaN|\[object Object\]/.test(html)) {
+                    dirty++;
+                    const m = html.match(/.{0,60}(undefined|NaN|\[object Object\]).{0,60}/);
+                    console.error('  ✗ ' + role + '/' + id + ' 渲染有脏值：…' + (m ? m[0] : '') + '…');
+                } else {
+                    const need = globalActs.concat(Object.keys(def.actions || {}));
+                    const used = [...new Set((html.match(/data-act="([^"%]+)"/g) || [])
+                        .map((s) => s.replace(/^data-act="/, '').replace(/"$/, '')))];
+                    const unhandled = used.filter((a) => need.indexOf(a) === -1);
+                    if (unhandled.length) { dirty++; console.error('  ✗ ' + role + '/' + id + ' 按钮动作未注册：' + unhandled.join('、')); }
+                }
+            } catch (err) {
                 dirty++;
-                const m = html.match(/.{0,60}(undefined|NaN|\[object Object\]).{0,60}/);
-                console.error('  ✗ ' + id + ' 渲染有脏值：…' + (m ? m[0] : '') + '…');
-            } else {
-                const need = globalActs.concat(Object.keys(def.actions || {}));
-                const used = [...new Set((html.match(/data-act="([^"%]+)"/g) || [])
-                    .map((s) => s.replace(/^data-act="/, '').replace(/"$/, '')))];
-                const unhandled = used.filter((a) => need.indexOf(a) === -1);
-                if (unhandled.length) { dirty++; console.error('  ✗ ' + id + ' 按钮动作未注册：' + unhandled.join('、')); }
+                console.error('  ✗ ' + role + '/' + id + ' 渲染抛错：' + err.message + '\n' + (err.stack || '').split('\n')[1]);
             }
-        } catch (err) {
-            dirty++;
-            console.error('  ✗ ' + id + ' 渲染抛错：' + err.message + '\n' + (err.stack || '').split('\n')[1]);
-        }
+        });
     });
-    check('运营端菜单页面渲染干净且动作可响应', dirty === 0, dirty ? dirty + ' 页有问题' : ids.length + ' 页通过');
+    check('六端菜单页面全部注册', unreg.length === 0, unreg.join('、') || ROLE_TARGETS.length + ' 端 / ' + drawn + ' 页');
+    check('六端菜单页面渲染干净且动作可响应', dirty === 0, dirty ? dirty + ' 页有问题' : drawn + ' 页通过');
 })();
 
 /* 动作与弹窗是真写入的入口，光渲染通过不算数：
-   这里把每个页面动作按「带单据号」和「不带参数」各调一次，
-   confirm 直接给「是」、formModal 立刻用默认值提交，把落库路径全部走一遍 */
+   这里把六端每个页面动作按「带单据号」和「不带参数」各调一次，
+   confirm 直接给「是」、formModal 立刻用默认值提交，把落库路径全部走一遍。
+   角色端的动作前缀（b/s/srt/t/d/c）大多收的是订单号，少数收车次、设备、格口，
+   所以先按动作全名查表，查不到再退到前缀默认池 */
 (() => {
     const DIRTY = /undefined|NaN|\[object Object\]/;
     const POOL_BY_PREFIX = {
@@ -508,16 +590,23 @@ check('单号直达按角色落地',
         cod: 'codRecords', rt: 'rateCards', ar: 'receivables', ap: 'payables', fin: 'finances',
         ck: 'rechecks', cust: 'customers', dv: 'devices', tr: 'transports', emp: 'employees',
         wh: 'warehouses', mat: 'materials', veh: 'vehicles', br: 'branches', usr: 'users',
-        dept: 'departments',
-        gf: 'geofences', bill: 'bills', hb: 'hubs', cu: 'customers', cv: 'carriers', smv: 'stockMovements'
+        dept: 'departments', eval: 'evaluations', perf: 'performances',
+        gf: 'geofences', bill: 'bills', hb: 'hubs', cu: 'customers', cv: 'carriers', smv: 'stockMovements',
+        work: 'orders', device: 'devices', branch: 'branches', customer: 'customers',
+        b: 'orders', s: 'orders', d: 'orders', c: 'orders', t: 'transports', srt: 'sortingTasks'
     };
+    const POOL_BY_ACT = {
+        'b:finishload': 'transports', 'b:sync': 'devices', 'b:requisition': 'materials',
+        't:attach': 'orders', 'd:remit': 'codRecords', 'd:contact': 'customers'
+    };
+    const FIXED_ARG = { 's:batch': 'C01' };
     const argOf = (act) => {
-        const pool = POOL_BY_PREFIX[String(act).split(':')[0]];
+        if (FIXED_ARG[act] !== undefined) return FIXED_ARG[act];
+        const pool = POOL_BY_ACT[act] || POOL_BY_PREFIX[String(act).split(':')[0]];
         if (!pool) return '';
         const rows = db.col(pool);
         return rows.length ? rows[0].id : '';
     };
-    const autoYes = { then: (cb) => { cb(true); return autoYes; }, catch: () => autoYes };
     const fakeValue = (f, preset) => {
         if (preset && preset[f.key] !== undefined) return preset[f.key];
         if (f.value !== undefined) return f.value;
@@ -569,41 +658,55 @@ check('单号直达按角色落地',
         return handle;
     };
 
-    const session = TMS.auth.login('admin', '123456').session;
-    TMS.rbac.ADMIN_MENU.reduce((a, g) => a.concat(g.items), []).map((it) => it.id).forEach((id) => {
-        const def = TMS.pages.get(id);
-        if (!def || !def.render || !def.actions) return;
-        const ctx = {
-            shell: TMS.shell, session, params: {}, days: 7, layout: 'full', pageId: id,
-            role: 'admin', go: () => {}, refresh: () => {}, toast: () => {},
-            state: TMS.ui.state(id), data: {}
-        };
-        try { ctx.data = def.load ? def.load(ctx) : {}; } catch (err) { ctx.data = {}; }
-        Object.keys(def.actions).forEach((act) => {
-            [argOf(act), ''].forEach((arg) => {
-                const mark = domLog.length;
-                actCalls++;
-                try {
-                    def.actions[act](arg, null);
-                } catch (err) {
-                    bad++;
-                    console.error('  ✗ ' + id + ' 动作 ' + act + '（arg=' + arg + '）抛错：' + err.message +
-                        '\n' + (err.stack || '').split('\n')[1]);
-                }
-                domLog.slice(mark).forEach((n) => {
-                    if (!n.innerHTML || !DIRTY.test(n.innerHTML)) return;
-                    bad++;
-                    const m = n.innerHTML.match(/.{0,70}(undefined|NaN|\[object Object\]).{0,70}/);
-                    console.error('  ✗ ' + id + ' 动作 ' + act + ' 弹层渲染脏值：…' + (m ? m[0] : '') + '…');
+    /* 翻页只改地址栏，不写库；Node 里没有真实路由，把 shell.go 收成计数器，
+       免得 mount 去建浏览器外壳。渲染那一关已经逐页验过，跳过去的页面长什么样不必再验 */
+    const realGo = TMS.shell.go;
+    let navs = 0;
+    TMS.shell.go = () => { navs++; };
+
+    ROLE_TARGETS.forEach((role) => {
+        const session = SESSION_BY_ROLE[role];
+        if (!session) return;
+        TMS.auth.write(session);
+        TMS.shell.state.session = session;
+        TMS.shell.state.portal = role;
+        menuIdsOf(role).forEach((id) => {
+            const def = TMS.pages.get(id);
+            if (!def || !def.render || !def.actions) return;
+            TMS.shell.state.pageId = id;
+            const ctx = {
+                shell: TMS.shell, session, params: {}, days: 7, layout: 'full', pageId: id,
+                role, go: () => { navs++; }, refresh: () => {}, toast: () => {},
+                state: TMS.ui.state(id), data: {}
+            };
+            try { ctx.data = def.load ? def.load(ctx) : {}; } catch (err) { ctx.data = {}; }
+            Object.keys(def.actions).forEach((act) => {
+                [argOf(act), ''].forEach((arg) => {
+                    const mark = domLog.length;
+                    actCalls++;
+                    try {
+                        def.actions[act](arg, null);
+                    } catch (err) {
+                        bad++;
+                        console.error('  ✗ ' + role + '/' + id + ' 动作 ' + act + '（arg=' + arg + '）抛错：' + err.message +
+                            '\n' + (err.stack || '').split('\n')[1]);
+                    }
+                    domLog.slice(mark).forEach((n) => {
+                        if (!n.innerHTML || !DIRTY.test(n.innerHTML)) return;
+                        bad++;
+                        const m = n.innerHTML.match(/.{0,70}(undefined|NaN|\[object Object\]).{0,70}/);
+                        console.error('  ✗ ' + role + '/' + id + ' 动作 ' + act + ' 弹层渲染脏值：…' + (m ? m[0] : '') + '…');
+                    });
                 });
             });
+            for (let i = 0; i < 14; i++) TMS.ui.closeTop();   // 关掉本页留下的弹层，避免叠到下一页
         });
-        for (let i = 0; i < 8; i++) TMS.ui.closeTop();   // 关掉本页留下的弹层，避免叠到下一页
     });
+    TMS.shell.go = realGo;
     TMS.ui.confirm = realConfirm;
     TMS.ui.formModal = realFormModal;
-    check('页面动作全部可执行且弹层无脏值', bad === 0,
-        actCalls + ' 次调用 / ' + submits + ' 次表单提交' + (bad ? '，' + bad + ' 处问题' : ''));
+    check('六端页面动作全部可执行且弹层无脏值', bad === 0,
+        actCalls + ' 次调用 / ' + submits + ' 次表单提交 / ' + navs + ' 次翻页' + (bad ? '，' + bad + ' 处问题' : ''));
 })();
 
 if (argv.includes('--dump')) {

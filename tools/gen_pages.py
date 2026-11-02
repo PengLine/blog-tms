@@ -9,7 +9,7 @@
 用法：
     python tools/gen_pages.py                 # 按当前 token 生成缺失的外壳（已存在的只校验不重写）
     python tools/gen_pages.py --force         # 全量重写
-    python tools/gen_pages.py --token v=20261101b   # 换缓存 token 并全量重写（等价旧的 bump_cache.py）
+    python tools/gen_pages.py --token v=20261101e   # 换缓存 token 并全量重写（等价旧的 bump_cache.py）
 """
 import argparse
 import io
@@ -19,7 +19,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RBAC = os.path.join(ROOT, "js", "core", "rbac.js")
-DEFAULT_TOKEN = "v=20261101b"
+DEFAULT_TOKEN = "v=20261102c"
 
 ENTRY_RE = re.compile(r"\{\s*id:\s*'([^']+)'\s*,\s*file:\s*'([^']+)'\s*,\s*label:\s*'([^']+)'")
 
@@ -68,7 +68,7 @@ def render(entry, token):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--force", action="store_true", help="全量重写外壳")
-    ap.add_argument("--token", default=None, help="缓存 token，如 v=20261101b；给出即全量重写")
+    ap.add_argument("--token", default=None, help="缓存 token，如 v=20261101e；给出即全量重写")
     args = ap.parse_args()
 
     token = args.token or DEFAULT_TOKEN

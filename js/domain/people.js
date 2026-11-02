@@ -146,6 +146,29 @@
 
     /* ---------- 绩效 ---------- */
 
+    /* 库里的历史只有回放的那十几天，账期的自然天数和数据覆盖天数不是一回事。
+       指标按账期算、得分按覆盖天数折算成月度当量，否则「历史短」会被读成「全员只干了半月活」 */
+    var dataCache = { rev: -1, from: 0 };
+
+    function dataStartMs() {
+        var rev = db.rev('orders');
+        if (dataCache.rev === rev && dataCache.from) return dataCache.from;
+        var min = 0;
+        db.col('orders').forEach(function (o) {
+            var t = util.toDate(o.createdAt).getTime();
+            if (t && (!min || t < min)) min = t;
+        });
+        dataCache = { rev: rev, from: min };
+        return min;
+    }
+
+    function coveredDays(from, to) {
+        var start = Math.max(util.toDate(from).getTime(), dataStartMs());
+        var end = Math.min(util.toDate(to).getTime(), util.now().getTime() + 1);
+        if (!start || end <= start) return 1;
+        return Math.max(1, Math.min(31, Math.round((end - start) / 86400000)));
+    }
+
     function employeeScope(role, empId, period) {
         var from = period ? util.toDate(period + '-01') : util.addDays(util.now(), -30);
         var to = period ? util.addDays(util.toDate(period + '-01'), 31) : util.now();
@@ -154,7 +177,14 @@
             var d = util.toDate(t).getTime();
             return d >= util.toDate(from).getTime() && d < to.getTime();
         }
-        return { from: from, to: to, inPeriod: inPeriod, empId: empId, role: role };
+        return { from: from, to: to, inPeriod: inPeriod, empId: empId, role: role, days: coveredDays(from, to) };
+    }
+
+    /* 网点/分拨主管的作业量归属：本机构作为始发或目的端经手的单。
+       分拨主管的 orgId 是枢纽号（HB0001），网点主管是网点号，所以两套字段都要看 */
+    function touchesOrg(o, emp) {
+        return o.originBranchId === emp.orgId || o.destBranchId === emp.orgId ||
+            o.hubFrom === emp.orgId || o.hubTo === emp.orgId;
     }
 
     /* 绩效指标即时计算：指标全部可由订单/任务/车次反推，只有得分与等级落库，
@@ -204,7 +234,9 @@
             };
         } else if (emp.role === 'branch') {
             var branch = db.get('branches', emp.orgId) || {};
-            var orders = db.col('orders').filter(function (o) { return (o.originBranchId === emp.orgId || o.destBranchId === emp.orgId) && scope.inPeriod(o.createdAt); });
+            var orders = db.col('orders').filter(function (o) { return touchesOrg(o, emp) && scope.inPeriod(o.createdAt); });
+            var mine = {};
+            orders.forEach(function (o) { mine[o.id] = 1; });
             var signed = orders.filter(function (o) { return o.status === 'signed'; });
             metrics = {
                 branch: branch.name || emp.orgName || '', orders: orders.length,
@@ -215,7 +247,8 @@
                 revenue: util.money(util.sum(signed, 'freight')),
                 cost: util.money(util.sum(signed, function (o) { return o.cost ? o.cost.tot : 0; })),
                 onTimeRate: signed.length ? util.round(signed.filter(function (o) { return !TMS.order.isSignedLate(o); }).length / signed.length * 100, 1) : 100,
-                exceptions: db.col('exceptions').filter(function (e) { return (e.responsibleParty === '网点') && scope.inPeriod(e.reportedAt); }).length,
+                // 异常按「本机构经手的单」归口，不是全网网点责任一锅端：否则每个主管都背着别人的扣分
+                exceptions: db.col('exceptions').filter(function (e) { return e.responsibleParty === '网点' && mine[e.orderId] && scope.inPeriod(e.reportedAt); }).length,
                 deduction: util.money(util.sum(db.col('payables').filter(function (p) { return p.target === (branch.name || emp.orgName); }), 'amount'))
             };
             metrics.margin = metrics.revenue ? util.round((metrics.revenue - metrics.cost) / metrics.revenue * 100, 1) : 0;
@@ -228,7 +261,17 @@
                 tasks: db.col('auditLogs').filter(function (l) { return l.actor === emp.name && scope.inPeriod(l.at); }).length
             };
         }
+        metrics.windowDays = scope.days;
         return metrics;
+    }
+
+    /* 默认账期取最近一个「已关账且有单量」的自然月。月初就按当月核算月度绩效，
+       账期里只有一两天的单量，档位会整体塌到 D，改进计划发给谁都不对 */
+    function defaultPeriod() {
+        var thisMonth = util.monthKey(util.now());
+        var months = util.unique(db.col('orders').map(function (o) { return util.monthKey(o.createdAt); })).sort();
+        var closed = months.filter(function (m) { return m < thisMonth; });
+        return (closed.length ? closed : months).slice(-1)[0] || thisMonth;
     }
 
     /* 绩效行只存结论（得分/等级），指标与归属读取时反推——每人每期一段快照，
@@ -236,11 +279,12 @@
     function computePerformance(empId, period) {
         var emp = db.get('employees', empId);
         if (!emp) return null;
+        period = period || defaultPeriod();
         var metrics = computeMetrics(emp, period);
-        var score = scoreOf(emp.role, metrics);
+        var score = scoreOf(emp.role, metrics, period);
         var perf = {
             employeeId: emp.id,
-            period: period || util.monthKey(util.addDays(util.now(), -30)),
+            period: period,
             score: score, grade: gradeOf(score)
         };
         var existed = db.findOne('performances', function (p) { return p.employeeId === emp.id && p.period === perf.period; });
@@ -262,18 +306,69 @@
         return out;
     }
 
-    function scoreOf(role, m) {
-        var s = 70;
+    /* 单量项按「对标本岗位人均产能」计分：本网络编制比单量大（派送员人均十几票），
+       拿绝对票数定档会把整岗打成 D，那是编制问题不是个人问题。
+       质量项（及时率、准确率、装载率）仍按行业绝对线，不因单少而放宽 */
+    var pcCache = {};
+
+    function countVolume(emp, scope, sidx) {
+        if (emp.role === 'deliveryman') {
+            return db.col('orders').filter(function (o) { return o.courierId === emp.id && o.status === 'signed' && scope.inPeriod(o.signedAt); }).length;
+        }
+        if (emp.role === 'sorter') {
+            return db.col('sortingTasks').filter(function (t) { return t.operator === emp.name && t.status === 'done' && scope.inPeriod(t.finishedAt); }).length;
+        }
+        if (emp.role === 'transporter') {
+            return db.col('transports').filter(function (t) { return t.driverId === emp.id && scope.inPeriod(t.date || t.createdAt); }).length;
+        }
+        if (emp.role === 'branch') {
+            return db.col('orders').filter(function (o) {
+                return touchesOrg(o, emp) &&
+                    scope.inPeriod(TMS.order.stageAt(o, 'collected', sidx[o.id]) || o.createdAt);
+            }).length;
+        }
+        return db.col('clockRecords').filter(function (c) { return c.employeeId === emp.id && scope.inPeriod(c.clockIn); }).length;
+    }
+
+    /* 人均产能与账期同版本缓存：批量核算 300 人只扫一遍表，不逐人重算同事的均值 */
+    function perCapita(role, period) {
+        var key = role + '|' + (period || 'roll') + '|' +
+            [db.rev('orders'), db.rev('transports'), db.rev('sortingTasks'), db.rev('employees'), db.rev('clockRecords')].join('.');
+        if (pcCache[key] !== undefined) return pcCache[key];
+        var scope = employeeScope(role, '', period);
+        var sidx = TMS.order.scanIndex();
+        var list = db.col('employees').filter(function (e) { return e.role === role && e.status === 'active'; });
+        var total = 0;
+        list.forEach(function (e) { total += countVolume(e, scope, sidx); });
+        var out = list.length ? total / list.length : 0;
+        if (Object.keys(pcCache).length > 40) pcCache = {};
+        pcCache[key] = out;
+        return out;
+    }
+
+    /* 单量目标取「本岗位人均产能」与「保底工作量」的较高者：
+       人均产能回答比同行差多少，保底线回答有没有干活——司机人均 0.5 趟时只看人均，
+       跑 1 趟的人就会拿满分，那不叫绩效 */
+    var VOL_FLOOR = { deliveryman: 8, sorter: 25, transporter: 3, branch: 15 };
+
+    /* 达成率加权计分：基础分 35（在岗与协作），单量 25，两道质量线各 20/12，封顶 120%。
+       扣罚项（异常、事故、迟到）按覆盖天数折算成月当量，与整月口径可比 */
+    function scoreOf(role, m, period) {
+        var days = Math.max(1, Number(m.windowDays) || 30);
+        var f = Math.max(1, Math.min(3, 30 / days));
+        var target = Math.max(perCapita(role, period), (VOL_FLOOR[role] || 0) * days / 30) || 1;
+        function ach(v, line, w) { return Math.min(1.2, (Number(v) || 0) / line) * w; }
+        var s;
         if (role === 'deliveryman') {
-            s = m.signed * 1.6 + m.onTimeRate * 0.35 + m.podRate * 0.1 + m.firstAttempt * 0.15 - m.exceptions * 4;
+            s = 35 + ach(m.signed, target, 25) + (m.signed ? ach(m.onTimeRate, 92, 20) + ach(m.podRate, 85, 12) : 0) - m.exceptions * f * 4;
         } else if (role === 'sorter') {
-            s = m.tasks * 1.4 + m.accuracy * 0.4 + Math.min(30, m.efficiency / 4) - m.exceptions * 5;
+            s = 35 + ach(m.tasks, target, 25) + (m.tasks ? ach(m.accuracy, 99, 20) + ach(m.efficiency, 25, 12) : 0) - m.exceptions * f * 5;
         } else if (role === 'transporter') {
-            s = m.trips * 3 + m.onTimeRate * 0.4 + Math.min(15, m.loadRate / 8) - m.accidents * 6;
+            s = 35 + ach(m.trips, target, 25) + (m.trips ? ach(m.onTimeRate, 92, 20) + ach(m.loadRate, 70, 12) : 0) - m.accidents * f * 6;
         } else if (role === 'branch') {
-            s = Math.min(45, m.revenue / 4000) + m.onTimeRate * 0.35 + Math.min(15, (m.margin || 0) / 2) - Math.min(20, m.exceptions * 2);
+            s = 35 + ach(m.collected, target, 25) + (m.collected ? ach(m.onTimeRate, 92, 20) : 0) + ach(m.margin, 25, 12) - Math.min(20, m.exceptions * f * 2);
         } else {
-            s = 72 + m.attendanceDays * 0.8 + Math.min(10, m.overtimeHours) - m.lateTimes * 2;
+            s = 72 + ach(m.attendanceDays, Math.max(1, days * 0.7), 20) + Math.min(10, m.overtimeHours * f) - m.lateTimes * f * 2;
         }
         return util.round(Math.max(35, Math.min(100, s)), 1);
     }
@@ -283,13 +378,14 @@
     }
 
     function generatePerformances(period, roles) {
+        var month = period || defaultPeriod();      // 账期只解析一次，批量核算不能每人重扫一遍订单
         var list = db.col('employees').filter(function (e) {
             return e.status === 'active' && (!roles || roles.length === 0 || roles.indexOf(e.role) > -1);
         });
         var out = [];
         list.forEach(function (e) {
             if (['sorter', 'transporter', 'deliveryman'].indexOf(e.role) < 0 && e.role !== 'branch') return;
-            var p = computePerformance(e.id, period);
+            var p = computePerformance(e.id, month);
             if (p) out.push(p);
         });
         db.commit('performances', '', 'perf:generate');
@@ -397,6 +493,7 @@
         clockIn: clockIn, clockOut: clockOut, todayRecord: todayRecord, clockView: clockView,
         assignShift: assignShift, roster: roster, shiftView: shiftView, shiftDef: shiftDef,
         computePerformance: computePerformance, computeMetrics: computeMetrics, withMetrics: withMetrics,
+        defaultPeriod: defaultPeriod,
         generatePerformances: generatePerformances,
         performanceSummary: performanceSummary, roleName: roleName, gradeOf: gradeOf,
         evaluate: evaluate, finalizeEvaluation: finalizeEvaluation,

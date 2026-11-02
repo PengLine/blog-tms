@@ -11176,7 +11176,8 @@
         trips: '执行车次', km: '干线里程', orders: '载运订单', loadRate: '平均装载率',
         fuelCost: '油费成本', accidents: '责任事故', overtime: '出差天数', branch: '归属网点',
         collected: '揽收票', cost: '签收成本', deduction: '名下扣款', margin: '网点毛利',
-        attendanceDays: '出勤天数', overtimeHours: '加班时长', lateTimes: '迟到早退'
+        attendanceDays: '出勤天数', overtimeHours: '加班时长', lateTimes: '迟到早退',
+        windowDays: '账期覆盖'
     };
     var METRIC_MONEY = { codCollected: 1, revenue: 1, fuelCost: 1, cost: 1, deduction: 1 };
     var METRIC_RATE = { onTimeRate: 1, podRate: 1, firstAttempt: 1, accuracy: 1, loadRate: 1, margin: 1 };
@@ -11184,7 +11185,7 @@
         signed: '票', assigned: '票', pending: '票', tasks: '项', pieces: '件', weight: 'kg',
         stdMinutes: '分钟', actualMinutes: '分钟', efficiency: '件/时', km: 'km', orders: '单',
         trips: '趟', exceptions: '起', accidents: '起', overtime: '天', attendanceDays: '天',
-        overtimeHours: '小时', lateTimes: '次', collected: '票'
+        overtimeHours: '小时', lateTimes: '次', collected: '票', windowDays: '天'
     };
 
     function empRoleOptions() {
@@ -11214,9 +11215,19 @@
         return isNaN(d) ? util.iso(util.now()) : util.iso(d);
     }
 
+    /* 「本期」跟库里最新的绩效账期走，而不是自然月：
+       月度绩效核算的是上一个已关账的月份，新月份头几天用自然月会查不到任何行，
+       整页会把所有人报成「本期无绩效」，缺口就成了假缺口。
+       空库时退回 people.defaultPeriod()——它同样只认已关账且有单量的月份，不会算出半个账期 */
+    function latestPerfPeriod() {
+        var latest = '';
+        db.col('performances').forEach(function (p) { if (String(p.period) > latest) latest = p.period; });
+        return latest || TMS.people.defaultPeriod();
+    }
+
     /* 一次遍历把档案下游的所有对象索引好，台账、缺口、部门、导出共用同一份口径 */
     function hrIndex(days) {
-        var period = util.monthKey(util.now());
+        var period = latestPerfPeriod();
         var cutoff = util.addDays(util.now(), -days).getTime();
         var today = util.dateKey(util.now());
         var out = {
@@ -11677,7 +11688,7 @@
             body: ui.stack([
                 ui.desc([
                     { label: '账号', value: '<span class="tms-mono">' + esc(u.id) + '</span> ' + esc(u.username) },
-                    { label: '状态', value: statusBadge(u.status || 'active', { active: '可登录', inactive: '已停用', locked: '已锁定' }) },
+                    { label: '状态', value: statusBadge(u.status || 'active', USER_STATUS_TEXT) },
                     { label: '绑定档案', value: ui.idCell(e.id, 'emp:open') + ' <span class="tms-dim">' + esc(e.position || '') + '</span>' },
                     { label: '登录门户', value: esc((cfg.roles[u.role] || {}).portal || '—') },
                     { label: '最近登录', value: u.lastLoginAt ? fmt.dateTime(u.lastLoginAt) : '<span class="tms-dim">从未登录</span>' },
@@ -11855,7 +11866,7 @@
             if (!id) return;
             var e = db.get('employees', id);
             if (!e) { ui.toast('未找到员工 ' + id, 'warn'); return; }
-            var period = util.monthKey(util.now());
+            var period = latestPerfPeriod();
             var row = TMS.people.computePerformance(id, period);
             db.batch(function () { db.commit('performances', row.id, 'perf:calc'); }, 'perf:calc');
             TMS.audit.log('perf.calc', 'employees', id, e.name + ' ' + period + ' 绩效 ' + row.score + ' 分（' + row.grade + '）', actor());
@@ -11894,7 +11905,7 @@
             TMS.shell.refresh();
         },
         'hr:runPerf': function () {
-            var period = util.monthKey(util.now());
+            var period = latestPerfPeriod();
             var rows = TMS.people.generatePerformances(period);
             TMS.audit.log('perf.calc', 'performances', '', period + ' 批量核算 ' + rows.length + ' 人一线绩效', actor());
             var d = rows.filter(function (x) { return x.grade === 'D'; });
@@ -12140,6 +12151,1807 @@
                         { key: 'attendance', label: '出勤判定' }, { key: 'device', label: '终端' }, { key: 'location', label: '打卡地点' }
                     ]
                 }, 'hr');
+            }
+        })
+    });
+
+    /* ---------- 三十、用户权限 ---------- */
+
+    /* 账号表只回答「谁能进门」：身份在 employees（靠 personId 反查）、授权在 roles（靠 code 反查），
+       这里既不复制花名册也不复制权限表。矩阵上点一格就是改一行 roles.permissionCodes，
+       菜单、路由守卫、按钮可见性全部现读同一份，所以改完立刻全站生效，不需要第二处同步 */
+
+    var USER_STATUS_TEXT = { active: '可登录', inactive: '已停用', locked: '已锁定' };
+
+    /* 运营端菜单是分组结构、角色端是平铺，两处拉平成同一份「页面条目」后
+       才能回答「这个权限点到底守住了哪几个页面」 */
+    function flatMenu(roleKey) {
+        if (roleKey === 'admin') return TMS.rbac.ADMIN_MENU.reduce(function (a, g) { return a.concat(g.items); }, []);
+        if (roleKey) return TMS.rbac.portalMenu(roleKey);
+        var all = TMS.rbac.ADMIN_MENU.reduce(function (a, g) { return a.concat(g.items); }, []);
+        Object.keys(TMS.rbac.PORTAL_MENU).forEach(function (k) { all = all.concat(TMS.rbac.PORTAL_MENU[k]); });
+        return all;
+    }
+
+    function permGuardedLabels(code) {
+        return util.unique(flatMenu().filter(function (it) { return it.perm === code; }).map(function (it) { return it.label; }));
+    }
+
+    function usrVisibleMenu(roleKey) {
+        var perms = TMS.rbac.permissionsFor(roleKey);
+        var all = perms.indexOf('*') > -1;
+        return flatMenu(roleKey).filter(function (it) { return all || !it.perm || perms.indexOf(it.perm) > -1; });
+    }
+
+    /* 一次把角色档案、员工索引、账号视图算好：矩阵和台账共用，
+       避免「台账显示 12 个权限点、矩阵勾了 13 格」这种同一页面自相矛盾 */
+    function usrView() {
+        var roleRows = TMS.rbac.roles();
+        var byCode = {};
+        roleRows.forEach(function (r) { byCode[r.code] = r; });
+        var empById = {};
+        db.col('employees').forEach(function (e) { empById[e.id] = e; });
+        var rows = db.col('users').map(function (u) {
+            var r = byCode[u.role] || { name: TMS.people.roleName(u.role), count: 0, menuTotal: 0, menuVisible: 0, portal: 'index.html' };
+            var e = u.personId ? empById[u.personId] : null;
+            var c = u.customerId ? db.get('customers', u.customerId) : null;
+            var st = u.status || 'active';
+            return {
+                id: u.id, username: u.username, name: u.name, role: u.role, roleName: r.name,
+                orgId: u.orgId || '', orgName: u.orgName || '', personId: u.personId || '', customerId: u.customerId || '',
+                empName: e ? e.name : '', empStatus: e ? e.status : '', empPos: e ? e.position : '',
+                customerName: c ? c.name : '', phone: u.phone || '', status: st,
+                lastLoginAt: u.lastLoginAt || '', createdAt: u.createdAt || '',
+                perms: r.count, menuVisible: r.menuVisible, menuTotal: r.menuTotal, portal: r.portal,
+                isClient: u.role === 'client',
+                dangling: !!u.personId && !e,
+                noIdentity: !u.personId && !u.customerId,
+                shouldDisable: !!e && e.status === 'resigned' && st !== 'inactive',
+                blocked: st === 'inactive',
+                neverLogin: !u.lastLoginAt && st !== 'inactive',
+                stale: !!u.lastLoginAt && util.hoursBetween(u.lastLoginAt, util.now()) > 24 * 30
+            };
+        });
+        return { roleRows: roleRows, byCode: byCode, empById: empById, rows: rows };
+    }
+
+    function usrRowFilter(r, fs) {
+        if (fs.role && r.role !== fs.role) return false;
+        if (fs.status && r.status !== fs.status) return false;
+        var c = fs.chip || '';
+        if (c === 'blocked' && !r.blocked) return false;
+        if (c === 'shouldDisable' && !r.shouldDisable) return false;
+        if (c === 'noIdentity' && !r.noIdentity) return false;
+        if (c === 'dangling' && !r.dangling) return false;
+        if (c === 'neverLogin' && !r.neverLogin) return false;
+        if (c === 'client' && !r.isClient) return false;
+        return true;
+    }
+
+    function usrGaps(view) {
+        var idx = hrIndex(7);
+        return {
+            shouldDisable: view.rows.filter(function (r) { return r.shouldDisable; }),
+            dangling: view.rows.filter(function (r) { return r.dangling; }),
+            noIdentity: view.rows.filter(function (r) { return r.noIdentity; }),
+            neverLogin: view.rows.filter(function (r) { return r.neverLogin; }),
+            stale: view.rows.filter(function (r) { return r.stale; }),
+            noAccount: db.col('employees').filter(function (e) {
+                return e.status === 'active' && FRONT_ROLES.indexOf(e.role) > -1 && !idx.userBy[e.id];
+            }),
+            rewritten: view.roleRows.filter(function (r) { return r.overridden; })
+        };
+    }
+
+    /* 授权单元：一格 = 一个 (角色, 权限点)，点击即写库并重跑菜单可见性 */
+    function permToggleCell(role, p) {
+        if (role.full) {
+            return '<span class="tms-dim" title="运营管理员出厂全权（*），不可拆权">全</span>';
+        }
+        var has = role.perms.indexOf(p.code) > -1;
+        return ui.chip(has ? '✓' : '—', { on: has, act: 'role:perm', arg: role.code + '|' + p.code });
+    }
+
+    function permModal(code) {
+        var p = TMS.rbac.PERMISSIONS.filter(function (x) { return x.code === code; })[0];
+        if (!p) { ui.toast('未登记权限点 ' + code, 'warn'); return; }
+        var holders = TMS.rbac.roles().filter(function (r) { return r.full || r.perms.indexOf(code) > -1; });
+        var guarded = permGuardedLabels(code);
+        var accounts = db.col('users').filter(function (u) {
+            return holders.some(function (r) { return r.code === u.role; });
+        });
+        ui.modal({
+            title: p.name,
+            sub: '权限点 ' + p.code + ' · 所属模块 ' + p.module + ' · ' + holders.length + '/' + TMS.rbac.PERMISSIONS.length + ' 个角色持有',
+            body: ui.stack([
+                ui.desc([
+                    { label: '持有角色', value: holders.length ? holders.map(function (r) { return ui.badge(r.name + ' ' + r.accounts, r.overridden ? 'warn' : 'info'); }).join(' ') : ui.badge('无人持有', 'danger') },
+                    { label: '守着的页面', value: guarded.length ? guarded.map(function (x) { return esc(x); }).join('、') : '<span class="tms-dim">不直接守菜单，只控按钮或接口</span>' },
+                    { label: '影响账号', value: accounts.length + ' 个（其中可登录 ' + accounts.filter(function (u) { return (u.status || 'active') !== 'inactive'; }).length + ' 个）' },
+                    { label: '收回后', value: '该权限点守的页面会从这些角色的菜单里消失，直接输入地址也会被路由守卫退回首页——改的就是当前生效值，不需要等重新登录' }
+                ]),
+                ui.table({
+                    dense: true, keyName: 'code', rows: holders, emptyText: '没有角色持有该权限',
+                    columns: [
+                        { key: 'name', label: '角色', sortable: false, render: function (r) { return '<b>' + esc(r.name) + '</b><div class="tms-dim">' + esc(r.code) + ' · 门户 ' + esc(r.portal) + '</div>'; } },
+                        { key: 'accounts', label: '账号', sortable: false, align: 'right' },
+                        { key: 'count', label: '权限点', sortable: false, align: 'right', render: function (r) { return r.count + (r.full ? '（全权）' : ''); } },
+                        { key: 'menuVisible', label: '可见菜单', sortable: false, align: 'right', render: function (r) { return r.menuVisible + '/' + r.menuTotal; } },
+                        { key: 'overridden', label: '来源', sortable: false, render: function (r) { return r.overridden ? ui.badge('已改写', 'warn') : ui.badge('出厂默认', 'muted'); } },
+                        { key: 'updatedAt', label: '最近调整', sortable: false, render: function (r) { return r.updatedAt ? fmt.dateTime(r.updatedAt) : '<span class="tms-dim">未改过</span>'; } }
+                    ]
+                })
+            ]),
+            footer: holders.filter(function (r) { return !r.full; }).map(function (r) {
+                return ui.btn('从「' + r.name + '」收回', { size: 'sm', tone: 'danger', act: 'role:perm', arg: r.code + '|' + p.code });
+            }).join('') + ui.btn('关闭', { act: 'ui:close' })
+        });
+    }
+
+    function roleDefaultModal(roleKey) {
+        var r = (TMS.rbac.roles().filter(function (x) { return x.code === roleKey; })[0]);
+        if (!r) { ui.toast('未找到角色 ' + roleKey, 'warn'); return; }
+        if (!r.overridden) { ui.toast(r.name + ' 当前就是出厂授权', 'info'); return; }
+        ui.confirm({
+            title: '恢复 ' + r.name + ' 的出厂授权',
+            message: '将把权限点从 ' + r.count + ' 个写回出厂的 ' + r.defaultPerms.length + ' 个，该角色 ' + r.accounts + ' 个账号的可见菜单同步变化。',
+            okText: '恢复', cancelText: '再看看'
+        }).then(function (yes) {
+            if (!yes) return;
+            TMS.rbac.clearRolePerms(roleKey);
+            TMS.audit.log('user.manage', 'roles', r.id, r.name + ' 权限恢复出厂默认（' + r.defaultPerms.length + ' 个权限点）', actor());
+            ui.toast(r.name + ' 已恢复出厂授权', 'success');
+            TMS.shell.refresh();
+        });
+    }
+
+    function usrFormModal(id) {
+        var u = id ? db.get('users', id) : null;
+        var roleOptions = ui.optionsOf(TMS.rbac.roles(), 'code', 'name');
+        var customerOptions = ui.optionsOf(db.col('customers'), 'id', 'name');
+        ui.formModal({
+            title: u ? '编辑账号 ' + u.username : '新建登录账号',
+            sub: u ? u.id + ' · 开通于 ' + fmt.date(u.createdAt) : '账号是登录入口，身份与授权分别来自员工档案与角色',
+            notice: u ? '改角色会立刻改变这个账号能看到的菜单与能点的按钮，无需对方重新登录。'
+                : '新账号建议绑定员工工号：绑定后门户里的「我的任务 / 我的打卡 / 我的绩效」才认得出这个人。',
+            values: u ? {
+                username: u.username, name: u.name, role: u.role, personId: u.personId || '',
+                customerId: u.customerId || '', phone: u.phone || '', status: u.status || 'active', password: ''
+            } : {
+                username: '', name: '', role: 'deliveryman', personId: '', customerId: '',
+                phone: '', status: 'active', password: INIT_PASSWORD
+            },
+            fields: [
+                { key: 'username', label: '登录名', required: true, maxlength: 24, placeholder: '例：emp0001 / svc_sh', hint: '工号小写是内部账号的约定，外部账号自定义' },
+                { key: 'name', label: '显示姓名', required: true },
+                { key: 'role', label: '角色', type: 'select', required: true, options: roleOptions },
+                { key: 'status', label: '状态', type: 'select', required: true, options: dictOptions(USER_STATUS_TEXT) },
+                { key: 'personId', label: '绑定员工工号', placeholder: '例：EMP0001，留空表示外部账号', tip: '对应 users.personId，一个工号只认第一个账号' },
+                { key: 'customerId', label: '绑定客户档案', type: 'select', options: [{ value: '', label: '不绑定' }].concat(customerOptions), hint: '客户角色用它决定能看哪些单' },
+                { key: 'phone', label: '手机号', maxlength: 11 },
+                { key: 'password', label: u ? '重置口令（留空不改）' : '初始口令', type: 'password', placeholder: u ? '不修改请留空' : '至少 6 位', span: 2 }
+            ],
+            okText: u ? '保存账号' : '创建账号',
+            onSubmit: function (v) {
+                var uname = String(v.username || '').trim().toLowerCase();
+                if (!/^[a-z0-9_.-]{3,24}$/.test(uname)) return '登录名需为 3~24 位字母、数字、下划线、点或短横线';
+                var dup = db.findOne('users', function (x) { return x.username === uname && (!u || x.id !== u.id); });
+                if (dup) return '登录名 ' + uname + ' 已被账号 ' + dup.id + '（' + dup.name + '）占用';
+                if (v.personId && !db.get('employees', String(v.personId).trim().toUpperCase())) {
+                    return '员工档案里没有工号 ' + v.personId + '：请先到人事管理建档，或留空当外部账号';
+                }
+                var person = v.personId ? db.get('employees', String(v.personId).trim().toUpperCase()) : null;
+                var customer = v.customerId ? db.get('customers', v.customerId) : null;
+                if (v.password && String(v.password).length < 6) return '口令至少 6 位';
+                var patch = {
+                    username: uname, name: String(v.name || '').trim(), role: v.role,
+                    personId: person ? person.id : null, customerId: customer ? customer.id : null,
+                    phone: String(v.phone || '').trim() || null, status: v.status,
+                    orgId: person ? person.orgId : (customer ? customer.id : (u ? u.orgId : '')),
+                    orgName: person ? person.orgName : (customer ? customer.name : (u ? u.orgName : ''))
+                };
+                if (v.password) patch.passwordHash = 'h:' + util.hash(String(v.password));
+                var saved;
+                db.batch(function () {
+                    saved = u ? db.update('users', u.id, patch) : db.create('users', patch);
+                    if (saved) db.commit('users', saved.id, 'user:save');
+                }, 'user:save');
+                if (!saved) return '保存失败';
+                if (!u && !saved.createdAt) saved.createdAt = util.dateKey(util.now());
+                var same = u && u.role !== saved.role ? '，角色 ' + u.role + '→' + saved.role : '';
+                TMS.audit.log('user.manage', 'users', saved.id,
+                    (u ? '更新账号' : '创建账号') + ' ' + saved.username + '（' + saved.name + '·' + (TMS.rbac.permissionsFor(saved.role).length) + ' 个权限点）' + same, actor());
+                ui.toast('已保存账号 ' + saved.username + same, 'success');
+                TMS.shell.refresh();
+            }
+        });
+    }
+
+    function usrModal(id) {
+        var u = db.get('users', id);
+        if (!u) { ui.toast('未找到账号 ' + id, 'warn'); return; }
+        var v = usrView();
+        var r = v.byCode[u.role] || { name: u.role, perms: [], count: 0, portal: 'index.html', menuTotal: 0, menuVisible: 0 };
+        var e = u.personId ? v.empById[u.personId] : null;
+        var menu = usrVisibleMenu(u.role);
+        var logs = util.sortBy(db.col('auditLogs').filter(function (l) {
+            return l.refId === u.id || (u.name && l.actor === u.name) || l.actor === u.username;
+        }), 'at', 'desc').slice(0, 8);
+        var days = Math.max(7, Number(curCtx().days) || 7);
+        var perfRow = e ? db.findOne('performances', function (p) { return p.employeeId === e.id; }) : null;
+        ui.modal({
+            size: 'wide',
+            title: u.username + ' · ' + u.name,
+            sub: u.id + ' · ' + r.name + ' · ' + (u.orgName || '未归属') + ' · 门户 ' + r.portal,
+            body: ui.stack([
+                ui.kpis([
+                    { label: '账号状态', value: USER_STATUS_TEXT[u.status || 'active'] || (u.status || 'active'), tone: (u.status || 'active') === 'inactive' ? 'danger' : 'success', sub: '停用后登录即被拒' },
+                    { label: '权限点', value: r.count, unit: '个', tone: 'brand', sub: r.overridden ? '已改写' : '出厂默认' },
+                    { label: '可见菜单', value: r.menuVisible, unit: '/' + r.menuTotal, tone: r.menuVisible === r.menuTotal ? 'success' : 'warn', sub: '改权限立刻变' },
+                    { label: '最近登录', value: u.lastLoginAt ? fmt.date(u.lastLoginAt) : '从未', tone: u.lastLoginAt ? 'info' : 'muted', sub: u.lastLoginAt ? fmt.time(u.lastLoginAt) : '建号后没进过系统' },
+                    { label: '绑定身份', value: e ? '已绑定' : (u.customerId ? '客户账号' : '外部'), tone: e || u.customerId ? 'success' : 'warn', sub: e ? e.name + '·' + e.position : (u.customerId || '无档案') },
+                    { label: '档案状态', value: e ? EMP_STATUS_TEXT[e.status] : '—', tone: e && e.status === 'active' ? 'success' : e ? 'danger' : 'muted', sub: e ? e.id : '未绑员工' }
+                ]),
+                ui.split('2', [
+                    ui.card({
+                        title: '账号与身份', flat: true,
+                        body: ui.desc([
+                            { label: '登录名', value: '<span class="tms-mono">' + esc(u.username) + '</span>' },
+                            { label: '显示姓名', value: esc(u.name) },
+                            { label: '角色', value: esc(r.name) + ' <span class="tms-dim">' + esc(u.role) + '</span>' + (r.overridden ? ' ' + ui.badge('授权已改写', 'warn') : '') },
+                            { label: '绑定员工', value: e ? ui.idCell(e.id, '') + ' ' + esc(e.name) + ' <span class="tms-dim">' + esc(e.deptName || '') + '</span>' + (perfRow ? ' <span class="tms-dim">绩效 ' + perfRow.score + ' 分</span>' : '') : (u.personId ? ui.badge('档案不存在', 'danger') : '<span class="tms-dim">外部账号，无员工档案</span>') },
+                            { label: '客户档案', value: u.customerId ? esc((db.get('customers', u.customerId) || {}).name || u.customerId) : '<span class="tms-dim">非客户账号</span>' },
+                            { label: '手机号', value: dim(u.phone) },
+                            { label: '开通时间', value: u.createdAt ? fmt.date(u.createdAt) : '<span class="tms-dim">—</span>' },
+                            { label: '口令', value: /^h:/.test(u.passwordHash || u.password || '') ? '哈希存储（h: 前缀）' : (u.password ? '<span class="tms-badge tone-warn">明文，建议重置</span>' : '<span class="tms-dim">未设置</span>') }
+                        ])
+                    }),
+                    ui.card({
+                        title: '该角色可进的页面', sub: menu.length + ' 项 · 由权限点过滤菜单得出', flat: true,
+                        body: menu.length ? '<div class="tms-row" style="flex-wrap:wrap">' + menu.map(function (it) {
+                            return ui.chip(it.label, { on: true });
+                        }).join('') + '</div>' : ui.empty('该角色一个页面都进不去', '授权为空，账号登录后会被退回登录页')
+                    })
+                ]),
+                ui.card({
+                    title: '最近留痕', sub: logs.length + ' 条与该账号相关的审计记录（只读窗口近 ' + days + ' 天已落库的全量）', flat: true,
+                    body: logs.length ? ui.timeline(logs.map(function (l) {
+                        return {
+                            time: fmt.dateTime(l.at), title: esc(TMS.audit.ACTIONS[l.action] || l.action),
+                            body: esc(l.detail || '') + ' <span class="tms-dim">' + esc(l.actor) + '</span>',
+                            tone: l.action === 'user.login' ? 'ok' : 'info'
+                        };
+                    })) : ui.empty('还没有该账号的操作留痕')
+                })
+            ]),
+            footer: ui.btn('编辑账号', { tone: 'primary', act: 'usr:edit', arg: u.id }) +
+                ui.btn('重置口令', { act: 'usr:reset', arg: u.id }) +
+                ui.btn((u.status || 'active') === 'inactive' ? '恢复登录' : '停用账号', { act: 'usr:toggle', arg: u.id }) +
+                (e ? ui.btn('看员工档案', { act: 'emp:open', arg: e.id }) : ui.btn('去人事建档', { tone: 'ghost', act: 'hr:goHr' })) +
+                ui.btn('关闭', { tone: 'ghost', act: 'ui:close' })
+        });
+    }
+
+    var usrActions = {
+        'usr:open': function (id) { usrModal(id); },
+        'usr:edit': function (id) { usrFormModal(id); },
+        'usr:new': function () { usrFormModal(''); },
+        'usr:toggle': function (id) {
+            var u = db.get('users', id);
+            if (!u) return;
+            var off = (u.status || 'active') !== 'inactive';
+            db.batch(function () {
+                db.update('users', u.id, { status: off ? 'inactive' : 'active', disabledReason: off ? '手工停用：' + actor() : null });
+                db.commit('users', u.id, 'user:status');
+            }, 'user:status');
+            TMS.audit.log('user.manage', 'users', u.id, u.username + (off ? ' 停用，登录立即被拒' : ' 恢复登录'), actor());
+            ui.toast(u.username + (off ? ' 已停用' : ' 已恢复'), 'success');
+            TMS.shell.refresh();
+        },
+        'usr:reset': function (id) {
+            var u = db.get('users', id);
+            if (!u) return;
+            ui.confirm({
+                title: '重置 ' + u.username + ' 的口令',
+                message: '新口令将是初始口令 ' + INIT_PASSWORD + '，对方下次登录需要用新口令。',
+                okText: '重置', danger: true
+            }).then(function (yes) {
+                if (!yes) return;
+                db.batch(function () {
+                    db.update('users', u.id, { passwordHash: 'h:' + util.hash(INIT_PASSWORD) });
+                    db.commit('users', u.id, 'user:resetPwd');
+                }, 'user:resetPwd');
+                TMS.audit.log('user.manage', 'users', u.id, '重置 ' + u.username + ' 登录口令', actor());
+                ui.toast(u.username + ' 口令已重置为 ' + INIT_PASSWORD, 'success');
+            });
+        },
+        'usr:bulkDisable': function () {
+            var list = usrView().rows.filter(function (r) { return r.shouldDisable; });
+            if (!list.length) { ui.toast('没有离职后还能登录的账号', 'info'); return; }
+            var n = 0;
+            db.batch(function () {
+                list.forEach(function (r) {
+                    var row = db.get('users', r.id);
+                    if (!row) return;
+                    db.update('users', r.id, { status: 'inactive', disabledReason: '离职自动停号' });
+                    db.commit('users', r.id, 'user:disable');
+                    TMS.audit.log('user.manage', 'users', r.id, r.username + ' 因员工 ' + r.empName + ' 离职停用', actor());
+                    n++;
+                });
+            }, 'user:disable');
+            ui.toast('已停用 ' + n + ' 个离职账号，这些登录名再输密码会被拒绝', 'success');
+            TMS.shell.refresh();
+        },
+        'usr:goHr': function () {
+            TMS.ui.closeTop();
+            TMS.shell.go('hr', { chip: 'noaccount' });
+        },
+        /* 一格授权：写回 roles.permissionCodes，菜单与守卫同读这份，改完立刻全站生效 */
+        'role:perm': function (arg) {
+            var parts = String(arg || '').split('|');
+            var roleKey = parts[0], code = parts[1];
+            if (!roleKey || !code) return;
+            var role = TMS.rbac.roles().filter(function (x) { return x.code === roleKey; })[0];
+            if (!role) { ui.toast('未找到角色 ' + roleKey, 'warn'); return; }
+            if (role.full) { ui.toast(role.name + ' 是出厂全权角色（*），拆权会把自己关在门外', 'warn'); return; }
+            var p = TMS.rbac.PERMISSIONS.filter(function (x) { return x.code === code; })[0];
+            if (!p) { ui.toast('权限点 ' + code + ' 不在字典里', 'warn'); return; }
+            var perms = TMS.rbac.permissionsFor(roleKey);
+            var i = perms.indexOf(code);
+            var grant = i < 0;
+            if (grant) perms.push(code); else perms.splice(i, 1);
+            if (!perms.length) { ui.toast('至少保留一个权限点，否则该角色登录后没有任何页面可进', 'warn'); return; }
+            TMS.rbac.setRolePerms(roleKey, perms, actor());
+            var affected = db.col('users').filter(function (u) { return u.role === roleKey && (u.status || 'active') !== 'inactive'; }).length;
+            TMS.audit.log('user.manage', 'roles', role.id,
+                role.name + (grant ? ' 授予 ' : ' 收回 ') + p.name + '（' + code + '），现 ' + perms.length + ' 个权限点，影响 ' + affected + ' 个在用账号', actor());
+            var menu = usrVisibleMenu(roleKey).length;
+            ui.toast(role.name + (grant ? ' 已授予 ' : ' 已收回 ') + p.name + '，可见菜单 ' + menu + ' 项、影响 ' + affected + ' 个账号', grant ? 'success' : 'warn');
+            TMS.shell.refresh();
+        },
+        'role:default': function (roleKey) { roleDefaultModal(roleKey); },
+        'perm:open': function (code) { permModal(code); }
+    };
+
+    pg.define('user', {
+        sub: '登录账号 · 角色授权矩阵 · 身份绑定一致性',
+        load: function (ctx) {
+            applyParamFilter(ctx, ['role', 'status', 'q']);
+            var v = usrView();
+            var mods = TMS.rbac.modules();
+            return {
+                days: ctx.days, view: v, gaps: usrGaps(v),
+                modules: Object.keys(mods).map(function (k) { return { name: k, count: mods[k].length }; }),
+                perms: TMS.rbac.PERMISSIONS
+            };
+        },
+        render: function (ctx, d) {
+            var rows = d.view.rows, g = d.gaps, roleRows = d.view.roleRows;
+            var mods = util.countBy(rows, 'status');
+            var kpi = ui.kpis([
+                { label: '登录账号', value: fmt.number(rows.length), unit: '个', tone: 'brand', icon: '⚿', sub: '覆盖 ' + util.unique(rows.map(function (r) { return r.role; })).length + ' 种角色' },
+                { label: '可登录', value: rows.length - (mods.inactive || 0), unit: '个', tone: 'success', sub: '停用 ' + (mods.inactive || 0) + ' 个' },
+                { label: '离职未停号', value: g.shouldDisable.length, unit: '个', tone: g.shouldDisable.length ? 'danger' : 'success', sub: '档案已离职但还能进' },
+                { label: '未绑身份', value: g.noIdentity.length + g.dangling.length, unit: '个', tone: g.noIdentity.length ? 'warn' : 'muted', sub: '外部 ' + g.noIdentity.length + ' · 指向空档案 ' + g.dangling.length },
+                { label: '从未登录', value: g.neverLogin.length, unit: '个', tone: 'muted', sub: '建了号没用过系统' },
+                { label: '授权已改写', value: g.rewritten.length, unit: '/' + roleRows.length + ' 角色', tone: g.rewritten.length ? 'info' : 'muted', sub: '与出厂默认不一致' }
+            ]);
+            var roleCard = ui.card({
+                title: '角色授权', sub: roleRows.length + ' 个角色 · 矩阵里点一格即改一行 roles', flat: true,
+                body: ui.table({
+                    dense: true, keyName: 'code', rows: roleRows, emptyText: '没有角色定义',
+                    columns: [
+                        { key: 'name', label: '角色', sortable: false, render: function (r) { return '<b>' + esc(r.name) + '</b><div class="tms-dim">' + esc(r.code) + ' · ' + esc(r.portal) + '</div>'; } },
+                        { key: 'accounts', label: '账号', sortable: false, align: 'right' },
+                        { key: 'count', label: '权限点', sortable: false, align: 'right', render: function (r) { return r.count + ' /' + TMS.rbac.PERMISSIONS.length + (r.full ? ' <span class="tms-dim">全权</span>' : ''); } },
+                        { key: 'menuVisible', label: '可见菜单', sortable: false, align: 'right', render: function (r) { return r.menuVisible === r.menuTotal ? (r.menuTotal + ' 全部') : ui.badge(r.menuVisible + '/' + r.menuTotal, 'warn'); } },
+                        { key: 'overridden', label: '来源', sortable: false, render: function (r) { return r.overridden ? ui.badge('已改写', 'warn') : ui.badge('出厂默认', 'muted'); } },
+                        { key: 'updatedAt', label: '最近调整', sortable: false, render: function (r) { return r.updatedAt ? fmt.dateTime(r.updatedAt) : '<span class="tms-dim">—</span>'; } },
+                        { key: 'ops', label: '操作', sortable: false, width: '96px', render: function (r) {
+                            return ui.link('矩阵', 'usr:roleMatrix', r.code, { tone: 'ghost' }) +
+                                (r.overridden ? ui.link('恢复出厂', 'role:default', r.code, { tone: 'ghost' }) : '');
+                        } }
+                    ]
+                })
+            });
+            var gapItems = [];
+            if (g.shouldDisable.length) gapItems.push({
+                title: g.shouldDisable.length + ' 个离职账号仍可登录',
+                sub: '例 ' + g.shouldDisable.slice(0, 3).map(function (r) { return esc(r.username); }).join('、') + '，停用后 auth.verify 查不到启用行',
+                right: ui.btn('批量停用', { size: 'sm', tone: 'danger', act: 'usr:bulkDisable' })
+            });
+            if (g.noAccount.length) gapItems.push({
+                title: g.noAccount.length + ' 名在岗一线没有账号',
+                sub: '人事页按角色批量开通，登录名用工号小写',
+                right: ui.btn('去人事开通', { size: 'sm', tone: 'primary', act: 'usr:goHr' })
+            });
+            if (g.dangling.length) gapItems.push({
+                title: g.dangling.length + ' 个账号指向不存在的员工档案',
+                sub: 'personId 落空会让「我的任务」查不到数据，需重新绑定或转外部账号',
+                right: ui.btn('只看这批', { size: 'sm', act: 'usr:focus', arg: 'dangling' })
+            });
+            if (g.neverLogin.length) gapItems.push({
+                title: g.neverLogin.length + ' 个账号从未登录',
+                sub: '长期不用的号是审计上的口子，建议停用或确认归属',
+                right: ui.btn('只看这批', { size: 'sm', act: 'usr:focus', arg: 'neverLogin' })
+            });
+            if (g.rewritten.length) gapItems.push({
+                title: g.rewritten.length + ' 个角色偏离出厂授权',
+                sub: g.rewritten.map(function (r) { return esc(r.name + ' ' + r.count + ' 点'); }).join(' · '),
+                right: ui.btn('看矩阵', { size: 'sm', tone: 'ghost', act: 'usr:focus', arg: 'rewritten' })
+            });
+            var gapCard = ui.card({
+                title: '账号治理待办', sub: gapItems.length ? gapItems.length + ' 项' : '账号、身份、授权三者一致', flat: true,
+                body: gapItems.length ? ui.list(gapItems) : ui.empty('没有待办', '每个账号都绑到了在岗身份，每个角色都是出厂授权')
+            });
+            /* 一个页面只有一套列表状态（页码 / 排序 / 筛选都按 pageId 保管），
+               矩阵若也走管线会和台账抢同一个 state，所以矩阵走 seg 分组 + 静态表 */
+            var mod = ctx.state.seg || '全部';
+            var matrixRows = mod === '全部' ? d.perms : d.perms.filter(function (p) { return p.module === mod; });
+            var matrixCard = ui.card({
+                title: '权限矩阵',
+                sub: matrixRows.length + ' 个权限点 × ' + roleRows.length + ' 个角色 · 空格点一下即授予，勾上再点即收回',
+                tools: ui.btn('导出矩阵', { size: 'sm', tone: 'ghost', act: 'usr:exportMatrix', icon: '↓' }),
+                body: ui.stack([
+                    ui.seg([{ value: '全部', label: '全部 ' + d.perms.length }].concat(d.modules.map(function (m) {
+                        return { value: m.name, label: m.name + ' ' + m.count };
+                    })), mod),
+                    ui.table({
+                        dense: true, keyName: 'code', rows: matrixRows, emptyText: '该模块下没有权限点',
+                        columns: [{ key: 'name', label: '权限点', width: '190px', sortable: false, render: function (p) {
+                            return ui.link(p.name, 'perm:open', p.code) + '<div class="tms-dim tms-mono" style="font-size:11px">' + esc(p.code) + '</div>';
+                        } }].concat(roleRows.map(function (r) {
+                            return { key: 'r_' + r.code, label: r.name, width: '86px', align: 'center', sortable: false, render: function (p) { return permToggleCell(r, p); } };
+                        }), [
+                            { key: 'holders', label: '持有角色', width: '78px', align: 'right', sortable: false, render: function (p) {
+                                var n = roleRows.filter(function (r) { return r.full || r.perms.indexOf(p.code) > -1; }).length;
+                                return n ? n + ' 个' : ui.badge('无人', 'danger');
+                            } },
+                            { key: 'guarded', label: '守着的页面', sortable: false, render: function (p) {
+                                var labels = permGuardedLabels(p.code);
+                                return labels.length ? labels.map(function (x) { return esc(x); }).join('、') : '<span class="tms-dim">仅控按钮</span>';
+                            } }
+                        ])
+                    })
+                ])
+            });
+            var listCard = grid(ctx, {
+                title: '账号台账', sub: rows.length + ' 个账号 · 状态与身份同屏核对',
+                rows: rows, keyName: 'id', dense: true, onRow: 'usr:open', searchKey: 'q', pageSize: 20,
+                filter: usrRowFilter,
+                search: function (r) { return [r.id, r.username, r.name, r.roleName, r.orgName, r.personId, r.empName, r.phone].join(' '); },
+                chips: [
+                    { label: '全部', value: '', count: rows.length },
+                    { label: '离职未停号', value: 'shouldDisable', count: g.shouldDisable.length },
+                    { label: '已停用', value: 'blocked', count: mods.inactive || 0 },
+                    { label: '未绑身份', value: 'noIdentity', count: g.noIdentity.length },
+                    { label: '档案落空', value: 'dangling', count: g.dangling.length },
+                    { label: '从未登录', value: 'neverLogin', count: g.neverLogin.length },
+                    { label: '客户账号', value: 'client', count: rows.filter(function (r) { return r.isClient; }).length }
+                ], chipsName: 'chip',
+                fields: [
+                    { key: 'role', label: '角色', options: [{ value: '', label: '全部角色' }].concat(ui.optionsOf(roleRows, 'code', 'name')) },
+                    { key: 'status', label: '状态', options: [{ value: '', label: '全部' }].concat(dictOptions(USER_STATUS_TEXT)) }
+                ],
+                tools: ui.btn('导出账号', { size: 'sm', tone: 'ghost', act: 'usr:export', icon: '↓' }),
+                columns: [
+                    { key: 'id', label: '账号', width: '124px', render: function (r) { return ui.idCell(r.id, 'usr:open') + '<div class="tms-mono tms-dim" style="font-size:11px">' + esc(r.username) + '</div>'; } },
+                    { key: 'name', label: '姓名', width: '92px' },
+                    { key: 'role', label: '角色', width: '104px', render: function (r) { return esc(r.roleName) + '<div class="tms-dim" style="font-size:11px">' + r.perms + ' 权限点 · 菜单 ' + r.menuVisible + '/' + r.menuTotal + '</div>'; } },
+                    { key: 'orgName', label: '归属', sortable: false, render: function (r) { return dim(r.orgName) + (r.customerName ? '<div class="tms-dim">' + esc(r.customerName) + '</div>' : ''); } },
+                    { key: 'personId', label: '绑定身份', width: '132px', render: function (r) {
+                        if (!r.personId) return r.isClient ? '<span class="tms-dim">客户账号</span>' : ui.link('未绑定', 'usr:edit', r.id, { tone: 'warn' });
+                        if (!r.empName) return ui.badge('档案落空', 'danger');
+                        return ui.link(r.personId + ' ' + r.empName, 'emp:open', r.personId, { tone: 'ghost' }) +
+                            (r.empStatus !== 'active' ? ' ' + ui.badge(EMP_STATUS_TEXT[r.empStatus], 'danger') : '');
+                    } },
+                    { key: 'status', label: '状态', width: '86px', sortable: false, render: function (r) { return statusBadge(r.status, USER_STATUS_TEXT); } },
+                    { key: 'lastLoginAt', label: '最近登录', width: '112px', render: function (r) {
+                        return r.lastLoginAt ? (fmt.date(r.lastLoginAt) + (r.stale ? ' ' + ui.badge('超 30 天', 'warn') : '')) : '<span class="tms-dim">从未</span>';
+                    } },
+                    { key: 'ops', label: '操作', width: '132px', sortable: false, render: function (r) {
+                        return ui.link('编辑', 'usr:edit', r.id, { tone: 'ghost' }) +
+                            ui.link('重置口令', 'usr:reset', r.id, { tone: 'ghost' }) +
+                            ui.link(r.blocked ? '恢复' : '停用', 'usr:toggle', r.id, { tone: 'ghost' });
+                    } }
+                ],
+                emptyText: '没有符合条件的账号'
+            });
+            return wrap(ctx, {
+                actions: ui.btn('新建账号', { tone: 'primary', act: 'usr:new', icon: '+' }) +
+                    ui.btn('批量停离职号', { act: 'usr:bulkDisable', icon: '⊘' }),
+                sub: rows.length + ' 个账号 · ' + roleRows.length + ' 个角色 · 授权改在 roles 表上，菜单与路由守卫同读一份',
+                body: [kpi, ui.split('2', [roleCard, gapCard]), matrixCard, listCard, ui.card({
+                    title: '口径说明', flat: true,
+                    body: ui.desc([
+                        { label: '权限改在哪', value: 'roles.permissionCodes（种子引擎按出厂默认建好 6 行）。矩阵点一格就是更新这一行，permissionsFor 立刻读得到，菜单、路由守卫、按钮可见性三处同时变，不需要等对方重新登录' },
+                        { label: '运营管理员为什么不能拆权', value: '该角色出厂值是 *（全权）。把 * 拆成具体权限点，改错一格就会把自己关在系统外面——页面上直接拒绝对它编辑' },
+                        { label: '账号与员工的关系', value: 'users.personId 指向员工档案，登录名按工号小写（emp0001）。绑定后派送/分拣/司机门户里的「我的任务、我的打卡、我的绩效」才认得出这个人；客户账号改绑 customers 决定能看哪些单' },
+                        { label: '停用的真实效果', value: 'auth.verify 只认 status 不为 inactive 的行，停用后同一套用户名口令会直接提示账号不存在或需要联系管理员，不是仅前端藏入口' },
+                        { label: '口令存成什么', value: '统一写 h:+hash 前缀（util.hash），登录时同前缀比对；遇到明文行会在账号详情里标出来提示重置' },
+                        { label: '离职怎么闭环', value: '人事页的状态流转会同步停号；这里也可以从账号侧批量停用。反方向也通：档案还在职但账号停用，台账会留在「离职未停号 / 已停用」两个芯片里而不是被悄悄忽略' }
+                    ])
+                })]
+            });
+        },
+        actions: merge(usrActions, hrActions, {
+            'usr:roleMatrix': function (roleKey) {
+                var st = ui.state('user');
+                st.filters.role = roleKey;
+                TMS.shell.refresh();
+                ui.toast('台账已筛到角色 ' + ((TMS.cfg.roles[roleKey] || {}).name || roleKey) + '，矩阵在上方按模块勾选', 'info');
+            },
+            'usr:focus': function (kind) {
+                var st = ui.state('user');
+                if (kind === 'rewritten') {
+                    ui.toast('上方矩阵即改写过的角色列，点格子可逐格调回', 'info');
+                    return;
+                }
+                st.filters.chip = kind || '';
+                st.page = 1;
+                TMS.shell.refresh();
+            },
+            'usr:export': function () {
+                exportGrid({
+                    name: '登录账号.csv', rows: usrView().rows, searchKey: 'q', filter: usrRowFilter,
+                    search: function (r) { return [r.id, r.username, r.name, r.roleName, r.orgName, r.personId, r.empName, r.phone].join(' '); },
+                    cols: [
+                        { key: 'id', label: '账号编号' }, { key: 'username', label: '登录名' }, { key: 'name', label: '姓名' },
+                        { key: 'roleName', label: '角色' }, { key: 'perms', label: '权限点数' },
+                        { key: 'menuVisible', label: '可见菜单数' }, { key: 'orgName', label: '归属机构' },
+                        { key: 'personId', label: '绑定工号' }, { key: 'empName', label: '员工姓名' },
+                        { key: 'empStatus', label: '在职状态', value: function (r) { return EMP_STATUS_TEXT[r.empStatus] || r.empStatus; } },
+                        { key: 'customerId', label: '客户档案' }, { key: 'phone', label: '手机号' },
+                        { key: 'status', label: '账号状态', value: function (r) { return USER_STATUS_TEXT[r.status] || r.status; } },
+                        { key: 'lastLoginAt', label: '最近登录' }, { key: 'createdAt', label: '开通时间' }, { key: 'portal', label: '登录门户' }
+                    ]
+                }, 'user');
+            },
+            'usr:exportMatrix': function () {
+                var roleRows = TMS.rbac.roles();
+                exportGrid({
+                    name: '权限矩阵.csv', rows: TMS.rbac.PERMISSIONS, searchKey: 'pq',
+                    search: function (r) { return [r.code, r.name, r.module].join(' '); },
+                    cols: [{ key: 'code', label: '权限点' }, { key: 'name', label: '名称' }, { key: 'module', label: '模块' }].concat(
+                        roleRows.map(function (r) {
+                            return { label: r.name, value: function (p) { return r.full || r.perms.indexOf(p.code) > -1 ? '1' : ''; } };
+                        })
+                    )
+                }, 'user');
+            }
+        })
+    });
+
+    /* ---------- 三十一、员工考核 ---------- */
+
+    /* 绩效分是从单量、时效、成本反推出来的事实，考核分是「事实 + 能力 + 态度」的主观评定。
+       两者必须互相对账，否则考核就成了解释不了的数字：所以每张考核单都挂回它依据的绩效行，
+       KPI 分与同期绩效分对不上就当场标出来、一键按业绩重算；
+       D 档强制进改进计划并挂告警，下一期绩效回到合格档（70 分）由巡检自动解除——
+       评进去的结论要能自己走出来，不然这一页只有入口没有出口 */
+
+    var EVAL_STATUS_TEXT = { pending: '待评定', done: '已定级' };
+    var GRADE_TEXT = { 'A+': 'A+ 卓越', 'A': 'A 优秀', 'B': 'B 良好', 'C': 'C 合格', 'D': 'D 待改进' };
+    var GRADE_TONE = { 'A+': 'success', 'A': 'success', 'B': 'info', 'C': 'warn', 'D': 'danger' };
+    var PROMOTION_TEXT = {
+        '': '未定', '晋升候选': '晋升候选', '调薪': '调薪', '绩效改进计划': '改进计划跟踪中',
+        '已晋升': '晋升已落地', '已调薪': '调薪已落地', '绩效改进计划（已达标解除）': '改进已解除'
+    };
+    /* 退出线取 people.gradeOf 的 C 档下限：改进计划的目标就是重新拿到合格档，不是拍一个整数 */
+    var GUARD_TARGET = 70;
+    /* 考核业绩分与同期绩效分的容差，差到 10 分说明评定没有依据业绩 */
+    var DEVIATION = 10;
+    var PROMOTE_TITLE = {
+        '分拣员': '分拣组长', '派送员': '派送组长', '专员': '主管',
+        '支线司机': '干线司机', '干线司机': '车队长', '网点主管': '区域经理', '分拨主管': '区域经理'
+    };
+
+    function gradeBadge(g) {
+        if (!g) return '<span class="tms-dim">未定级</span>';
+        return ui.badge(GRADE_TEXT[g] || g, GRADE_TONE[g] || 'muted');
+    }
+
+    /* 绩效索引：(工号|账期) 定位当期结论、工号定位最新一期。
+       考核页要同时回答两个问题——这张单依据哪条绩效，以及这个人现在达标了没有 */
+    function perfIndex() {
+        var idx = { cell: {}, byEmp: {}, byPeriod: {}, periods: {} };
+        db.col('performances').forEach(function (p) {
+            idx.cell[p.employeeId + '|' + p.period] = p;
+            (idx.byPeriod[p.period] = idx.byPeriod[p.period] || []).push(p);
+            idx.periods[p.period] = (idx.periods[p.period] || 0) + 1;
+            var cur = idx.byEmp[p.employeeId];
+            if (!cur || String(cur.period) < String(p.period)) idx.byEmp[p.employeeId] = p;
+        });
+        return idx;
+    }
+
+    function evalPeriodList(idx) {
+        var set = {};
+        Object.keys(idx.periods).forEach(function (p) { set[p] = 1; });
+        db.col('evaluations').forEach(function (e) { if (e.period) set[e.period] = 1; });
+        return Object.keys(set).sort().reverse();
+    }
+
+    /* 三段得分的加权口径只写在 finalizeEvaluation 里，页面要预览就得按同一公式自己算一遍；
+       所以把权重常量放在这，注释里点名出处，改一处两处都要跟着改 */
+    function evalPreview(k, a, t) {
+        return util.round((Number(k) || 0) * 0.6 + (Number(a) || 0) * 0.25 + (Number(t) || 0) * 0.15, 1);
+    }
+
+    function evalRows(idx) {
+        var openAlerts = {};
+        db.col('alerts').forEach(function (a) { if (a.status === 'open') openAlerts[a.key] = a; });
+        return db.col('evaluations').map(function (e) {
+            var emp = db.get('employees', e.employeeId) || {};
+            var same = idx.cell[e.employeeId + '|' + e.period];
+            var latest = idx.byEmp[e.employeeId];
+            var k = Number(e.kpiScore) || 0, a = Number(e.abilityScore) || 0, t = Number(e.attitudeScore) || 0;
+            var promo = e.promotion || '';
+            var done = e.status === 'done';
+            return {
+                id: e.id, employeeId: e.employeeId, employee: e.employee || emp.name || '',
+                badge: emp.badge || '', role: e.role || emp.role || '',
+                roleName: TMS.people.roleName(e.role || emp.role), position: emp.position || '',
+                deptName: e.deptName || emp.deptName || '', empStatus: emp.status || '', hasEmp: !!emp.id,
+                period: e.period, kpi: k, ability: a, attitude: t,
+                total: Number(e.totalScore) || 0, preview: evalPreview(k, a, t),
+                grade: e.grade || '', status: e.status || 'pending', done: done, pending: !done,
+                evaluator: e.evaluator || '', comment: e.comment || '', promotion: promo,
+                createdAt: e.createdAt || '', evaluatedAt: e.evaluatedAt || '',
+                perfScore: same ? same.score : null, perfGrade: same ? same.grade : '',
+                latestScore: latest ? latest.score : null, latestPeriod: latest ? latest.period : '',
+                salary: Number(emp.salary) || 0,
+                isD: e.grade === 'D',
+                cand: promo === '晋升候选' || promo === '调薪',
+                guard: promo === '绩效改进计划',
+                released: promo === '绩效改进计划（已达标解除）',
+                applied: promo === '已晋升' || promo === '已调薪',
+                noPerf: !same,
+                dev: !!same && k > 0 && Math.abs(k - same.score) >= DEVIATION,
+                dNoPlan: done && e.grade === 'D' && promo !== '绩效改进计划',
+                orphan: !done && !!emp.id && emp.status === 'resigned',
+                promotable: done && (promo === '晋升候选' || promo === '调薪') && emp.status === 'active',
+                guardMet: !!latest && latest.score >= GUARD_TARGET,
+                alert: openAlerts['perf:guard:' + e.employeeId] || null
+            };
+        });
+    }
+
+    function evalRowFilter(r, fs) {
+        if (fs.period && r.period !== fs.period) return false;
+        if (fs.role && r.role !== fs.role) return false;
+        if (fs.grade && r.grade !== fs.grade) return false;
+        if (fs.status && r.status !== fs.status) return false;
+        if (fs.empId && r.employeeId !== fs.empId) return false;
+        var c = fs.chip || '';
+        if (c === 'pending' && !r.pending) return false;
+        if (c === 'dev' && !r.dev) return false;
+        if (c === 'noPerf' && !r.noPerf) return false;
+        if (c === 'cand' && !r.cand) return false;
+        if (c === 'guard' && !r.guard) return false;
+        if (c === 'D' && !r.isD) return false;
+        if (c === 'orphan' && !r.orphan) return false;
+        return true;
+    }
+
+    function evalGaps(rows, idx, period) {
+        var keyed = {};
+        rows.forEach(function (r) { keyed[r.employeeId + '|' + r.period] = r; });
+        var one = function (key) { return rows.filter(function (r) { return r[key]; }); };
+        return {
+            pending: one('pending'), dev: one('dev'), noPerf: one('noPerf'),
+            dNoPlan: one('dNoPlan'), promotable: one('promotable'), orphan: one('orphan'),
+            guard: one('guard'), guardStuck: one('guard').filter(function (r) { return !r.guardMet; }),
+            released: one('released'),
+            noEval: (idx.byPeriod[period] || []).filter(function (p) { return !keyed[p.employeeId + '|' + period]; })
+        };
+    }
+
+    function evalDeptStats(rows, idx, period) {
+        var map = {};
+        (idx.byPeriod[period] || []).forEach(function (p) {
+            var emp = db.get('employees', p.employeeId) || {};
+            var name = emp.deptName || '未归属部门';
+            var b = map[name] || (map[name] = { dept: name, total: 0, scored: 0, done: 0, pending: 0 });
+            b.total++;
+            b.scored += Number(p.score) || 0;
+        });
+        rows.forEach(function (r) {
+            var b = map[r.deptName || '未归属部门'];
+            if (!b) return;
+            if (r.done) b.done++; else b.pending++;
+        });
+        return util.sortBy(Object.keys(map).map(function (k) {
+            var b = map[k];
+            var cover = b.done + b.pending;
+            return {
+                dept: b.dept, total: b.total, done: b.done, pending: b.pending,
+                draft: b.total - cover, avg: b.total ? util.round(b.scored / b.total, 1) : 0,
+                pct: b.total ? util.round(cover / b.total * 100, 1) : 0
+            };
+        }), 'pct', 'asc');
+    }
+
+    /* 草稿只填业绩分（直接抄同期绩效），能力与态度留空由主管给。
+       三个分一起自动生成，等于系统替主管拍了板，考核就少了「有人签字」这一层 */
+    function evalDraft(empId, period, perfRow) {
+        return TMS.people.evaluate({
+            employeeId: empId, period: period, kpiScore: perfRow ? perfRow.score : 0,
+            abilityScore: 0, attitudeScore: 0, evaluator: actor(), comment: '', status: 'pending'
+        });
+    }
+
+    function evalBatchModal() {
+        var st = ui.state('evaluation');
+        var fs = pg.filtersOf(st);
+        var idx = perfIndex();
+        var period = fs.period || evalPeriodList(idx)[0] || latestPerfPeriod();
+        var keyed = {};
+        db.col('evaluations').forEach(function (e) { keyed[e.employeeId + '|' + e.period] = e; });
+        var list = (idx.byPeriod[period] || []).filter(function (p) { return !keyed[p.employeeId + '|' + period]; });
+        if (!list.length) { ui.toast(period + ' 的绩效行都已建考核单，没有待补的人', 'info'); return; }
+        ui.confirm({
+            title: '按绩效批量建单',
+            message: list.length + ' 人在 ' + period + ' 有绩效结论但没有考核单。',
+            detail: '建出来的是待评定草稿：业绩分抄同期绩效，能力分与态度分留空，' +
+                '必须由评定人补分并保存才会定级——草稿不算考核完成，台账里仍挂在「待评定」。',
+            okText: '建 ' + list.length + ' 张草稿'
+        }).then(function (yes) {
+            if (!yes) return;
+            var made = 0;
+            db.batch(function () {
+                list.forEach(function (p) {
+                    evalDraft(p.employeeId, period, p);
+                    made++;
+                });
+                TMS.audit.log('hr.manage', 'evaluations', '', '按 ' + period + ' 绩效批量建考核草稿 ' + made + ' 张', actor());
+            }, '考核建单');
+            ui.toast('已建 ' + made + ' 张待评定草稿，补齐能力分与态度分即完成考核', 'success');
+            TMS.shell.refresh();
+        });
+    }
+
+    /* 业绩分与同期绩效对齐：定过级的一并复算总分，改完分数与业绩说得通了，等级也可能跟着变 */
+    function evalSync(id) {
+        var e = id ? db.get('evaluations', id) : null;
+        if (!e) { ui.toast('请先选择一张考核单', 'warn'); return; }
+        var p = perfIndex().cell[e.employeeId + '|' + e.period];
+        if (!p) { ui.toast(e.employeeId + ' 在 ' + e.period + ' 没有绩效行，业绩分无从对齐', 'warn'); return; }
+        var from = Number(e.kpiScore) || 0;
+        if (from === p.score) { ui.toast('业绩分已与 ' + e.period + ' 绩效（' + p.score + ' 分）一致', 'info'); return; }
+        var saved;
+        db.batch(function () {
+            saved = e.status === 'done'
+                ? TMS.people.finalizeEvaluation(e.id, { kpiScore: p.score })
+                : db.update('evaluations', e.id, { kpiScore: p.score });
+            db.commit('evaluations', e.id, '考核对齐业绩');
+            TMS.audit.log('perf.calc', 'evaluations', e.id,
+                (e.employee || '') + ' 业绩分按同期绩效 ' + from + ' → ' + p.score + ' 重算，总分 ' +
+                ((saved && saved.totalScore) || 0) + ' 等级 ' + ((saved && saved.grade) || '未定级'), actor());
+        }, '考核对齐业绩');
+        ui.toast('业绩分已对齐为 ' + p.score + ' 分，总分与等级已复算为 ' +
+            ((saved && saved.totalScore) || 0) + ' / ' + ((saved && saved.grade) || '待评定'), 'success');
+        TMS.shell.refresh();
+    }
+
+    function evalDrop(id) {
+        var e = id ? db.get('evaluations', id) : null;
+        if (!e) { ui.toast('请先选择一张考核单', 'warn'); return; }
+        if (e.status === 'done') { ui.toast('已定级的考核单是人事记录，不能删，只能重新评定覆盖结论', 'danger'); return; }
+        ui.confirm({
+            title: '撤销考核草稿', danger: true, okText: '撤销',
+            message: '撤销 ' + (e.employee || '') + ' ' + e.period + ' 的待评定草稿 ' + e.id + '。',
+            detail: '只有没签字的草稿能撤。撤掉后该员工在台账里重新回到「有绩效无考核」，可再次批量建单。'
+        }).then(function (yes) {
+            if (!yes) return;
+            db.batch(function () {
+                db.remove('evaluations', e.id);
+                TMS.audit.log('hr.manage', 'evaluations', e.id,
+                    '撤销待评定草稿：' + (e.employee || '') + ' ' + e.period, actor());
+            }, '撤销考核草稿');
+            ui.toast('草稿已撤销', 'success');
+            TMS.shell.refresh();
+        });
+    }
+
+    /* 人事结论落到档案：岗位与薪酬是 employees 表上的字段，
+       薪酬同时是人事页「月度薪酬」和应付的口径来源，所以这里改的是真数，不是考核单上的备注 */
+    function evalApplyModal(id) {
+        var e = id ? db.get('evaluations', id) : null;
+        if (!e) { ui.toast('请先选择一张考核单', 'warn'); return; }
+        if (e.status !== 'done') { ui.toast('这张单还没定级，先完成评定再落人事结论', 'warn'); return; }
+        var emp = db.get('employees', e.employeeId);
+        if (!emp) { ui.toast('被考核人档案已不存在，请先在人事页补档案', 'danger'); return; }
+        if (emp.status === 'resigned') { ui.toast('该员工已离职，结论不能落到档案上', 'danger'); return; }
+        if (e.promotion !== '晋升候选' && e.promotion !== '调薪') {
+            ui.toast('只有「晋升候选 / 调薪」需要写回档案，其余结论留在考核单上即可', 'info');
+            return;
+        }
+        var isPay = e.promotion === '调薪';
+        var nextTitle = PROMOTE_TITLE[emp.position] || (emp.position + '（晋升）');
+        var now = util.round((Number(emp.salary) || 0) * 1.06, 0);
+        ui.formModal({
+            title: (isPay ? '调薪落地：' : '晋升落地：') + emp.name,
+            sub: e.period + ' 考核 ' + (e.grade || '未定级') + ' 档 · 现岗 ' + emp.position +
+                ' · 现薪 ' + fmt.money(emp.salary),
+            fields: [
+                { key: 'position', label: '新岗位', value: nextTitle, disabled: isPay, required: !isPay,
+                    hint: isPay ? '本次只调薪，岗位不动' : '岗位阶梯：' + esc(Object.keys(PROMOTE_TITLE).join(' / ')) },
+                { key: 'percent', label: '调薪幅度', type: 'number', min: 0, max: 50, unit: '%', value: 6 },
+                { key: 'effectAt', label: '生效日', type: 'date', value: util.dateKey(util.now()) },
+                { key: 'note', label: '落地说明', type: 'textarea', span: 2, value: e.comment || '' }
+            ],
+            extra: ui.desc([
+                { label: '改的是哪张表', value: 'employees.position / employees.salary——薪酬直接进入人事页的月度薪酬合计与网点成本口径' },
+                { label: '考核单会变成', value: isPay ? 'promotion = 已调薪（不再出现在待落地缺口里）' : 'promotion = 已晋升' },
+                { label: '预计新薪', value: '<b>' + fmt.money(now) + '</b>（按 6% 估，改幅度即变）' }
+            ]),
+            okText: '写入档案',
+            onSubmit: function (v) {
+                var pct = Number(v.percent);
+                if (isNaN(pct) || pct < 0 || pct > 50) return '调薪幅度要在 0~50% 之间';
+                var title = String(v.position || '').trim();
+                if (!isPay && !title) return '新岗位不能为空';
+                var salary = util.round((Number(emp.salary) || 0) * (1 + pct / 100), 0);
+                db.batch(function () {
+                    db.update('employees', emp.id, isPay ? { salary: salary } : { salary: salary, position: title });
+                    db.commit('employees', emp.id, isPay ? '薪资调整' : '岗位晋升');
+                    var ev = db.update('evaluations', e.id, { promotion: isPay ? '已调薪' : '已晋升' });
+                    db.commit('evaluations', e.id, '人事结论落地');
+                    TMS.audit.log('hr.manage', 'employees', emp.id,
+                        (isPay ? '调薪 ' : '晋升 ') + emp.name + '：' + emp.position + (isPay ? '' : ' → ' + title) +
+                        '，薪资 ' + fmt.money(emp.salary) + ' → ' + fmt.money(salary) +
+                        '（' + e.period + ' 考核 ' + e.grade + ' 档，生效 ' + (v.effectAt || '') + '）', actor());
+                }, '人事结论落地');
+                ui.toast(emp.name + (isPay ? ' 薪资已调至 ' : ' 晋升为 ' + title + '，薪资 ') + fmt.money(salary) +
+                    '，人事页档案同步', 'success');
+                TMS.shell.refresh();
+            }
+        });
+    }
+
+    /* 改进计划跟踪：告警由巡检建，也由巡检销——这一页只负责让人看清「还差多少分」 */
+    function evalGuardModal() {
+        var idx = perfIndex();
+        var rows = evalRows(idx).filter(function (r) { return r.guard; });
+        ui.modal({
+            title: '绩效改进计划跟踪', size: 'wide',
+            sub: rows.length + ' 人处于改进期 · 最新一期绩效回到 ' + GUARD_TARGET + ' 分即由巡检自动解除',
+            body: ui.stack([
+                ui.notice(rows.length ? '解除条件是「最新一期绩效 ≥ ' + GUARD_TARGET + ' 分」，不是人为判断：' +
+                    '当期业绩回到合格档，考核结论改写为「已达标解除」并核销告警；没回到就继续挂着。'
+                    : '当前没有改进期人员：D 档定级后会立刻出现在这里。', rows.length ? 'info' : 'ok'),
+                ui.table({
+                    dense: true, keyName: 'id', rows: rows, emptyText: '没有处于改进期的人员',
+                    columns: [
+                        { key: 'employee', label: '姓名', width: '150px', sortable: false, render: function (r) {
+                            return ui.link(r.employee, 'emp:open', r.employeeId) +
+                                '<div class="tms-dim">' + esc(r.roleName) + ' · ' + esc(r.period) + ' 定 D 档</div>';
+                        } },
+                        { key: 'total', label: '考核总分', width: '92px', align: 'right', sortable: false, render: function (r) { return r.total + ' 分'; } },
+                        { key: 'latestPeriod', label: '最新绩效', width: '150px', sortable: false, render: function (r) {
+                            return r.latestScore == null ? ui.badge('尚无新一期绩效', 'warn')
+                                : r.latestPeriod + ' ' + r.latestScore + ' 分 ' +
+                                    (r.guardMet ? ui.badge('已达标', 'success') : ui.badge('差 ' + util.round(GUARD_TARGET - r.latestScore, 1) + ' 分', 'danger'));
+                        } },
+                        { key: 'alert', label: '告警', sortable: false, render: function (r) {
+                            return r.alert ? ui.badge(r.alert.level === 'danger' ? '红色未处理' : '黄色跟踪中', r.alert.level === 'danger' ? 'danger' : 'warn')
+                                : '<span class="tms-dim">待下轮巡检补建</span>';
+                        } },
+                        { key: 'ops', label: '操作', width: '118px', sortable: false, render: function (r) {
+                            return ui.link('看绩效', 'perf:goto', r.employeeId, { tone: 'ghost' }) +
+                                ui.link('档案', 'emp:open', r.employeeId, { tone: 'ghost' });
+                        } }
+                    ]
+                })
+            ], [
+                ui.card({
+                    title: '解除口径', flat: true,
+                    body: ui.desc([
+                        { label: '谁建的告警', value: '定时任务「绩效改进计划跟踪」（perfGuard）：考核结论为绩效改进计划且最新绩效未达 ' + GUARD_TARGET + ' 分' },
+                        { label: '谁销的告警', value: '同一任务：最新绩效回到 ' + GUARD_TARGET + ' 分即改写考核结论为「已达标解除」并核销告警，不需要人来点' },
+                        { label: '为什么是 70 分', value: 'people.gradeOf 的 C 档下限就是 70，改进计划的目标是重新拿到合格档，不是另设一条线' },
+                        { label: '现在跑一次', value: ui.btn('立即判定达标与解除', { size: 'sm', tone: 'primary', act: 'eval:check', icon: '⟳' }) }
+                    ])
+                })
+            ])
+        });
+    }
+
+    function evalCheck() {
+        var r = TMS.jobs.run('perfGuard');
+        if (!r || !r.ok) { ui.toast((r && r.message) || '巡检任务未登记', 'warn'); return; }
+        var out = r.out || {};
+        ui.toast('改进计划判定完成：跟踪中 ' + (out.guarding || 0) + ' 人，本期解除 ' + (out.released || 0) +
+            ' 人，核销告警 ' + (out.resolved || 0) + ' 条', 'success');
+        TMS.shell.refresh();
+    }
+
+    function evalScoreBars(r) {
+        var items = [
+            { label: '业绩分 60%', value: r.kpi, tone: 'success' },
+            { label: '能力分 25%', value: r.ability, tone: 'info' },
+            { label: '态度分 15%', value: r.attitude, tone: 'brand' }
+        ];
+        return '<div class="tms-grid" style="grid-template-columns:repeat(3,1fr);gap:12px">' +
+            items.map(function (it) {
+                return '<div><div class="tms-dim" style="font-size:11px">' + esc(it.label) + '</div>' +
+                    ui.progress(it.value, { thin: true, tone: it.tone }) +
+                    '<div style="font-weight:600">' + it.value + ' 分</div></div>';
+            }).join('') + '</div>';
+    }
+
+    function evalFormModal(id) {
+        var e = id ? db.get('evaluations', id) : null;
+        if (id && !e) { ui.toast('考核单不存在', 'warn'); return; }
+        var idx = perfIndex();
+        var periods = evalPeriodList(idx);
+        var same = e ? idx.cell[e.employeeId + '|' + e.period] : null;
+        var empOpts = db.col('employees').filter(function (x) { return x.status !== 'resigned'; }).map(function (x) {
+            return { value: x.id, label: x.name + '（' + x.badge + ' · ' + TMS.people.roleName(x.role) + '）' };
+        });
+        var defaultPeriod = (e && e.period) || periods[0] || latestPerfPeriod();
+        ui.formModal({
+            title: e ? '评定：' + (e.employee || '') : '新建考核单',
+            sub: e ? e.period + ' · 同期绩效 ' + (same ? same.score + ' 分（' + same.grade + ' 档）' : '无绩效行')
+                : '总分按 业绩 60% + 能力 25% + 态度 15% 折算，等级沿用绩效档口径',
+            notice: e ? (same ? '保存即定级：等级由三段加权分算出，' + GUARD_TARGET + ' 分以下会强制进入绩效改进计划并挂告警。'
+                    : '该员工在 ' + e.period + ' 没有绩效行，业绩分失去业绩依据，请在评语里写明评定来源。')
+                : '新建只落一张待评定草稿（不落定级）。草稿不参与定级统计，补分后点「评定」才签字。',
+            values: {
+                employeeId: e ? e.employeeId : '', period: defaultPeriod,
+                kpiScore: e ? (Number(e.kpiScore) || 0) : 0,
+                abilityScore: e ? (Number(e.abilityScore) || 0) : 0,
+                attitudeScore: e ? (Number(e.attitudeScore) || 0) : 0,
+                evaluator: (e && e.evaluator) || actor(), promotion: (e && e.promotion) || '',
+                comment: (e && e.comment) || ''
+            },
+            fields: [
+                { key: 'employeeId', label: '被考核人', type: 'select', options: empOpts, required: true, disabled: !!e },
+                { key: 'period', label: '账期', type: 'select', options: periods.map(function (p) { return { value: p, label: p + '（' + (idx.periods[p] || 0) + ' 条绩效）' }; }), required: true },
+                { key: 'kpiScore', label: '业绩分', type: 'number', min: 0, max: 100, unit: '分', required: true, tip: '权重 60%，默认对齐同期绩效分' },
+                { key: 'abilityScore', label: '能力分', type: 'number', min: 0, max: 100, unit: '分', required: true, tip: '权重 25%' },
+                { key: 'attitudeScore', label: '态度分', type: 'number', min: 0, max: 100, unit: '分', required: true, tip: '权重 15%' },
+                { key: 'evaluator', label: '评定人', required: true, placeholder: '主管姓名' },
+                { key: 'promotion', label: '人事结论', type: 'select', options: [
+                    { value: '', label: '不调整' }, { value: '晋升候选', label: '晋升候选' },
+                    { value: '调薪', label: '调薪' }, { value: '绩效改进计划', label: '绩效改进计划' }
+                ], tip: '定级为 D 时强制改进计划，不接受「不调整」' },
+                { key: 'comment', label: '评语', type: 'textarea', span: 2, rows: 3, placeholder: '写清依据：哪几条业绩支撑这个分' }
+            ],
+            okText: e ? '保存并定级' : '建草稿',
+            onSubmit: function (v) {
+                var nums = ['kpiScore', 'abilityScore', 'attitudeScore'];
+                for (var i = 0; i < nums.length; i++) {
+                    var x = Number(v[nums[i]]);
+                    if (isNaN(x) || x < 0 || x > 100) return '三项得分都要落在 0~100 分之间';
+                }
+                var k = Number(v.kpiScore) || 0, a = Number(v.abilityScore) || 0, t = Number(v.attitudeScore) || 0;
+                var who = String(v.evaluator || '').trim() || actor();
+                var period = String(v.period || '') || latestPerfPeriod();
+                if (e) {
+                    var total = evalPreview(k, a, t);
+                    var grade = TMS.people.gradeOf(total);
+                    var promo = String(v.promotion || '');
+                    if (grade === 'D') promo = '绩效改进计划';
+                    db.batch(function () {
+                        TMS.people.finalizeEvaluation(e.id, {
+                            kpiScore: k, abilityScore: a, attitudeScore: t,
+                            evaluator: who, comment: v.comment || '', promotion: promo
+                        });
+                        /* finalizeEvaluation 用 `d.promotion || 原值`，空串会被旧结论顶掉；
+                           「不调整」是人的决定，得显式清空才说得通 */
+                        if (!promo) db.update('evaluations', e.id, { promotion: null });
+                        db.commit('evaluations', e.id, '考核定级');
+                        TMS.audit.log('hr.manage', 'evaluations', e.id,
+                            (e.employee || '') + ' ' + period + ' 评定：业绩 ' + k + ' / 能力 ' + a + ' / 态度 ' + t +
+                            ' → 总分 ' + total + ' ' + grade + ' 档，结论 ' + (PROMOTION_TEXT[promo] || '不调整'), who);
+                    }, '考核定级');
+                    if (promo === '绩效改进计划') evalCheck();
+                    ui.toast((e.employee || '') + ' 已定级 ' + grade + '（总分 ' + total + '）' +
+                        (grade === 'D' ? '，已强制进入改进计划并挂告警' : ''), grade === 'D' ? 'warn' : 'success');
+                    TMS.shell.refresh();
+                    return;
+                }
+                var empId = String(v.employeeId || '');
+                var emp = db.get('employees', empId);
+                if (!emp) return '请选择被考核人';
+                if (db.findOne('evaluations', function (x) { return x.employeeId === empId && x.period === period; }))
+                    return emp.name + ' 在 ' + period + ' 已有考核单，请直接编辑那张';
+                var rec = evalDraft(empId, period, idx.cell[empId + '|' + period]);
+                if (rec) {
+                    db.commit('evaluations', rec.id, '考核建单');
+                    TMS.audit.log('hr.manage', 'evaluations', rec.id,
+                        '新建 ' + period + ' 待评定草稿：' + emp.name + '（业绩分 ' + rec.kpiScore + '）', who);
+                }
+                ui.toast('已建 ' + emp.name + ' 的待评定草稿，补能力分与态度分后保存才定级', 'success');
+                TMS.shell.refresh();
+            }
+        });
+    }
+
+    function evalModal(id) {
+        var e = id ? db.get('evaluations', id) : null;
+        if (!e) { ui.toast('考核单不存在', 'warn'); return; }
+        var idx = perfIndex();
+        var r = evalRows(idx).filter(function (x) { return x.id === e.id; })[0];
+        var emp = db.get('employees', e.employeeId) || {};
+        var metrics = emp.id ? TMS.people.computeMetrics(emp, e.period) : {};
+        var logs = util.sortBy(db.col('auditLogs').filter(function (l) { return l.refId === e.id || l.refId === e.employeeId; }), 'at', 'desc').slice(0, 6);
+        var mKeys = Object.keys(metrics);
+        ui.modal({
+            title: '考核单 ' + e.id, size: 'wide',
+            sub: (r.employee || '') + ' · ' + (r.roleName || '') + ' · ' + e.period + ' · ' + (EVAL_STATUS_TEXT[e.status] || e.status),
+            body: ui.stack([
+                ui.split('2', [
+                    ui.card({
+                        title: '评定结论', flat: true,
+                        body: ui.stack([
+                            evalScoreBars(r),
+                            ui.desc([
+                                { label: '加权总分', value: '<b style="font-size:17px">' + (r.total || r.preview) + '</b> 分 ' + gradeBadge(r.done ? r.grade : '') +
+                                    (r.done ? '' : '<div class="tms-dim">草稿未签字，按当前得分预览为 ' + r.preview + ' 分</div>') },
+                                { label: '同期绩效', value: r.perfScore == null ? ui.badge('无绩效行，缺业绩依据', 'danger')
+                                    : r.perfScore + ' 分（' + r.perfGrade + ' 档）· 最新一期 ' +
+                                        (r.latestScore == null ? '无' : r.latestPeriod + ' ' + r.latestScore + ' 分') },
+                                { label: '业绩分对账', value: r.dev ? ui.badge('与绩效差 ' + util.round(Math.abs(r.kpi - r.perfScore), 1) + ' 分，评定缺依据', 'danger')
+                                        + ' ' + ui.link('按业绩重算', 'eval:sync', e.id, { tone: 'warn' })
+                                    : (r.perfScore == null ? '<span class="tms-dim">无从对齐</span>' : ui.badge('与同期绩效一致', 'success')) },
+                                { label: '人事结论', value: (PROMOTION_TEXT[r.promotion] != null ? esc(PROMOTION_TEXT[r.promotion]) : esc(r.promotion || '未定')) +
+                                    (r.promotable ? ' ' + ui.link('落地到档案', 'eval:apply', e.id, { tone: 'primary' }) : '') +
+                                    (r.guard ? ' ' + ui.link('改进跟踪', 'eval:guard', '', { tone: 'warn' }) : '') },
+                                { label: '评语', value: r.comment ? esc(r.comment) : '<span class="tms-dim">未填</span>' },
+                                { label: '评定人 / 时间', value: dim(r.evaluator) + ' · ' + (r.evaluatedAt ? fmt.dateTime(r.evaluatedAt) : '<span class="tms-dim">未评定</span>') }
+                            ])
+                        ])
+                    }),
+                    ui.card({
+                        title: e.period + ' 业绩依据', flat: true,
+                        sub: mKeys.length ? '指标按当期单据即时反推，与绩效看板同一口径' : '当期无可反推的作业数据',
+                        body: mKeys.length ? ui.desc(mKeys.map(function (k) {
+                            return { label: METRIC_TEXT[k] || k, value: metricCell(k, metrics[k]) };
+                        })) : ui.empty('没有量化指标', '该岗位当期没有单据，考核只能凭能力与态度评定')
+                    })
+                ]),
+                ui.card({
+                    title: '人事影响', flat: true,
+                    body: ui.desc([
+                        { label: '档案现状', value: dim(emp.position) + ' · 月薪 ' + fmt.money(r.salary) + ' · ' + (EMP_STATUS_TEXT[emp.status] || '档案缺失') +
+                            ' ' + ui.link('看档案', 'emp:open', e.employeeId, { tone: 'ghost' }) },
+                        { label: '改进计划', value: r.guard ? '绩效回到 ' + GUARD_TARGET + ' 分即自动解除，最新一期 ' +
+                                    (r.latestScore == null ? '无绩效' : r.latestScore + ' 分') +
+                                    (r.alert ? '（' + esc(r.alert.title) + '告警未处理）' : '（告警待下轮巡检补建）')
+                                : (r.released ? ui.badge('已达标解除', 'success') + ' ' + fmt.dateTime(r.evaluatedAt) : '<span class="tms-dim">未进入改进期</span>') },
+                        { label: '落地状态', value: r.applied ? ui.badge(PROMOTION_TEXT[r.promotion], 'success') + ' 岗位与薪酬已写回档案'
+                                : (r.promotable ? ui.badge('待落地', 'warn') : '<span class="tms-dim">无需落地</span>') },
+                        { label: '留痕', value: logs.length ? ui.timeline(logs.map(function (l, i) {
+                            return { title: l.actionName || l.action, time: fmt.dateTime(l.at), body: esc(l.detail || ''), tone: i ? 'info' : 'ok' };
+                        })) : '<span class="tms-dim">暂无变更留痕</span>' }
+                    ])
+                })
+            ], [
+                ui.card({
+                    title: '这一步之后', flat: true,
+                    body: ui.desc([
+                        { label: '待评定', value: '补齐三项得分并保存即定级；草稿期间不计入「已定级」，也不会影响晋升与改进缺口统计' },
+                        { label: '定 D 档', value: '强制挂改进计划并产生告警，此后每期绩效由巡检判定是否解除' },
+                        { label: '定 A/A+ 且选晋升候选', value: '点「落地到档案」把新岗位与新薪资写进 employees，人事页月度薪酬同口径变化' },
+                        { label: '草稿撤了会怎样', value: '撤销后该员工重新回到「有绩效无考核」缺口，可再次批量建单，历史定级记录不可删' }
+                    ])
+                })
+            ]),
+            footer: ui.link('重新评定', 'eval:edit', e.id, { tone: 'primary' }) +
+                ui.link('对齐业绩分', 'eval:sync', e.id) +
+                (r.promotable ? ui.link('落地人事结论', 'eval:apply', e.id, { tone: 'success' }) : '') +
+                ui.link('绩效看板', 'eval:goPerf', e.id) +
+                (r.pending ? ui.link('撤销草稿', 'eval:drop', e.id, { tone: 'danger' }) : '')
+        });
+    }
+
+    var evalActions = {
+        'eval:open': function (id) { evalModal(id); },
+        'eval:edit': function (id) { evalFormModal(id); },
+        'eval:new': function () { evalFormModal(''); },
+        'eval:batch': function () { evalBatchModal(); },
+        'eval:sync': function (id) { evalSync(id); },
+        'eval:apply': function (id) { evalApplyModal(id); },
+        'eval:drop': function (id) { evalDrop(id); },
+        'eval:guard': function () { evalGuardModal(); },
+        /* 弹窗里点「立即判定」，判定完留在原地就是过期名单，关掉重开才看得到最新差距 */
+        'eval:check': function () { ui.closeTop(); evalCheck(); },
+        'eval:focus': function (kind) {
+            var st = ui.state('evaluation');
+            var fs = pg.filtersOf(st);
+            fs.chip = kind || '';
+            st.page = 1;
+            TMS.shell.refresh();
+        },
+        'eval:clearEmp': function () {
+            var st = ui.state('evaluation');
+            pg.filtersOf(st).empId = '';
+            TMS.shell.refresh();
+            ui.toast('已清除单人员筛选，台账回到当期全员', 'info');
+        },
+        'eval:goPerf': function (id) {
+            var e = id ? db.get('evaluations', id) : null;
+            if (!e) return;
+            ui.closeTop();
+            TMS.shell.go('performance', { period: e.period, empId: e.employeeId });
+        },
+        'eval:goMonitor': function () {
+            ui.closeTop();
+            TMS.shell.go('monitor');
+        }
+    };
+
+    pg.define('evaluation', {
+        sub: '考核单 · 评定与业绩对账 · 晋升与改进计划的落地闭环',
+        load: function (ctx) {
+            applyParamFilter(ctx, ['period', 'role', 'grade', 'status', 'chip', 'empId', 'q']);
+            var idx = perfIndex();
+            var periods = evalPeriodList(idx);
+            var fs = pg.filtersOf(ctx.state);
+            if (fs.period && periods.indexOf(fs.period) < 0) fs.period = '';
+            if (!fs.period) fs.period = periods[0] || latestPerfPeriod();
+            var rows = evalRows(idx);
+            var periodRows = rows.filter(function (r) { return r.period === fs.period; });
+            return {
+                idx: idx, periods: periods, fs: fs, period: fs.period,
+                rows: rows, periodRows: periodRows, gaps: evalGaps(rows, idx, fs.period),
+                perfTotal: (idx.byPeriod[fs.period] || []).length,
+                depts: evalDeptStats(periodRows, idx, fs.period),
+                gradeCount: util.countBy(periodRows.filter(function (r) { return r.done; }), 'grade')
+            };
+        },
+        render: function (ctx, d) {
+            var g = d.gaps, rows = d.rows, periodRows = d.periodRows;
+            var done = periodRows.filter(function (r) { return r.done; });
+            var avg = done.length ? util.round(util.sum(done, 'total') / done.length, 1) : 0;
+            var kpi = ui.kpis([
+                { label: '考核单', value: fmt.number(rows.length), unit: '张', tone: 'brand', icon: '★', sub: '覆盖 ' + util.unique(rows.map(function (r) { return r.period; })).length + ' 个账期' },
+                { label: d.period + ' 已建', value: fmt.number(periodRows.length), unit: '张', tone: 'info', sub: '同期绩效 ' + d.perfTotal + ' 条' },
+                { label: '待评定', value: fmt.number(g.pending.length), unit: '张', tone: g.pending.length ? 'warn' : 'success', sub: '草稿不计算入定级' },
+                { label: '已定级均分', value: avg, unit: '分', tone: avg >= 80 ? 'success' : 'warn', sub: done.length + ' 张已签字' },
+                { label: '待落地结论', value: g.promotable.length, unit: '人', tone: g.promotable.length ? 'info' : 'muted', sub: '晋升候选 / 调薪未写档案' },
+                { label: '改进期未达标', value: g.guardStuck.length, unit: '人', tone: g.guardStuck.length ? 'danger' : 'success', sub: '已解除 ' + g.released.length + ' 人' }
+            ]);
+            var grades = ['A+', 'A', 'B', 'C', 'D'];
+            var gradeCard = ui.card({
+                title: '等级分布', sub: d.period + ' 已定级 ' + done.length + ' 张 · 与绩效沿用同一档位口径', flat: true,
+                body: ch.hbars({
+                    rowH: 30, labelWidth: 96,
+                    data: grades.map(function (x) {
+                        return { label: GRADE_TEXT[x], value: d.gradeCount[x] || 0, color: x === 'D' ? '#d9534f' : (x === 'A+' || x === 'A' ? '#2f9e6e' : '#5b7cc4') };
+                    }),
+                    fmt: function (v) { return v + ' 张'; }
+                })
+            });
+            var deptCard = ui.card({
+                title: '部门考核进度', sub: '应考核人数按当期绩效行统计，覆盖率不足就是 HR 的活没干完', flat: true,
+                body: ui.table({
+                    dense: true, keyName: 'dept', rows: d.depts, emptyText: '该账期没有绩效行，先回绩效看板核算',
+                    columns: [
+                        { key: 'dept', label: '部门', sortable: false, render: function (r) { return '<b>' + esc(r.dept) + '</b>'; } },
+                        { key: 'total', label: '应考核', sortable: false, align: 'right', width: '72px' },
+                        { key: 'done', label: '已定级', sortable: false, align: 'right', width: '72px' },
+                        { key: 'pending', label: '待评定', sortable: false, align: 'right', width: '72px', render: function (r) { return r.pending ? ui.badge(r.pending, 'warn') : '0'; } },
+                        { key: 'draft', label: '未建单', sortable: false, align: 'right', width: '72px', render: function (r) { return r.draft ? ui.badge(r.draft, 'danger') : '<span class="tms-dim">0</span>'; } },
+                        { key: 'avg', label: '绩效均分', sortable: false, align: 'right', width: '84px', render: function (r) { return r.avg + ' 分'; } },
+                        { key: 'pct', label: '覆盖率', sortable: false, render: function (r) { return pctBar(r.pct, { target: 100 }); } }
+                    ]
+                })
+            });
+            var gapItems = [];
+            if (g.noEval.length) gapItems.push({
+                title: g.noEval.length + ' 人有绩效结论但没有考核单',
+                sub: d.period + '：建出来是待评定草稿，业绩分抄同期绩效',
+                right: ui.btn('批量建单', { size: 'sm', tone: 'primary', act: 'eval:batch' })
+            });
+            if (g.pending.length) gapItems.push({
+                title: g.pending.length + ' 张草稿等着签字',
+                sub: '能力分与态度分未补，总分与等级都还没算',
+                right: ui.btn('只看待评定', { size: 'sm', act: 'eval:focus', arg: 'pending' })
+            });
+            if (g.dev.length) gapItems.push({
+                title: g.dev.length + ' 张单的业绩分与同期绩效差 ' + DEVIATION + ' 分以上',
+                sub: '评定脱离业绩，逐张点「对齐业绩分」按真数复算',
+                right: ui.btn('只看偏离', { size: 'sm', tone: 'warn', act: 'eval:focus', arg: 'dev' })
+            });
+            if (g.dNoPlan.length) gapItems.push({
+                title: g.dNoPlan.length + ' 张单定成 D 档却没挂改进计划',
+                sub: '重新评定保存一次即强制挂上，并同步产生告警',
+                right: ui.btn('只看 D 档', { size: 'sm', tone: 'danger', act: 'eval:focus', arg: 'D' })
+            });
+            if (g.promotable.length) gapItems.push({
+                title: g.promotable.length + ' 个晋升/调薪结论还没写回档案',
+                sub: '落地后岗位与月薪进 employees，人事页薪酬同口径变化',
+                right: ui.btn('只看这批', { size: 'sm', act: 'eval:focus', arg: 'cand' })
+            });
+            if (g.guardStuck.length) gapItems.push({
+                title: g.guardStuck.length + ' 人仍在改进期内未达标',
+                sub: '最新一期绩效没回到 ' + GUARD_TARGET + ' 分，告警保持未处理',
+                right: ui.btn('改进跟踪', { size: 'sm', tone: 'danger', act: 'eval:guard' })
+            });
+            if (g.orphan.length) gapItems.push({
+                title: g.orphan.length + ' 张草稿挂在已离职员工身上',
+                sub: '人走了评定就没意义，撤掉草稿即可，台账不再计入待办',
+                right: ui.btn('只看这批', { size: 'sm', act: 'eval:focus', arg: 'orphan' })
+            });
+            if (g.noPerf.length) gapItems.push({
+                title: g.noPerf.length + ' 张单所在账期查不到绩效行',
+                sub: '考核分数没有业绩依据，绩效看板可按账期补核算一次',
+                right: ui.btn('只看无依据', { size: 'sm', act: 'eval:focus', arg: 'noPerf' })
+            });
+            var gapCard = ui.card({
+                title: '考核闭环待办', sub: gapItems.length ? gapItems.length + ' 项' : '评定、结论、档案三者已对齐', flat: true,
+                body: gapItems.length ? ui.list(gapItems) : ui.empty('没有待办', '每张考核单都有业绩依据，定级结论也都落到了档案或改进计划上')
+            });
+            var listCard = grid(ctx, {
+                title: '考核台账', sub: rows.length + ' 张考核单 · 期间 ' + d.period + ' 共 ' + periodRows.length + ' 张',
+                rows: rows, keyName: 'id', dense: true, onRow: 'eval:open', searchKey: 'q', pageSize: 20,
+                filter: evalRowFilter,
+                search: function (r) { return [r.id, r.employee, r.badge, r.roleName, r.deptName, r.period, r.grade, r.evaluator, r.promotion].join(' '); },
+                chips: [
+                    { label: '全部', value: '', count: rows.length },
+                    { label: '待评定', value: 'pending', count: g.pending.length },
+                    { label: '与绩效偏离', value: 'dev', count: g.dev.length },
+                    { label: '无绩效依据', value: 'noPerf', count: g.noPerf.length },
+                    { label: '晋升/调薪', value: 'cand', count: rows.filter(function (r) { return r.cand; }).length },
+                    { label: '改进跟踪中', value: 'guard', count: g.guard.length },
+                    { label: 'D 档', value: 'D', count: rows.filter(function (r) { return r.isD; }).length },
+                    { label: '离职挂账', value: 'orphan', count: g.orphan.length }
+                ], chipsName: 'chip',
+                fields: [
+                    { key: 'period', label: '账期', options: d.periods.map(function (p) { return { value: p, label: p }; }) },
+                    { key: 'role', label: '岗位', options: [{ value: '', label: '全部岗位' }].concat(empRoleOptions()) },
+                    { key: 'grade', label: '等级', options: [{ value: '', label: '全部' }].concat(grades.map(function (x) { return { value: x, label: GRADE_TEXT[x] }; })) },
+                    { key: 'status', label: '状态', options: [{ value: '', label: '全部' }].concat(dictOptions(EVAL_STATUS_TEXT)) }
+                ],
+                tools: (d.fs.empId ? ui.btn('清除人员筛选', { size: 'sm', act: 'eval:clearEmp' }) : '') +
+                    ui.btn('导出台账', { size: 'sm', tone: 'ghost', act: 'eval:export', icon: '↓' }),
+                columns: [
+                    { key: 'id', label: '单号', width: '116px', render: function (r) { return ui.idCell(r.id, 'eval:open'); } },
+                    { key: 'employee', label: '被考核人', width: '150px', render: function (r) {
+                        return ui.link(r.employee, 'emp:open', r.employeeId, { tone: 'ghost' }) +
+                            '<div class="tms-dim" style="font-size:11px">' + esc(r.badge || '') + ' · ' + esc(r.position || '') + '</div>';
+                    } },
+                    { key: 'role', label: '岗位 / 部门', sortable: false, render: function (r) { return esc(r.roleName) + '<div class="tms-dim">' + esc(r.deptName || '') + '</div>'; } },
+                    { key: 'period', label: '账期', width: '86px' },
+                    { key: 'kpi', label: '业绩 60%', width: '92px', align: 'right', render: function (r) {
+                        return r.kpi + (r.dev ? ' ' + ui.badge('绩效 ' + r.perfScore, 'danger') : (r.perfScore == null ? ' <span class="tms-dim">无依据</span>' : ' <span class="tms-dim">/' + r.perfScore + '</span>'));
+                    } },
+                    { key: 'ability', label: '能力 25%', width: '76px', align: 'right' },
+                    { key: 'attitude', label: '态度 15%', width: '76px', align: 'right' },
+                    { key: 'total', label: '总分', width: '84px', align: 'right', render: function (r) {
+                        return r.done ? '<b>' + r.total + '</b>' : '<span class="tms-dim">预览 ' + r.preview + '</span>';
+                    } },
+                    { key: 'grade', label: '等级', width: '96px', sortable: false, render: function (r) { return r.done ? gradeBadge(r.grade) : ui.badge('待评定', 'warn'); } },
+                    { key: 'promotion', label: '人事结论', width: '132px', sortable: false, render: function (r) {
+                        if (r.applied) return ui.badge(PROMOTION_TEXT[r.promotion], 'success');
+                        if (r.released) return ui.badge('改进已解除', 'success');
+                        if (r.guard) return ui.badge(r.guardMet ? '达标待解除' : '改进中', r.guardMet ? 'info' : 'danger');
+                        if (r.promotable) return ui.link('晋升候选·待落地', 'eval:apply', r.id, { tone: 'warn' });
+                        return r.promotion ? esc(PROMOTION_TEXT[r.promotion] || r.promotion) : '<span class="tms-dim">未调整</span>';
+                    } },
+                    { key: 'ops', label: '操作', width: '124px', sortable: false, render: function (r) {
+                        return ui.link(r.done ? '复评' : '评定', 'eval:edit', r.id, { tone: 'ghost' }) +
+                            ui.link('对齐业绩', 'eval:sync', r.id, { tone: 'ghost' }) +
+                            (r.pending ? ui.link('撤销', 'eval:drop', r.id, { tone: 'ghost' }) : '');
+                    } }
+                ],
+                emptyText: '没有符合条件的考核单'
+            });
+            return wrap(ctx, {
+                actions: ui.btn('按绩效批量建单', { tone: 'primary', act: 'eval:batch', icon: '+' }) +
+                    ui.btn('新建考核单', { act: 'eval:new', icon: '+' }) +
+                    ui.btn('改进跟踪', { act: 'eval:guard', icon: '⚑' }),
+                sub: rows.length + ' 张考核单 · 定级 = 业绩 60% + 能力 25% + 态度 15% · D 档自动进改进计划',
+                body: [kpi, ui.split('2', [gradeCard, deptCard]), gapCard, listCard, ui.card({
+                    title: '口径说明', flat: true,
+                    body: ui.desc([
+                        { label: '考核与绩效的关系', value: '绩效行（performances）只存得分与等级，指标按当期单据即时反推；考核单（evaluations）是在绩效之上叠能力与态度的人工评定。台账把两个分数并排放，差 ' + DEVIATION + ' 分以上就标偏离' },
+                        { label: '草稿为什么只有业绩分', value: 'TMS.people.evaluate 建的草稿只抄同期绩效分，能力与态度留空。三档分都自动生成就等于系统替主管签字，考核失去「有人负责」这一层' },
+                        { label: '总分怎么算', value: '业绩 0.6 + 能力 0.25 + 态度 0.15，等级沿用绩效的档位线（A+ ≥92、A ≥85、B ≥78、C ≥70、D <70）' },
+                        { label: 'D 档为什么强制挂改进计划', value: '定 D 还选「不调整」等于承认这个人不行但什么都不做。保存时直接改写结论为绩效改进计划，并由巡检任务建告警' },
+                        { label: '改进计划怎么解除', value: '不看人怎么说，只看最新一期绩效是否 ≥ ' + GUARD_TARGET + ' 分（即绩效的 C 档下限）。达标后考核结论改写为「已达标解除」并自动核销告警' },
+                        { label: '晋升与调薪落到哪', value: '落地按钮把新岗位与新月薪写回 employees.position / salary，人事页的月度薪酬、车辆与排班归属都读这张表，不是考核单上的一段文字' },
+                        { label: '为什么已定级不能删', value: '定级是人事记录，只能由新的评定覆盖；只有没签字的草稿可以撤销，撤掉后重新回到「有绩效无考核」缺口' }
+                    ])
+                })]
+            });
+        },
+        actions: merge(evalActions, hrActions, {
+            'eval:export': function () {
+                exportGrid({
+                    name: '员工考核台账.csv', rows: evalRows(perfIndex()), searchKey: 'q', filter: evalRowFilter,
+                    search: function (r) { return [r.id, r.employee, r.badge, r.roleName, r.deptName, r.period, r.grade, r.evaluator, r.promotion].join(' '); },
+                    cols: [
+                        { key: 'id', label: '单号' }, { key: 'employee', label: '被考核人' }, { key: 'badge', label: '工号' },
+                        { key: 'roleName', label: '岗位' }, { key: 'deptName', label: '部门' }, { key: 'period', label: '账期' },
+                        { key: 'kpi', label: '业绩分' }, { key: 'ability', label: '能力分' }, { key: 'attitude', label: '态度分' },
+                        { key: 'total', label: '总分' }, { key: 'grade', label: '等级' },
+                        { key: 'status', label: '状态', value: function (r) { return EVAL_STATUS_TEXT[r.status] || r.status; } },
+                        { key: 'perfScore', label: '同期绩效' }, { key: 'latestScore', label: '最新绩效' },
+                        { key: 'promotion', label: '人事结论' }, { key: 'evaluator', label: '评定人' },
+                        { key: 'evaluatedAt', label: '评定时间' }, { key: 'comment', label: '评语' }
+                    ]
+                }, 'evaluation');
+            }
+        })
+    });
+
+    /* ---------- 三十二、绩效看板 ---------- */
+
+    /* 库里每人每期只落 {得分, 等级} 两个字段，件量、时效、成本这些指标读取时按当期单据反推。
+       这一页是「绩效 → 考核 → 人事结论 → 下期绩效」这条环的起点也是终点：
+       D 档在这里一键发起考核，考核挂的改进计划又回到这里看有没有达标，
+       所以看板不能只画分布，没核算的人、没闭环的档位都得列出来并且能就地补掉 */
+
+    function perfRowView(p, ctxData) {
+        var emp = ctxData.empById[p.employeeId] || {};
+        var w = TMS.people.withMetrics(p);
+        var ev = ctxData.evalCell[p.employeeId + '|' + p.period];
+        var le = ctxData.latestEval[p.employeeId];
+        return {
+            id: p.id, employeeId: p.employeeId, badge: emp.badge || '',
+            employee: w.employee || emp.name || '', role: w.role || emp.role || '',
+            roleName: TMS.people.roleName(w.role), position: emp.position || '',
+            deptName: emp.deptName || '', orgName: w.orgName || '', empStatus: emp.status || '',
+            period: p.period, score: Number(p.score) || 0, grade: p.grade || '',
+            metrics: w.metrics || {},
+            isD: p.grade === 'D', below: (Number(p.score) || 0) < GUARD_TARGET,
+            evalDone: !!ev && ev.status === 'done', evalDraft: !!ev && ev.status !== 'done',
+            hasEval: !!ev, evalId: ev ? ev.id : '', evalGrade: ev ? ev.grade : '',
+            guard: !!le && le.promotion === '绩效改进计划',
+            guardLatest: !!(le && le.promotion === '绩效改进计划') && (Number(p.score) || 0) >= GUARD_TARGET,
+            alert: ctxData.openAlerts['perf:guard:' + p.employeeId] || null,
+            salary: Number(emp.salary) || 0, hasEmp: !!emp.id
+        };
+    }
+
+    function perfView(period) {
+        var base = { empById: {}, evalCell: {}, latestEval: {}, openAlerts: {} };
+        db.col('employees').forEach(function (e) { base.empById[e.id] = e; });
+        db.col('evaluations').forEach(function (e) {
+            base.evalCell[e.employeeId + '|' + e.period] = e;
+            var cur = base.latestEval[e.employeeId];
+            if (!cur || String(cur.period) < String(e.period)) base.latestEval[e.employeeId] = e;
+        });
+        db.col('alerts').forEach(function (a) { if (a.status === 'open') base.openAlerts[a.key] = a; });
+        var list = db.col('performances').filter(function (p) { return p.period === period; });
+        return {
+            rows: util.sortBy(list, 'score', 'desc').map(function (p) { return perfRowView(p, base); }),
+            base: base
+        };
+    }
+
+    function perfRowFilter(r, fs) {
+        if (fs.role && r.role !== fs.role) return false;
+        if (fs.grade && r.grade !== fs.grade) return false;
+        if (fs.empId && r.employeeId !== fs.empId) return false;
+        var c = fs.chip || '';
+        if (c === 'D' && !r.isD) return false;
+        if (c === 'below' && !r.below) return false;
+        if (c === 'noEval' && r.hasEval) return false;
+        if (c === 'pending' && !r.evalDraft) return false;
+        if (c === 'guard' && !r.guard) return false;
+        return true;
+    }
+
+    function perfMissing(period, idx) {
+        var done = {};
+        (idx.byPeriod[period] || []).forEach(function (p) { done[p.employeeId] = 1; });
+        return db.col('employees').filter(function (e) {
+            return e.status === 'active' && FRONT_ROLES.indexOf(e.role) > -1 && !done[e.id];
+        });
+    }
+
+    function perfRoleStats(rows) {
+        var map = {};
+        rows.forEach(function (r) {
+            var b = map[r.role] || (map[r.role] = { role: r.role, label: r.roleName, n: 0, sum: 0, d: 0, below: 0, noEval: 0 });
+            b.n++;
+            b.sum += r.score;
+            if (r.isD) b.d++;
+            if (r.below) b.below++;
+            if (!r.hasEval) b.noEval++;
+        });
+        return util.sortBy(Object.keys(map).map(function (k) {
+            var b = map[k];
+            return {
+                role: b.role, label: b.label, n: b.n, d: b.d, below: b.below, noEval: b.noEval,
+                avg: b.n ? util.round(b.sum / b.n, 1) : 0
+            };
+        }), 'avg', 'desc');
+    }
+
+    /* 指标随岗位而变，均值表按「这个键在本组出现过几次」折算，
+       没出现的键不硬凑 0，否则会把没有该指标的岗位算成拖后腿 */
+    function metricAvg(rows) {
+        var sum = {}, cnt = {};
+        rows.forEach(function (r) {
+            Object.keys(r.metrics || {}).forEach(function (k) {
+                var v = r.metrics[k];
+                if (typeof v !== 'number') return;
+                sum[k] = (sum[k] || 0) + v;
+                cnt[k] = (cnt[k] || 0) + 1;
+            });
+        });
+        return Object.keys(sum).sort().map(function (k) {
+            return { key: k, label: METRIC_TEXT[k] || k, value: util.round(sum[k] / cnt[k], 2), n: cnt[k] };
+        });
+    }
+
+    function metricBrief(m, limit) {
+        var keys = Object.keys(m || {}).filter(function (k) { return typeof m[k] === 'number'; }).slice(0, limit || 3);
+        if (!keys.length) return '<span class="tms-dim">无量化指标</span>';
+        return keys.map(function (k) {
+            return '<div style="font-size:11px"><span class="tms-dim">' + esc(METRIC_TEXT[k] || k) + ' </span>' + metricCell(k, m[k]) + '</div>';
+        }).join('');
+    }
+
+    function perfModal(id) {
+        var p = id ? db.get('performances', id) : null;
+        if (!p) { ui.toast('绩效记录不存在', 'warn'); return; }
+        /* 指标即时展开：库里只有 {得分, 等级}，件量/时效/成本按当期单据现算 */
+        var metrics = TMS.people.withMetrics(p).metrics || {};
+        var keys = Object.keys(metrics);
+        var emp = db.get('employees', p.employeeId) || {};
+        var ev = db.findOne('evaluations', function (x) { return x.employeeId === p.employeeId && x.period === p.period; });
+        var le = null;
+        db.col('evaluations').forEach(function (x) {
+            if (x.employeeId !== p.employeeId) return;
+            if (!le || String(le.period) < String(x.period)) le = x;
+        });
+        var guard = le && le.promotion === '绩效改进计划';
+        var alert = db.findOne('alerts', function (a) { return a.status === 'open' && a.key === 'perf:guard:' + p.employeeId; });
+        ui.modal({
+            title: '绩效 ' + p.period + '：' + (emp.name || p.employeeId), size: 'wide',
+            sub: (TMS.people.roleName(emp.role) || '') + ' · ' + (emp.position || '') + ' · 得分 ' + p.score + ' · 等级 ' + (p.grade || '未定'),
+            body: ui.stack([
+                ui.split('2', [
+                    ui.card({
+                        title: '结论', flat: true,
+                        body: ui.desc([
+                            { label: '得分 / 等级', value: '<b style="font-size:17px">' + p.score + '</b> 分 ' + gradeBadge(p.grade) },
+                            { label: '均线差', value: (function () {
+                                var rows = db.col('performances').filter(function (x) { return x.period === p.period; });
+                                var avg = rows.length ? util.round(util.sum(rows, 'score') / rows.length, 1) : 0;
+                                var d = util.round(p.score - avg, 1);
+                                return '本期均线 ' + avg + ' 分，本人 ' + (d >= 0 ? '高出 ' : '低 ') + Math.abs(d) + ' 分';
+                            })() },
+                            { label: '归属', value: dim(emp.deptName) + ' · ' + dim(emp.orgName || emp.city) },
+                            { label: '在职状态', value: EMP_STATUS_TEXT[emp.status] || '档案缺失' },
+                            { label: '当期考核', value: ev ? ui.link(ev.id + ' ' + (EVAL_STATUS_TEXT[ev.status] || ev.status) + (ev.grade ? ' · ' + ev.grade + ' 档' : ''), 'eval:open', ev.id) : ui.link('发起考核', 'perf:eval', p.id, { tone: 'primary' }) },
+                            { label: '改进计划', value: guard ? (p.score >= GUARD_TARGET ? ui.badge('本期已达标，下轮巡检解除', 'success') : ui.badge('改进期内仍未达标', 'danger')) + (alert ? '（' + esc(alert.title) + '）' : '') : '<span class="tms-dim">未进入改进期</span>' }
+                        ])
+                    }),
+                    ui.card({
+                        title: p.period + ' 指标（即时反推）', flat: true,
+                        sub: '不落库，全部由当期订单 / 任务 / 车次重算',
+                        body: keys.length ? ui.desc(keys.map(function (k) {
+                            return { label: METRIC_TEXT[k] || k, value: metricCell(k, metrics[k]) };
+                        })) : ui.empty('当期没有可反推的作业数据', '该岗位本期无单据，得分按兜底口径计算')
+                    })
+                ]),
+                ui.card({
+                    title: '这一步之后', flat: true,
+                    body: ui.desc([
+                        { label: '重新核算', value: '按当期最新单据重算得分与等级，覆盖本行——补录扫描、签收、异常之后分数会变，这是绩效行只存结论的原因' },
+                        { label: '发起考核', value: '为该员工该账期建待评定草稿，业绩分抄本行得分，去考核页补能力分与态度分才定级' },
+                        { label: 'D 档', value: '考核定 D 会挂改进计划并产生告警，此后每期绩效回到 ' + GUARD_TARGET + ' 分即自动解除' }
+                    ])
+                })
+            ]),
+            footer: ui.link('重新核算', 'perf:calc', p.id, { tone: 'primary' }) +
+                (ev ? ui.link('看考核单', 'eval:open', ev.id) : ui.link('发起考核', 'perf:eval', p.id)) +
+                ui.link('员工档案', 'emp:open', p.employeeId)
+        });
+    }
+
+    /* 单人重算：先留旧值，算完报出变化，等级降了还提示改进口径 */
+    function perfCalcOne(id) {
+        var p = id ? db.get('performances', id) : null;
+        if (!p) { ui.toast('请先选择一条绩效记录', 'warn'); return; }
+        var old = p.score;
+        var saved = TMS.people.computePerformance(p.employeeId, p.period);
+        if (!saved) { ui.toast('该员工档案已不存在，无法核算', 'warn'); return; }
+        db.commit('performances', saved.id, '绩效核算');
+        var diff = util.round(saved.score - old, 1);
+        ui.toast((saved.employee || (db.get('employees', p.employeeId) || {}).name || '') + ' ' + p.period +
+            ' 重新核算：' + old + ' → ' + saved.score + ' 分（' + saved.grade + ' 档，' + (diff >= 0 ? '+' : '') + diff + '）',
+            saved.grade === 'D' ? 'warn' : 'success');
+        TMS.shell.refresh();
+    }
+
+    function perfBatchCalc(period) {
+        ui.confirm({
+            title: '按当期单据重算绩效',
+            message: '对 ' + period + ' 的在岗一线岗位（网点/分拨、分拣、司机、派送）全部重算得分与等级。',
+            detail: '函数只覆盖 performances 的 score/grade 两个字段，指标不落库；' +
+                '核算完 D 档人数、岗位均线、考核缺口全部跟着变，已定级的考核单不会被改写。',
+            okText: '开始核算'
+        }).then(function (yes) {
+            if (!yes) return;
+            var out = TMS.people.generatePerformances(period) || [];
+            ui.toast(period + ' 已核算 ' + out.length + ' 人，其中 D 档 ' +
+                out.filter(function (p) { return p.grade === 'D'; }).length + ' 人', 'success');
+            TMS.shell.refresh();
+        });
+    }
+
+    /* D 档一键回推考核：绩效页发现问题，考核页处理问题，中间不需要人再建单 */
+    function perfEvalDraft(id) {
+        var p = id ? db.get('performances', id) : null;
+        if (!p) { ui.toast('请先选择一条绩效记录', 'warn'); return; }
+        var emp = db.get('employees', p.employeeId);
+        if (!emp) { ui.toast('员工档案不存在', 'warn'); return; }
+        var ev = db.findOne('evaluations', function (x) { return x.employeeId === p.employeeId && x.period === p.period; });
+        if (ev) {
+            ui.toast('该账期已有考核单 ' + ev.id + '（' + (EVAL_STATUS_TEXT[ev.status] || ev.status) + '），直接去评定', 'info');
+            ui.closeTop();
+            TMS.shell.go('evaluation', { period: p.period, empId: p.employeeId });
+            return;
+        }
+        var rec = evalDraft(p.employeeId, p.period, p);
+        if (!rec) return;
+        db.commit('evaluations', rec.id, '考核建单');
+        TMS.audit.log('hr.manage', 'evaluations', rec.id,
+            '绩效 ' + p.id + '（' + p.score + ' 分 / ' + p.grade + '）发起考核草稿：' + emp.name + ' ' + p.period, actor());
+        ui.closeTop();
+        ui.toast('已为 ' + emp.name + ' 建 ' + p.period + ' 待评定草稿，业绩分抄绩效 ' + p.score + ' 分', 'success');
+        TMS.shell.go('evaluation', { period: p.period, empId: p.employeeId });
+    }
+
+    var perfActions = {
+        'perf:open': function (id) { perfModal(id); },
+        'perf:calc': function (id) { perfCalcOne(id); },
+        'perf:run': function () {
+            var fs = pg.filtersOf(ui.state('performance'));
+            perfBatchCalc(fs.period || latestPerfPeriod());
+        },
+        'perf:eval': function (id) { perfEvalDraft(id); },
+        'perf:goto': function (empId) {
+            if (!empId) return;
+            var fs = pg.filtersOf(ui.state('performance'));
+            ui.closeTop();
+            TMS.shell.go('performance', { empId: empId, period: fs.period || undefined });
+        },
+        'perf:focus': function (kind) {
+            var st = ui.state('performance');
+            pg.filtersOf(st).chip = kind || '';
+            st.page = 1;
+            TMS.shell.refresh();
+        },
+        'perf:clearEmp': function () {
+            pg.filtersOf(ui.state('performance')).empId = '';
+            TMS.shell.refresh();
+            ui.toast('已清除单人员筛选', 'info');
+        },
+        'perf:seg': function () { /* 分组由外壳统一处理，这里只需保证动作可被回放 */ },
+        'perf:check': function () { evalCheck(); },
+        'perf:goEval': function () {
+            var fs = pg.filtersOf(ui.state('performance'));
+            ui.closeTop();
+            TMS.shell.go('evaluation', { period: fs.period });
+        }
+    };
+
+    pg.define('performance', {
+        sub: '月度绩效 · 指标按当期单据即时反推 · D 档一键回推考核',
+        load: function (ctx) {
+            applyParamFilter(ctx, ['period', 'role', 'grade', 'chip', 'empId', 'q']);
+            var fs = pg.filtersOf(ctx.state);
+            var idx = perfIndex();
+            var periods = Object.keys(idx.periods).sort().reverse();
+            /* 账期是筛选态里最容易过期的一个：换库或删掉某期绩效后，state 里还留着上次的月份，
+               整页就会显示 0 人——只认「台账里真实存在」的账期，其余一律回落到最新一期 */
+            if (fs.period && periods.indexOf(fs.period) < 0) fs.period = '';
+            if (!fs.period) fs.period = periods[0] || latestPerfPeriod();
+            var v = perfView(fs.period);
+            var seg = ctx.state.seg || '全部岗位';
+            var segRows = seg === '全部岗位' ? v.rows : v.rows.filter(function (r) { return r.roleName === seg; });
+            return {
+                idx: idx, periods: periods, fs: fs, period: fs.period, seg: seg,
+                rows: v.rows, segRows: segRows, roles: util.unique(v.rows.map(function (r) { return r.roleName; })),
+                metricRows: metricAvg(segRows),
+                missing: perfMissing(fs.period, idx),
+                roleStats: perfRoleStats(v.rows),
+                grades: util.countBy(v.rows, 'grade'),
+                guard: v.rows.filter(function (r) { return r.guard; }),
+                noEval: v.rows.filter(function (r) { return !r.hasEval; }),
+                avg: v.rows.length ? util.round(util.sum(v.rows, 'score') / v.rows.length, 1) : 0
+            };
+        },
+        render: function (ctx, d) {
+            var rows = d.rows;
+            var top = rows.slice(0, 8), bottom = rows.slice(-8).reverse();
+            var excellent = (d.grades['A+'] || 0) + (d.grades.A || 0);
+            var kpi = ui.kpis([
+                { label: '本期核算', value: fmt.number(rows.length), unit: '人', tone: 'brand', icon: '♙', sub: '在岗一线 ' + (rows.length + d.missing.length) + ' 人' },
+                { label: '均线得分', value: d.avg, unit: '分', tone: d.avg >= GUARD_TARGET ? 'success' : 'warn', sub: '合格线 ' + GUARD_TARGET + ' 分' },
+                { label: 'A 档以上', value: fmt.number(excellent), unit: '人', tone: 'success', sub: rows.length ? fmt.percent(util.round(excellent / rows.length * 100, 1)) : '—' },
+                { label: 'D 档', value: fmt.number(d.grades.D || 0), unit: '人', tone: (d.grades.D || 0) ? 'danger' : 'success', sub: '低于合格线，需挂改进计划' },
+                { label: '未核算', value: fmt.number(d.missing.length), unit: '人', tone: d.missing.length ? 'warn' : 'success', sub: '在岗一线没有本期绩效行' },
+                { label: '未发起考核', value: fmt.number(d.noEval.length), unit: '人', tone: d.noEval.length ? 'info' : 'success', sub: '有得分但没有考核单' }
+            ]);
+            var gradeCard = ui.card({
+                title: '等级分布', sub: d.period + ' · ' + rows.length + ' 人 · 档位线与考核共用 people.gradeOf', flat: true,
+                body: ch.hbars({
+                    rowH: 30, labelWidth: 96,
+                    data: ['A+', 'A', 'B', 'C', 'D'].map(function (g) {
+                        return { label: GRADE_TEXT[g], value: d.grades[g] || 0, color: g === 'D' ? '#d9534f' : (g === 'A+' || g === 'A' ? '#2f9e6e' : '#5b7cc4') };
+                    }),
+                    fmt: function (v) { return v + ' 人'; }
+                })
+            });
+            var roleCard = ui.card({
+                title: '岗位对比', sub: '均分、合格线下人数、未考核人数', flat: true,
+                body: ui.table({
+                    dense: true, keyName: 'role', rows: d.roleStats, emptyText: '本期还没有绩效行',
+                    columns: [
+                        { key: 'label', label: '岗位', sortable: false, render: function (r) { return '<b>' + esc(r.label) + '</b><div class="tms-dim" style="font-size:11px">' + r.n + ' 人</div>'; } },
+                        { key: 'avg', label: '均分', align: 'right', sortable: false, width: '78px', render: function (r) { return '<b>' + r.avg + '</b>'; } },
+                        { key: 'below', label: '线下', align: 'right', sortable: false, width: '66px', render: function (r) { return r.below ? ui.badge(r.below, 'warn') : '0'; } },
+                        { key: 'd', label: 'D 档', align: 'right', sortable: false, width: '66px', render: function (r) { return r.d ? ui.badge(r.d, 'danger') : '0'; } },
+                        { key: 'noEval', label: '未考核', align: 'right', sortable: false, width: '72px', render: function (r) { return r.noEval ? ui.link(String(r.noEval), 'perf:focus', 'noEval', { tone: 'warn' }) : '0'; } },
+                        { key: 'rate', label: '均线达成', sortable: false, render: function (r) { return rateBar(r.avg, { target: GUARD_TARGET }); } }
+                    ]
+                })
+            });
+            var rankCard = ui.split('2', [
+                ui.card({
+                    title: '本期前十', sub: '得分最高', flat: true,
+                    body: ui.list(top.map(function (r) {
+                        return {
+                            title: ui.link(r.employee, 'perf:open', r.id) + ' ' + gradeBadge(r.grade),
+                            sub: r.roleName + ' · ' + (r.orgName || r.deptName || '') + ' · ' + (r.score + ' 分'),
+                            right: r.hasEval ? ui.badge('已考核', 'muted') : ui.btn('发起考核', { size: 'sm', act: 'perf:eval', arg: r.id })
+                        };
+                    }))
+                }),
+                ui.card({
+                    title: '本期待改进', sub: '得分最低，D 档必须走考核评定', flat: true,
+                    body: ui.list(bottom.map(function (r) {
+                        return {
+                            title: ui.link(r.employee, 'perf:open', r.id) + ' ' + gradeBadge(r.grade),
+                            sub: r.roleName + ' · ' + (r.score + ' 分') + ' · 均线差 ' + util.round(r.score - d.avg, 1) +
+                                (r.guard ? ' · 改进期内' : ''),
+                            right: r.evalDraft ? ui.link('去评定', 'eval:open', r.evalId, { tone: 'warn' })
+                                : (r.hasEval ? ui.badge('已定级', 'muted') : ui.btn('发起考核', { size: 'sm', tone: 'danger', act: 'perf:eval', arg: r.id }))
+                        };
+                    }))
+                })
+            ]);
+            var gapItems = [];
+            if (d.missing.length) gapItems.push({
+                title: d.missing.length + ' 名在岗一线本期没有绩效行',
+                sub: 'generatePerformances 只覆盖网点/分拣/司机/派送，按当期单据重算',
+                right: ui.btn('立即核算', { size: 'sm', tone: 'primary', act: 'perf:run' })
+            });
+            if (d.grades.D) gapItems.push({
+                title: d.grades.D + ' 人本期定 D 档',
+                sub: '先建考核单评定，D 档由考核强制挂改进计划并产生告警',
+                right: ui.btn('只看 D 档', { size: 'sm', tone: 'danger', act: 'perf:focus', arg: 'D' })
+            });
+            if (d.noEval.length) gapItems.push({
+                title: d.noEval.length + ' 人有得分但没有考核单',
+                sub: '台账逐行点「发起考核」即可补，业绩分自动抄本期得分',
+                right: ui.btn('只看未考核', { size: 'sm', act: 'perf:focus', arg: 'noEval' })
+            });
+            if (d.guard.length) gapItems.push({
+                title: d.guard.length + ' 人处于考核改进期',
+                sub: '本期 ≥ ' + GUARD_TARGET + ' 分的 ' + d.guard.filter(function (r) { return !r.below; }).length + ' 人可由巡检解除',
+                right: ui.btn('立即判定', { size: 'sm', tone: 'warn', act: 'perf:check' })
+            });
+            var gapCard = ui.card({
+                title: '看板待补', sub: gapItems.length ? gapItems.length + ' 项' : '本期核算与考核都已跟上', flat: true,
+                body: gapItems.length ? ui.list(gapItems) : ui.empty('没有待补', '在岗一线都有本期绩效，得分也都进了考核流程')
+            });
+            var metricCard = ui.card({
+                title: '指标均值', sub: d.seg + ' · ' + d.segRows.length + ' 人 · 全部按当期单据即时反推', flat: true,
+                tools: ui.seg([{ value: '全部岗位', label: '全部岗位' }].concat(d.roles.map(function (x) { return { value: x, label: x }; })), d.seg),
+                body: ui.table({
+                    dense: true, keyName: 'key', rows: d.metricRows, emptyText: '该组没有可反推的数值指标',
+                    columns: [
+                        { key: 'label', label: '指标', width: '150px', sortable: false },
+                        { key: 'value', label: '人均', width: '150px', align: 'right', sortable: false, render: function (r) { return '<b>' + metricCell(r.key, r.value) + '</b>'; } },
+                        { key: 'n', label: '覆盖人数', width: '86px', align: 'right', sortable: false, render: function (r) { return r.n + ' 人'; } },
+                        { key: 'share', label: '占本组', sortable: false, render: function (r) { return pctBar(d.segRows.length ? util.round(r.n / d.segRows.length * 100, 1) : 0, { tone: 'brand' }); } }
+                    ]
+                })
+            });
+            var listCard = grid(ctx, {
+                title: '绩效台账', sub: rows.length + ' 人 · 账期 ' + d.period,
+                rows: rows, keyName: 'id', dense: true, onRow: 'perf:open', searchKey: 'q', pageSize: 20,
+                filter: perfRowFilter,
+                search: function (r) { return [r.id, r.employeeId, r.badge, r.employee, r.roleName, r.position, r.deptName, r.orgName, r.grade].join(' '); },
+                chips: [
+                    { label: '全部', value: '', count: rows.length },
+                    { label: 'D 档', value: 'D', count: d.grades.D || 0 },
+                    { label: '低于合格线', value: 'below', count: rows.filter(function (r) { return r.below; }).length },
+                    { label: '未发起考核', value: 'noEval', count: d.noEval.length },
+                    { label: '考核待评定', value: 'pending', count: rows.filter(function (r) { return r.evalDraft; }).length },
+                    { label: '改进期内', value: 'guard', count: d.guard.length }
+                ], chipsName: 'chip',
+                fields: [
+                    { key: 'period', label: '账期', options: d.periods.map(function (p) { return { value: p, label: p }; }) },
+                    { key: 'role', label: '岗位', options: [{ value: '', label: '全部岗位' }].concat(empRoleOptions()) },
+                    { key: 'grade', label: '等级', options: [{ value: '', label: '全部' }].concat(['A+', 'A', 'B', 'C', 'D'].map(function (x) { return { value: x, label: GRADE_TEXT[x] }; })) }
+                ],
+                tools: (d.fs.empId ? ui.btn('清除人员筛选', { size: 'sm', act: 'perf:clearEmp' }) : '') +
+                    ui.btn('本期全部重算', { size: 'sm', act: 'perf:run', icon: '⟳' }) +
+                    ui.btn('导出台账', { size: 'sm', tone: 'ghost', act: 'perf:export', icon: '↓' }),
+                columns: [
+                    { key: 'employee', label: '姓名', width: '148px', render: function (r) {
+                        return ui.idCell(r.id, 'perf:open') + '<div class="tms-dim" style="font-size:11px">' + esc(r.employee) + ' · ' + esc(r.badge || '') + '</div>';
+                    } },
+                    { key: 'role', label: '岗位 / 归属', sortable: false, render: function (r) { return esc(r.roleName) + '<div class="tms-dim">' + esc(r.position || '') + ' · ' + esc(r.orgName || r.deptName || '') + '</div>'; } },
+                    { key: 'score', label: '得分', width: '84px', align: 'right', render: function (r) {
+                        return '<b style="font-size:13.5px">' + r.score + '</b>' + (r.below ? ' <span class="tms-dim">线下</span>' : '');
+                    } },
+                    { key: 'grade', label: '等级', width: '92px', sortable: false, render: function (r) { return gradeBadge(r.grade); } },
+                    { key: 'metrics', label: '当期指标', sortable: false, render: function (r) { return metricBrief(r.metrics, 3); } },
+                    { key: 'hasEval', label: '考核', width: '128px', sortable: false, render: function (r) {
+                        if (r.evalDraft) return ui.link('待评定 ' + r.evalId, 'eval:open', r.evalId, { tone: 'warn' });
+                        if (r.evalDone) return ui.link(r.evalGrade + ' 档已定级', 'eval:open', r.evalId, { tone: 'ghost' });
+                        return ui.link('发起考核', 'perf:eval', r.id, { tone: 'ghost' });
+                    } },
+                    { key: 'guard', label: '改进计划', width: '104px', sortable: false, render: function (r) {
+                        return r.guard ? ui.badge(r.below ? '跟踪中' : '达标待解除', r.below ? 'danger' : 'info') : '<span class="tms-dim">—</span>';
+                    } },
+                    { key: 'ops', label: '操作', width: '112px', sortable: false, render: function (r) {
+                        return ui.link('重算', 'perf:calc', r.id, { tone: 'ghost' }) + ui.link('档案', 'emp:open', r.employeeId, { tone: 'ghost' });
+                    } }
+                ],
+                emptyText: '本期没有符合条件的绩效行'
+            });
+            return wrap(ctx, {
+                actions: ui.btn('本期全部重算', { tone: 'primary', act: 'perf:run', icon: '⟳' }) +
+                    ui.btn('去考核台账', { act: 'perf:goEval', icon: '★' }),
+                sub: rows.length + ' 人 · 得分与等级落库，指标读取时按当期单据反推 · 合格线 ' + GUARD_TARGET + ' 分',
+                body: [kpi, ui.split('2', [gradeCard, roleCard]), rankCard, ui.split('2', [metricCard, gapCard]), listCard, ui.card({
+                    title: '口径说明', flat: true,
+                    body: ui.desc([
+                        { label: '库里存了什么', value: '每人每期一行 {得分, 等级}。件量、时效、代收、油耗、装载率全部读取时按当期订单/任务/车次反推——300 人网络里逐人逐期存一段指标就是几十 KB 死数据' },
+                        { label: '得分怎么来的', value: '基础分 35（在岗与协作）+ 单量 25 + 两道质量线 20/12，每项按达成率计分、封顶 120%；异常/事故/迟到按月当量扣减。质量线是行业绝对值（签收及时 92%、分拣准确 99%、装载 70%），单量目标取「本岗位人均产能」与「保底工作量」的较高者' },
+                        { label: '为什么单量看人均', value: '本网络编制比单量大：派送员账期内人均两三票。按绝对票数定档会把整岗算成 D，那是编制问题不是个人问题；对标人均产能才能拉开干得多与干得少的差距' },
+                        { label: '账期与折算', value: '账期是最近一个已关账的自然月，月初不进当月核算；本库历史短于整月，票量按「账期覆盖天数」折算月度当量、扣罚同折算，所以覆盖 13 天不等于只干了 13 天' },
+                        { label: '司机均分为什么低', value: '干线九成货量买的是外协舱位，自有车队当期只有二十来趟，四十六个司机里多数当期无趟可跑——低的是排班饱和度，运力页的自有/外协结构就是它的解释' },
+                        { label: '档位线', value: 'A+ ≥92、A ≥85、B ≥78、C ≥70、D <70，与考核总分共用 people.gradeOf，不会出现两套口径' },
+                        { label: '为什么有人没核算', value: 'generatePerformances 只覆盖在岗的网点/分拨、分拣、司机、派送四类一线岗；职能岗、休假与离职人员不进批量，需要就单人重算' },
+                        { label: '重新核算改什么', value: '只覆盖 score/grade。单据补录（签收、扫描、异常定责）之后分数会变，已定级的考核单不会被回头改写——考核是对当时结论的签字，不是滚动报表' },
+                        { label: 'D 档的去路', value: '点「发起考核」建待评定草稿，考核定 D 即强制挂绩效改进计划并由巡检建告警；此后每期绩效回到 ' + GUARD_TARGET + ' 分自动解除' },
+                        { label: '指标均值的算法', value: '按「该指标在本组出现过几次」折算，缺失的键不补 0，否则没有该指标的岗位会被算成拖后腿' }
+                    ])
+                })]
+            });
+        },
+        actions: merge(perfActions, hrActions, evalActions, {
+            'perf:export': function () {
+                var fs = pg.filtersOf(ui.state('performance'));
+                exportGrid({
+                    name: '绩效台账_' + (fs.period || '') + '.csv',
+                    rows: perfView(fs.period || latestPerfPeriod()).rows,
+                    searchKey: 'q', filter: perfRowFilter,
+                    search: function (r) { return [r.id, r.employeeId, r.badge, r.employee, r.roleName, r.position, r.deptName, r.orgName, r.grade].join(' '); },
+                    cols: [
+                        { key: 'id', label: '记录号' }, { key: 'period', label: '账期' }, { key: 'employeeId', label: '工号ID' },
+                        { key: 'badge', label: '工号' }, { key: 'employee', label: '姓名' }, { key: 'roleName', label: '岗位' },
+                        { key: 'position', label: '职务' }, { key: 'deptName', label: '部门' }, { key: 'orgName', label: '归属机构' },
+                        { key: 'score', label: '得分' },
+                        { key: 'grade', label: '等级', value: function (r) { return GRADE_TEXT[r.grade] || r.grade; } },
+                        { key: 'metrics', label: '当期指标', value: function (r) {
+                            return Object.keys(r.metrics).map(function (k) {
+                                var v = r.metrics[k];
+                                return (METRIC_TEXT[k] || k) + '=' + (typeof v === 'number' ? util.round(v, 2) : v);
+                            }).join(' | ');
+                        } },
+                        { key: 'hasEval', label: '考核状态', value: function (r) { return r.evalDone ? '已定级 ' + r.evalGrade : (r.evalDraft ? '待评定' : '未发起'); } },
+                        { key: 'guard', label: '改进计划', value: function (r) { return r.guard ? '跟踪中' : ''; } },
+                        { key: 'empStatus', label: '在职状态', value: function (r) { return EMP_STATUS_TEXT[r.empStatus] || r.empStatus; } }
+                    ]
+                }, 'performance');
             }
         })
     });

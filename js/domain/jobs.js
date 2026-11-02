@@ -16,6 +16,7 @@
         { key: 'fenceCoverage', name: '电子围栏覆盖缺口', run: fenceCoverage },
         { key: 'tripDeparture', name: '班次未按时发车', run: tripDeparture },
         { key: 'slaBacklog', name: '压单预警', run: slaBacklog },
+        { key: 'perfGuard', name: '绩效改进计划跟踪', run: perfGuard },
         { key: 'purgeAlerts', name: '告警归档清理', run: purgeAlerts }
     ];
 
@@ -257,6 +258,53 @@
             });
         } else closeAlert('sla:backlog', '滞留订单已清零');
         return { backlog: rows.length };
+    }
+
+    /* 11. 绩效改进计划：考核定 D 档的人挂一张改进计划，之后只看业绩不看口头承诺——
+       最新一期绩效回到合格线（70 分，即 people.gradeOf 的 C 档下限）就把结论改写为「已达标解除」，
+       告警同轮核销。不自动解除的话这个人会永远挂在未处理告警上，改进期也就成了摆设 */
+    function perfGuard() {
+        var latestEval = {}, latestPerf = {};
+        db.col('evaluations').forEach(function (e) {
+            var cur = latestEval[e.employeeId];
+            if (!cur || String(cur.period) < String(e.period)) latestEval[e.employeeId] = e;
+        });
+        db.col('performances').forEach(function (p) {
+            var cur = latestPerf[p.employeeId];
+            if (!cur || String(cur.period) < String(p.period)) latestPerf[p.employeeId] = p;
+        });
+        var guarding = [], released = 0;
+        Object.keys(latestEval).forEach(function (empId) {
+            var e = latestEval[empId];
+            if (e.promotion !== '绩效改进计划' || e.status !== 'done') return;
+            var emp = db.get('employees', empId);
+            if (!emp) return;
+            var perf = latestPerf[empId];
+            if (perf && Number(perf.score) >= 70) {
+                db.update('evaluations', e.id, { promotion: '绩效改进计划（已达标解除）', releasedAt: util.iso(util.now()) });
+                released++;
+                return;
+            }
+            guarding.push({ e: e, emp: emp, perf: perf });
+        });
+        var active = {};
+        guarding.forEach(function (g) {
+            var key = 'perf:guard:' + g.e.employeeId;
+            active[key] = 1;
+            var score = g.perf ? Number(g.perf.score) : null;
+            addAlert({
+                key: key, level: score != null && score >= 60 ? 'warn' : 'danger',
+                title: '绩效改进计划未达标',
+                message: g.emp.name + '（' + TMS.people.roleName(g.emp.role) + '）' + g.e.period + ' 考核定 ' + g.e.grade +
+                    ' 档列入改进计划，最新一期绩效 ' + (score == null ? '仍无核算结果' : score + ' 分（' + g.perf.period + '）') +
+                    '，回到 70 分自动解除',
+                category: 'operation', entity: 'evaluations', refId: g.e.id, owner: '人力资源部'
+            });
+        });
+        return {
+            guarding: guarding.length, released: released,
+            resolved: resolveGone('perf:guard:', active, '改进期内最新绩效已回到合格线，考核结论与告警同步解除')
+        };
     }
 
     function purgeAlerts() {

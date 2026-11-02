@@ -29,6 +29,7 @@
         'js/ui/charts.js',
         'js/ui/shell.js',
         'js/pages/registry.js',
+        'js/pages/portal.js',
         'js/pages/admin.js',
         'js/pages/branch.js',
         'js/pages/sorter.js',
@@ -37,7 +38,7 @@
         'js/pages/client.js'
     ];
 
-    /* 缓存 token 跟随 boot.js 自身，bump_cache.py 只需改一处即可全量刷新 */
+    /* 缓存 token 跟随 boot.js 自身：python tools/gen_pages.py --token v=xxx 改一处即可全量刷新所有页面外壳 */
     function token() {
         var self = global.document && document.currentScript;
         var src = self ? self.getAttribute('src') : '';

@@ -360,7 +360,7 @@
                 if (!q) return;
                 var order = db.findOne('orders', function (o) { return o.id === q || o.waybillNo === q || (o.receiverPhone && String(o.receiverPhone).slice(-4) === q); });
                 if (!order) { ui.toast('未找到单号 ' + q, 'warn'); return; }
-                go(TMS.pages.orderPageFor(shell.state.role), { orderId: order.id });
+                go(TMS.pages.orderPageFor(shell.state.session.role), { orderId: order.id });
             });
         }
         var clock = chrome.querySelector('#tms-clock');

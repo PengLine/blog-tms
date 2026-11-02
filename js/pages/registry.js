@@ -527,6 +527,21 @@
         { value: 'doc', label: '关联单据' }
     ];
 
+    /* 抽屉页签按角色裁剪：成本页是干线分摊、间接摊销这类内部口径，
+       网点关心的是自己交接得对不对，客户关心的是运费为什么是这个数，
+       给他们看「这单我们赚多少」既不合规也没有意义 */
+    var TAB_ALLOW = { cost: ['admin'] };
+
+    function roleOfSession() {
+        var s = TMS.shell && TMS.shell.state && TMS.shell.state.session;
+        return (s && s.role) || 'admin';
+    }
+
+    function visibleTabs() {
+        var role = roleOfSession();
+        return TABS.filter(function (t) { return !TAB_ALLOW[t.value] || TAB_ALLOW[t.value].indexOf(role) > -1; });
+    }
+
     var drawer = null;
 
     function tabBody(detail, tab) {
@@ -543,7 +558,7 @@
         var slot = drawer.el.querySelector('[data-order-slot]');
         if (!slot) return;
         slot.innerHTML = '<div class="tms-row" style="margin-bottom:12px">' +
-            ui.chips(TABS.map(function (t) { return { label: t.label, value: t.value, on: t.value === drawer.tab }; }),
+            ui.chips(visibleTabs().map(function (t) { return { label: t.label, value: t.value, on: t.value === drawer.tab }; }),
                 { act: 'order:tab' }) + '</div>' + tabBody(drawer.detail, drawer.tab);
     }
 
@@ -585,6 +600,8 @@
         });
         handle.detail = detail;
         handle.tab = o.tab || 'trace';
+        /* 深链/调用方指定了本页角色看不见的页签时收回默认页签，不然空白区会渲染出越权内容 */
+        if (!visibleTabs().some(function (t) { return t.value === handle.tab; })) handle.tab = 'trace';
         drawer = handle;
         renderTabSlot();
         return handle;
@@ -612,6 +629,7 @@
         'order:open': function (id) { openOrder(id); },
         'order:tab': function (tab) {
             if (!drawer) return;
+            if (!visibleTabs().some(function (t) { return t.value === tab; })) return;
             drawer.tab = tab;
             renderTabSlot();
         },
@@ -696,7 +714,7 @@
         orderFeePanel: orderFeePanel, orderCostPanel: orderCostPanel, orderPlanPanel: orderPlanPanel,
         orderWorkPanel: orderWorkPanel, orderDocPanel: orderDocPanel, orderTaskList: orderTaskList,
         orderColumns: orderColumns, orderFields: orderFields, orderFilter: orderFilter,
-        openOrder: openOrder, closeOrder: closeOrder, deepLink: deepLink, TABS: TABS, LEG_TYPE: LEG_TYPE,
+        openOrder: openOrder, closeOrder: closeOrder, deepLink: deepLink, TABS: TABS, visibleTabs: visibleTabs, LEG_TYPE: LEG_TYPE,
         /* 状态字典与档案反查 */
         statusText: statusText, statusBadge: statusBadge, TRIP_TEXT: TRIP_TEXT, DOC_TEXT: DOC_TEXT, hubName: hubName
     };

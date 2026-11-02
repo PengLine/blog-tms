@@ -10,6 +10,8 @@
     var DAYS = 14;          // 回放天数：localStorage 只有 5MB，历史长度必须给行体积让路
     var MIN_TRIP_KG = 600;  // 干线成班最小货量，凑不够继续压货等拼载
     var MAX_TRIP_WAIT_HOURS = 48;   // 待发车次最长压货时间，到点不管装载多少都发
+    var TAIL_HOLD_MAX = 12;   // 末班留尾的最大票数：再多就是把整场货压成死库存
+    var TAIL_HOLD_DAYS = 3;   // 留尾只取近三天新建的单，压一周才是事故
     var NAMES_SUR = null, NAMES_GIV = null, PHONE = null;
     var BASE_VOLUME = 40;   // 日均基础单量（会乘以淡旺季系数）
 
@@ -39,6 +41,74 @@
 
         function cursorOf(iso) { return util.toDate(iso || util.now()).getTime(); }
 
+        /* ---------- 末班留尾 ---------- */
+        /* 收尾把待发班次全部发出，车队是不挂死了，代价是司机端一进来零任务：
+           真实分拨到日终总有几票压在待发区等明早首班装卸。这里在演示司机驻场留一小批
+           已分拣货不入任何班次，回放结束后按真实建班口径开一个 pending 车次，
+           让「装车→铅封→发车→到达→回场」在一线端整条走得通（车次表也是这么用的） */
+        var tailDriver = (function () {
+            var u = db.col('users').filter(function (x) { return x.role === 'transporter' && x.personId; })[0];
+            return u ? db.get('employees', u.personId) : null;
+        })();
+        var tailHub = tailDriver ? tailDriver.hubId : '';
+        var tailFromMs = realNowMs - TAIL_HOLD_DAYS * 86400000;
+        var tailHeld = {};
+
+        function holdForTail(o) {
+            if (!tailHub || o.hubFrom !== tailHub) return false;
+            if (cursorOf(o.createdAt) < tailFromMs) return false;
+            // 冷链件只能上冷链班：让它滞留在待发区，明早首班要么拒收、要么恒温断链
+            if (o.service === '冷链') return false;
+            if (tailHeld[o.id]) return true;
+            if (Object.keys(tailHeld).length >= TAIL_HOLD_MAX) return false;
+            tailHeld[o.id] = 1;
+            return true;
+        }
+
+        /* 并班按目的地方向取最重的那一拨：把西安件和杭州件塞进同一台车是假调度，
+           装载率与路由都会对不上。车也要按货重挑——为三十公斤货强行派一台车跑六百多公里，
+           运力页第一行就是「整车放空跑」，这种班次真实调度不会开 */
+        function openTailTrip() {
+            if (!tailDriver) return;
+            /* 舱位来源是「本场已分拣 + 没挂车次」的全部在库件，留尾只是让它们别被别的班拉走，
+               凑载口径与调度页的自动配载一致：一单一目的地，装得下才建班 */
+            var rows = db.col('orders').filter(function (o) {
+                return o.status === 'sorted' && !o.tripId && o.hubFrom === tailHub && o.service !== '冷链';
+            });
+            var vehs = util.sortBy(db.col('vehicles').filter(function (v) {
+                return v.driverId === tailDriver.id && v.status === 'available';
+            }), 'loadKg', 'asc');
+            if (!rows.length || !vehs.length) return;
+            var group = util.groupBy(rows, function (o) { return o.hubFrom === o.hubTo ? 'C|' + o.destination : 'H|' + o.hubTo; });
+            var kg = function (list) { return util.sum(list, function (o) { return Number(o.chargeableWeight) || 0; }); };
+            var hubCity = function (id) { return (TMS.master.hubByNameOrId(id) || {}).city || ''; };
+            /* 排序看「单位里程能装多重」：末班是台小车，跑同城支线几十公里是合理补班，
+               跑一千公里干线就是拿整车成本拉一筐货，运力复盘页会把它标成放空跑 */
+            var cand = Object.keys(group).map(function (k) {
+                var list = group[k];
+                var first = list[0];
+                var feeder = first.hubFrom === first.hubTo;
+                var dist = feeder
+                    ? Math.max(35, util.distanceKm(TMS.master.cityByName(first.origin), TMS.master.cityByName(first.destination)))
+                    : Math.max(35, util.distanceKm(TMS.master.cityByName(hubCity(first.hubFrom)), TMS.master.cityByName(hubCity(first.hubTo))));
+                return { key: k, list: list, kg: util.round(kg(list), 2), dist: dist, fit: util.round(kg(list) / dist, 4) };
+            }).filter(function (c) { return c.list.length >= 2; }).sort(function (a, b) { return b.fit - a.fit || b.kg - a.kg; });
+            for (var i = 0; i < cand.length; i++) {
+                var picked = cand[i];
+                var veh = util.sortBy(vehs.filter(function (v) { return v.loadKg >= picked.kg; }), 'loadKg', 'asc')[0];
+                if (!veh) continue;
+                var first = picked.list[0];
+                var feeder = first.hubFrom === first.hubTo;
+                TMS.operation.createTrip({
+                    fromHub: first.hubFrom, toHub: first.hubTo, feeder: feeder, toCity: feeder ? first.destination : '',
+                    distanceKm: picked.dist, orderIds: picked.list.map(function (o) { return o.id; }),
+                    vehicleId: veh.id, driverId: tailDriver.id, at: new Date(realNow),
+                    remark: '末班未发出，留场转明早首班'
+                });
+                return;
+            }
+        }
+
         /* ---------- 订单回放 ---------- */
 
         for (var d = DAYS - 1; d >= 0; d--) {
@@ -48,6 +118,7 @@
             for (var i = 0; i < count; i++) simulateOrder(day, i);
         }
         closeOut();
+        openTailTrip();
 
         function pickDest(origin) {
             var oz = (TMS.master.cityByName(origin) || {}).zone;
@@ -257,6 +328,7 @@
         function ensureTrip(order, at) {
             var o = db.get('orders', order.id);
             if (!o) return null;
+            if (holdForTail(o)) return null;
             var sortedAt = TMS.order.stageAt(o, 'sorted') || util.iso(new Date(at));
             // 起讫落在同一个分拨 = 区域内支线（含同城串线），自有面包车按目的城市执行；跨枢纽才是买舱位的干线
             var feeder = o.hubFrom === o.hubTo;
@@ -276,7 +348,7 @@
             });
             if (!tr) {
                 var waiting = util.sortBy(db.col('orders').filter(function (x) {
-                    return x.status === 'sorted' && !x.tripId && x.hubFrom === o.hubFrom &&
+                    return x.status === 'sorted' && !x.tripId && !tailHeld[x.id] && x.hubFrom === o.hubFrom &&
                         (feeder ? x.destination === o.destination : x.hubTo === o.hubTo);
                 }), 'createdAt', 'asc');
                 if (!waiting.some(function (x) { return x.id === o.id; })) waiting.push(o);
@@ -401,10 +473,25 @@
 
         /* ---------- 考勤、排班 ---------- */
         /* 只给一线作业岗排班打卡，职能岗走系统登录留痕；样本量控制在几十人，
-           全员 90 天考勤会把 localStorage 吃掉一整块而业务价值很低 */
-        var rosterPool = [].concat(sorters.slice(0, 26),
-            db.col('employees').filter(function (e) { return e.role === 'transporter' && e.status === 'active'; }).slice(0, 16),
-            couriers.slice(0, 24), branchStaff.slice(0, 12));
+           全员 90 天考勤会把 localStorage 吃掉一整块而业务价值很低。
+           样本按岗位取前若干名，但演示账号绑定的档案必须一并进来：
+           账号站在样本之外，登录后工作台、打卡、绩效三页全是空的 */
+        var demoPeople = {};
+        var demoNames = {};
+        TMS.cfg.demoAccounts.forEach(function (a) { demoNames[a.username] = 1; });
+        db.col('users').forEach(function (u) {
+            if (u.personId && demoNames[u.username]) demoPeople[u.personId] = 1;
+        });
+        function rosterSample(list, n) {
+            var head = list.slice(0, n);
+            list.forEach(function (e) {
+                if (demoPeople[e.id] && head.indexOf(e) === -1) head.push(e);
+            });
+            return head;
+        }
+        var rosterPool = [].concat(rosterSample(sorters, 26),
+            rosterSample(db.col('employees').filter(function (e) { return e.role === 'transporter' && e.status === 'active'; }), 16),
+            rosterSample(couriers, 24), rosterSample(branchStaff, 12));
         for (var sd = 2; sd >= -3; sd--) {
             var shiftDay = util.addDays(realNow, sd);
             util.setNow(util.addDays(shiftDay, 0));
@@ -612,18 +699,34 @@
 
         /* ---------- 考核与绩效 ---------- */
 
-        var perfPeriods = util.unique(db.col('orders').map(function (o) { return util.monthKey(o.createdAt); })).slice(-1);
-        perfPeriods.forEach(function (p) { TMS.people.generatePerformances(p); });
-        util.sortBy(db.col('performances'), 'score', 'desc').slice(0, 26).forEach(function (p) {
-            var k = util.round(60 + rand() * 40, 1), a = util.round(60 + rand() * 40, 1), att = util.round(65 + rand() * 35, 1);
+        /* 绩效账期取最近一个「已关账且有单量」的自然月：月初那几天就把当月拿来算月度绩效，
+           全网络会因为单量不足定成 D 档，考核与改进计划全部失真。
+           建库过程一直在 setNow 回放历史，这里必须先复位到真实时刻，否则账期跟着最后一张应付单的日期跑 */
+        util.setNow(realNow);
+        TMS.people.generatePerformances(TMS.people.defaultPeriod());
+        /* 考核从绩效行出发：业绩分抄同期绩效，能力与态度是主管的加减分，
+           人事结论跟着评定后的档位走——只有真拿到 D 的人才进改进计划。
+           取样按得分高低等距抽 26 人（不是只抽头部），改进计划、待评定、已晋升三种状态才有真样本 */
+        var perfRows = util.sortBy(db.col('performances'), 'score', 'desc');
+        for (var pi = 0; pi < 26 && perfRows.length; pi++) {
+            var p = perfRows[Math.round(pi * (perfRows.length - 1) / 25)];
+            var k = p.score;
+            var a = util.round(60 + rand() * 38, 1), att = util.round(65 + rand() * 33, 1);
+            var grade = TMS.people.gradeOf(util.round(k * 0.6 + a * 0.25 + att * 0.15, 1));
             var rec = TMS.people.evaluate({
                 employeeId: p.employeeId, period: p.period, kpiScore: k, abilityScore: a, attitudeScore: att,
-                evaluator: util.pick(branchStaff, rand).name, promotion: rand() < 0.12 ? '晋升候选' : (p.score < 68 ? '绩效改进计划' : ''),
-                comment: util.pick(['履约质量稳定，客户零投诉', '旺季抗压表现突出', '错分率偏高需辅导', '主动优化装载率，成本改善明显'], rand),
+                evaluator: util.pick(branchStaff, rand).name,
+                promotion: pi >= 5 ? (grade === 'D' ? '绩效改进计划'
+                    : (['A+', 'A'].indexOf(grade) > -1 && (pi < 10 || rand() < 0.3) ? '晋升候选' : '')) : '',
+                comment: grade === 'D' ? util.pick(['错分率偏高，需回炉带教', '签收时效连续掉线，客户催件集中在名下'], rand)
+                    : (grade === 'C' ? '履约基本达标，时效波动还需要压'
+                        : util.pick(['履约质量稳定，客户零投诉', '旺季抗压表现突出', '主动优化装载率，成本改善明显'], rand)),
                 status: 'pending'
             });
-            TMS.people.finalizeEvaluation(rec.id, { kpiScore: k, abilityScore: a, attitudeScore: att });
-        });
+            /* 前 5 张留在待评定：能力分与态度分没签字，考核页一进去就有活可干，
+               「草稿不定级」这条口径也就不只是文档里的说明 */
+            if (pi >= 5) TMS.people.finalizeEvaluation(rec.id, { kpiScore: k, abilityScore: a, attitudeScore: att });
+        }
 
         /* ---------- 审计与系统留痕 ---------- */
 

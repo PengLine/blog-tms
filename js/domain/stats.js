@@ -323,11 +323,76 @@
         };
     }
 
+    /* 网点/分拨口径的经营聚合：一线端的首页与经营页都读这里。
+       页面里自己 sum/groupBy 会出现「网点端毛利与运营端对不上」，
+       同一套口径必须只有一个实现。scope 用进出港双向归属，与 people.computeMetrics 的 touchesOrg 一致 */
+    function orgStats(orgId, days) {
+        var n = days || 30;
+        var branch = db.get('branches', orgId) || db.get('hubs', orgId) || {};
+        var hubId = branch.hubId || (branch.id ? branch.id : orgId);
+        var cutoff = util.addDays(util.now(), -n + 1).getTime();
+        var list = db.col('orders').filter(function (o) {
+            return (o.originBranchId === orgId || o.destBranchId === orgId || o.hubFrom === hubId || o.hubTo === hubId) &&
+                util.toDate(o.createdAt).getTime() >= cutoff;
+        });
+        var signed = list.filter(function (o) { return o.status === 'signed'; });
+        var late = signed.filter(function (o) { return TMS.order.isSignedLate(o); });
+        var inbound = list.filter(function (o) { return o.destBranchId === orgId; });
+        var outbound = list.filter(function (o) { return o.originBranchId === orgId; });
+        var revenue = util.money(util.sum(signed, 'freight'));
+        var cost = util.money(util.sum(signed, function (o) { return o.cost ? o.cost.tot : 0; }));
+        var ex = db.col('exceptions').filter(function (e) {
+            var o = e.orderId ? db.get('orders', e.orderId) : null;
+            return o && (o.originBranchId === orgId || o.destBranchId === orgId) &&
+                util.toDate(e.reportedAt).getTime() >= cutoff;
+        });
+        var trend = [];
+        for (var i = n - 1; i >= 0; i--) {
+            var key = util.dateKey(util.addDays(util.now(), -i));
+            var rows = list.filter(function (o) { return util.dateKey(o.createdAt) === key; });
+            var s = rows.filter(function (o) { return o.status === 'signed'; });
+            trend.push({
+                label: util.fmt.monthDay(key), date: key, orders: rows.length, signed: s.length,
+                revenue: util.money(util.sum(s, 'freight'))
+            });
+        }
+        var byService = util.groupBy(list, 'service');
+        var byCustomer = util.groupBy(list, 'customerId');
+        return {
+            org: branch.name || orgId, days: n,
+            orders: list.length, signed: signed.length,
+            collected: outbound.filter(function (o) { return TMS.order.stageAt(o, 'collected'); }).length,
+            inbound: inbound.length, outbound: outbound.length,
+            inTransit: list.filter(function (o) { return ['transit', 'arrived', 'delivering', 'sorted', 'inbound'].indexOf(o.status) > -1; }).length,
+            backlog: list.filter(function (o) { return o.status === 'problem' || TMS.order.isLate(o); }).length,
+            revenue: revenue, cost: cost, profit: util.money(revenue - cost),
+            margin: revenue ? util.round((revenue - cost) / revenue * 100, 1) : 0,
+            avgFreight: signed.length ? util.money(revenue / signed.length) : 0,
+            weight: util.round(util.sum(list, 'chargeableWeight'), 1),
+            onTimeRate: signed.length ? util.round((signed.length - late.length) / signed.length * 100, 1) : 100,
+            exceptions: ex.length, openExceptions: ex.filter(function (e) { return e.status !== 'resolved'; }).length,
+            deduction: util.money(util.sum(ex, 'deductionAmount')),
+            trend: trend,
+            byService: Object.keys(byService).map(function (k) {
+                var g = byService[k], s = g.filter(function (o) { return o.status === 'signed'; });
+                return { label: k || '未知', orders: g.length, revenue: util.money(util.sum(s, 'freight')) };
+            }).sort(function (a, b) { return b.orders - a.orders; }),
+            topCustomers: Object.keys(byCustomer).map(function (k) {
+                var g = byCustomer[k], s = g.filter(function (o) { return o.status === 'signed'; });
+                return {
+                    label: TMS.order.customerName(g[0]) || k, orders: g.length,
+                    revenue: util.money(util.sum(s, 'freight')),
+                    margin: util.sum(s, 'freight') ? util.round(util.sum(s, TMS.order.profitOf) / util.sum(s, 'freight') * 100, 1) : 0
+                };
+            }).sort(function (a, b) { return b.revenue - a.revenue; }).slice(0, 8)
+        };
+    }
+
     TMS.stats = {
         overview: overview, orderTrend: orderTrend, breakdown: breakdown,
         lifecycleStats: lifecycleStats, timingStats: timingStats, traceStats: traceStats,
         routeStats: routeStats, networkStats: networkStats, capacityStats: capacityStats,
         customerRanking: customerRanking, scanStats: scanStats, materialStats: materialStats,
-        systemStats: systemStats, ordersWithin: ordersWithin
+        systemStats: systemStats, ordersWithin: ordersWithin, orgStats: orgStats
     };
 })(window);

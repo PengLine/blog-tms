@@ -131,7 +131,7 @@
 
     function randFactory(seed) {
         return util.rng(seed);
-        }
+    }
 
     function personName(rand, used) {
         for (var i = 0; i < 40; i++) {
@@ -299,32 +299,75 @@
         return d ? d.name : '';
     }
 
+    /* 车队按分拨吞吐配场：运力总量摊到各场，余数按小数部分从大到小补齐，凑满整台车 */
+    function hubVehicleQuota(total) {
+        var capSum = HUB_SEEDS.reduce(function (s, h) { return s + h.capacity; }, 0);
+        var out = {}, used = 0;
+        var parts = HUB_SEEDS.map(function (h) {
+            var exact = total * h.capacity / capSum;
+            var n = Math.floor(exact);
+            used += n;
+            out[h.id] = n;
+            return { id: h.id, frac: exact - n };
+        });
+        parts.sort(function (a, b) { return b.frac - a.frac; })
+            .slice(0, total - used)
+            .forEach(function (p) { out[p.id]++; });
+        return out;
+    }
+
     function buildVehicles(rand, activeEmployees) {
-        var out = [];
         var drivers = activeEmployees.filter(function (e) { return e.role === 'transporter' && e.status === 'active'; });
+        /* 车跟人同场：每台车优先绑驻场本分拨的司机，跨场派车留给调度页手工改。
+           否则档案里会出现「沈阳司机名下车停上海场」，司机端的车次与车辆两页永远对不上号 */
+        var byHub = {};
+        drivers.forEach(function (e) {
+            if (!e.hubId) return;
+            (byHub[e.hubId] = byHub[e.hubId] || []).push(e);
+        });
+        /* 运力按场配，不是随机停放：上海场一天进港十几车、西安场一天两三车，
+           车队均匀撒在七个场上的结果就是忙场去借邻场的车、闲场整月不动，
+           装载率、司机趟次和车队利用率三处一起失真 */
+        var quota = hubVehicleQuota(46);
         var letters = ['沪', '粤', '京', '鄂', '川', '陕', '辽', '浙', '苏', '鲁'];
-        for (var i = 0; i < 46; i++) {
-            // 中小件快运车队以 4.2 米及以下为主，干线大车靠外协零担补充，避免「几十吨自有运力只拉一吨货」的失真
-            var type = util.weighted([['CAB', 9], ['MIC', 8], ['VAN', 10], ['MINI', 12], ['MID', 13], ['MAX', 7], ['TRL', 4]], rand);
-            var vt = vehicleType(type);
-            var hub = util.pick(HUB_SEEDS, rand);
-            var drv = drivers[i % Math.max(1, drivers.length)];
-            out.push({
-                id: 'VEH' + util.pad(i + 1, 4),
-                plate: util.pick(letters, rand) + util.pick(['A', 'B', 'C', 'D', 'E', 'F'], rand) + util.randomDigits(5),
-                typeCode: type, typeName: vt.name, loadKg: vt.loadKg, volumeM3: vt.volumeM3, lengthM: vt.lengthM, costPerKm: vt.costPerKm,
-                hubId: hub.id, hubName: hub.name,
-                driverId: drv ? drv.id : '', driver: drv ? drv.name : '', driverPhone: drv ? drv.phone : '',
-                status: rand() > 0.12 ? (rand() > 0.3 ? 'available' : 'busy') : (rand() > 0.5 ? 'maintenance' : 'offline'),
-                odometer: 20000 + Math.floor(rand() * 380000),
-                insuredTo: util.dateKey(util.addDays(util.now(), Math.floor(30 + rand() * 300))),
-                nextCheckAt: util.dateKey(util.addDays(util.now(), Math.floor(5 + rand() * 120))),
-                fuelType: type === 'VAN' ? '电' : '柴油',
-                // 冷链车队是自有多温车队的一小部分：只有带冷藏机组的车能接冷链班次
-                coldBox: i % 6 === 0,
-                purchaseAt: util.dateKey(util.addDays(util.now(), -Math.floor(365 + rand() * 1400)))
+        var out = [];
+        HUB_SEEDS.forEach(function (hub) {
+            for (var k = 0; k < quota[hub.id]; k++) {
+                // 中小件快运车队以 4.2 米及以下为主，干线大车靠外协零担补充，避免「几十吨自有运力只拉一吨货」的失真
+                var type = util.weighted([['CAB', 9], ['MIC', 8], ['VAN', 10], ['MINI', 12], ['MID', 13], ['MAX', 7], ['TRL', 4]], rand);
+                var vt = vehicleType(type);
+                out.push({
+                    id: 'VEH' + util.pad(out.length + 1, 4),
+                    plate: util.pick(letters, rand) + util.pick(['A', 'B', 'C', 'D', 'E', 'F'], rand) + util.randomDigits(5),
+                    typeCode: type, typeName: vt.name, loadKg: vt.loadKg, volumeM3: vt.volumeM3, lengthM: vt.lengthM, costPerKm: vt.costPerKm,
+                    hubId: hub.id, hubName: hub.name,
+                    driverId: '', driver: '', driverPhone: '',
+                    status: rand() > 0.12 ? (rand() > 0.3 ? 'available' : 'busy') : (rand() > 0.5 ? 'maintenance' : 'offline'),
+                    odometer: 20000 + Math.floor(rand() * 380000),
+                    insuredTo: util.dateKey(util.addDays(util.now(), Math.floor(30 + rand() * 300))),
+                    nextCheckAt: util.dateKey(util.addDays(util.now(), Math.floor(5 + rand() * 120))),
+                    fuelType: type === 'VAN' ? '电' : '柴油',
+                    // 冷链车队是自有多温车队的一小部分：只有带冷藏机组的车能接冷链班次
+                    coldBox: out.length % 6 === 0,
+                    purchaseAt: util.dateKey(util.addDays(util.now(), -Math.floor(365 + rand() * 1400)))
+                });
+            }
+        });
+        /* 本场最小的车交给本场排在最前的司机：支线按「就小」派车，首班天然落在他身上。
+           一线演示账号要有活可干，靠运气排班迟早让司机端点开是空工作台 */
+        var loose = 0;
+        HUB_SEEDS.forEach(function (hub) {
+            var list = out.filter(function (v) { return v.hubId === hub.id; })
+                .sort(function (a, b) { return a.loadKg - b.loadKg; });
+            var pool = byHub[hub.id] || [];
+            list.forEach(function (v, i) {
+                var drv = pool.length ? pool[i % pool.length] : drivers[loose++ % Math.max(1, drivers.length)];
+                if (!drv) return;
+                v.driverId = drv.id;
+                v.driver = drv.name;
+                v.driverPhone = drv.phone;
             });
-        }
+        });
         return out;
     }
 
@@ -645,10 +688,12 @@
         var usedIds = {};
 
         function pick(roleKey, extraFilter) {
-            var pool = employees.filter(function (e) {
-                return e.role === roleKey && e.status === 'active' && !usedIds[e.id] && (!extraFilter || extraFilter(e));
+            var live = employees.filter(function (e) {
+                return e.role === roleKey && e.status === 'active' && !usedIds[e.id];
             });
-            var e = pool[0];
+            var pool = extraFilter ? live.filter(extraFilter) : live;
+            // 收窄条件挑不到人（档案分布随机）就退回同岗位任意在职者，账号宁可普通也不能空工作台
+            var e = pool[0] || live[0];
             if (!e) return null;
             usedIds[e.id] = true;
             return e;
@@ -671,8 +716,16 @@
                 }
                 return;
             }
-            /* 网点管理员要的是「网点主管」，分拨主管虽然同为 branch 岗，但归属分拨中心 */
-            var e = pick(a.role, a.role === 'branch' ? function (x) { return !!x.branchId; } : null);
+            /* 网点管理员要的是「网点主管」，分拨主管虽然同为 branch 岗，但归属分拨中心；
+               司机要的是「自有支线最多那个场的头班司机」——运力按吞吐配场后，
+               最大吞吐的分拨天天有车，挂在冷场上的司机账号点开就是空工作台 */
+            var extra = null;
+            if (a.role === 'branch') extra = function (x) { return !!x.branchId; };
+            if (a.role === 'transporter') {
+                var topHub = HUB_SEEDS.slice().sort(function (x, y) { return y.capacity - x.capacity; })[0];
+                extra = function (x) { return x.hubId === topHub.id; };
+            }
+            var e = pick(a.role, extra);
             if (e) {
                 e.name = a.name;
                 e.status = 'active';

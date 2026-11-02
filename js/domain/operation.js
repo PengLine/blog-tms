@@ -55,6 +55,16 @@
         return (e && e.role === 'transporter' && e.status === 'active') ? e : null;
     }
 
+    /* 每台车已排的车次数：派车轮转与车队利用率页共用同一口径 */
+    function vehicleRuns() {
+        var n = {};
+        db.col('transports').forEach(function (t) {
+            if (t.status === 'cancelled' || !t.vehicleId) return;
+            n[t.vehicleId] = (n[t.vehicleId] || 0) + 1;
+        });
+        return n;
+    }
+
     function carrierOf(tr) {
         if (!tr) return '';
         if (tr.carrier) return tr.carrier;
@@ -386,13 +396,21 @@
             TMS.master.cityByName((TMS.master.hubByNameOrId(toHub) || {}).city)) || 400;
 
         var want = TMS.network.pickVehicle(weight, volumeM3 * 1000000, pieces);
-        // 就近就小原则：优先目标车型、本枢纽发车、载重刚好够用，避免大车拉小货
-        var pool = db.col('vehicles').filter(function (v) {
+        /* 车驻场、按场派车：优先发车枢纽本场停放的车辆，本场实在没有合适车位才跨场借调。
+           「就近」不能只是打分里的一点点权重——车型载重差异常常上千公斤，
+           一点跨场惩罚直接被冲掉，结果是一台小面包车在上海北京沈阳之间来回跑，
+           其余四十台车停在自家场里空转，车队利用率与司机趟次全都失真 */
+        var runs = vehicleRuns();
+        // 就小为原则，跑得多罚一点：让本场车辆轮转，而不是最小的三台车跑完整月
+        function fitScore(v) {
+            return v.loadKg + (v.typeCode === want.code ? 0 : 6000) + Math.min(runs[v.id] || 0, 3) * 1800;
+        }
+        var ready = db.col('vehicles').filter(function (v) {
             return v.status === 'available' && v.loadKg >= weight && (mode !== '冷链' || v.coldBox);
-        }).map(function (v) {
-            return { v: v, score: v.loadKg + (v.typeCode === want.code ? 0 : 6000) + (v.hubId === fromHub ? 0 : 2500) };
-        }).sort(function (a, b) { return a.score - b.score; });
-        var vehicle = d.vehicleId ? db.get('vehicles', d.vehicleId) : (pool.length ? pool[0].v : null);
+        });
+        var home = ready.filter(function (v) { return v.hubId === fromHub; });
+        var pool = util.sortBy(home.length ? home : ready, fitScore, 'asc');
+        var vehicle = d.vehicleId ? db.get('vehicles', d.vehicleId) : (pool.length ? pool[0] : null);
         if (vehicle && vehicle.loadKg < weight) vehicle = null;
         var carrier = pickCarrier(mode);
         var selfCost = vehicle ? TMS.pricing.tripCost({
@@ -472,15 +490,24 @@
             return o.status === 'sorted' && (!hubId || o.hubFrom === hubId);
         });
         if (!waiting.length) return { ok: false, message: '当前无待装车订单', created: [] };
-        var byDest = util.groupBy(waiting, 'hubTo');
+        /* 不传场次就是全网配载：分组键必须带上发车枢纽。只按目的枢纽分组的后果是
+           上海和广州的货塞进同一台「无场车次」，标签读成 undefined→武汉，
+           装卸、铅封、司机端三处都没法认领这一班 */
+        var byDest = {};
+        waiting.forEach(function (o) {
+            var key = (hubId ? '' : o.hubFrom + '|') + o.hubTo;
+            (byDest[key] = byDest[key] || []).push(o);
+        });
         var created = [];
-        Object.keys(byDest).forEach(function (destHub) {
-            var list = util.sortBy(byDest[destHub], 'createdAt', 'asc');
+        Object.keys(byDest).forEach(function (key) {
+            var list = util.sortBy(byDest[key], 'createdAt', 'asc');
             if (list.length < (opts.minOrders || 2)) return;
-            var trip = TMS.network.tripFor(hubId, destHub, opts.mode);
+            var from = hubId || list[0].hubFrom;
+            var destHub = hubId ? key : key.slice(from.length + 1);
+            var trip = TMS.network.tripFor(from, destHub, opts.mode);
             var picked = list.slice(0, opts.limit || 40);
             var res = createTrip({
-                tripId: trip ? trip.id : '', fromHub: hubId, toHub: destHub,
+                tripId: trip ? trip.id : '', fromHub: from, toHub: destHub,
                 orderIds: picked.map(function (o) { return o.id; }),
                 vehicleId: opts.vehicleId, driverId: opts.driverId
             });
@@ -670,7 +697,7 @@
         openIntercept: openIntercept, tasksOfOrder: tasksOfOrder, tripStats: tripStats,
         ordersOfTrip: ordersOfTrip, recalcTrip: recalcTrip, costTotal: costTotal, costView: costView,
         tripView: tripView, labelOf: labelOf, crewOf: crewOf, driverOf: driverOf, carrierOf: carrierOf,
-        plateOf: plateOf, capacityOf: capacityOf, vehicleOf: vehicleOf, vehicleTypeOf: vehicleTypeOf,
+        plateOf: plateOf, capacityOf: capacityOf, vehicleOf: vehicleOf, vehicleTypeOf: vehicleTypeOf, vehicleRuns: vehicleRuns,
         costPerKgOf: costPerKgOf, departTimeOf: departTimeOf, completeTimeOf: completeTimeOf,
         distanceOf: distanceOf, transitHoursOf: transitHoursOf, isOnTime: isOnTime, volumeOfTrip: volumeOfTrip
     };
