@@ -238,6 +238,9 @@ body.tms-body img { max-width: 100%; }
 .tms-split-2 { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 .tms-split-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 .tms-split-side { grid-template-columns: minmax(0, 1fr) 340px; }
+/* 手机壳的正文列最宽只有 560，「主栏 + 340 固定侧栏」会把主栏压成 170px。
+   断点看的是视口而不是容器，桌面浏览器里并不会触发，所以按壳层类名收口 */
+.tms-shell-mobile .tms-split-side { grid-template-columns: minmax(0, 1fr); }
 .tms-stack { display: flex; flex-direction: column; gap: 10px; }
 .tms-gap-sm { gap: var(--tms-gap-sm); }
 .tms-mt { margin-top: 10px; }

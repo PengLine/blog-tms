@@ -634,11 +634,21 @@ function unclosedTagQuotes(html) {
 const autoYes = { then: (cb) => { cb(true); return autoYes; }, catch: () => autoYes };
 
 /* 一段渲染结果的两类结构病：脏值 与 引号未闭合 */
+/* 片段数组被当成字符串拼进 HTML 时，逗号会留在两个标签之间。
+   浏览器把这枚裸逗号当作匿名的栅格/弹性子项，split 于是多出一格、卡片被挤窄，
+   这正是「布局乱」最难从截图里看出来的一类回归，所以在冒烟里就拦住 */
+function strayCommas(html) {
+    return (html.match(/[^<>]*>[\s]*,[\s]*<[^\/>]/g) || []).length
+        + (html.match(/>[\s]*,[\s]*<\//g) || []).length;
+}
+
 function markupProblem(html) {
     const m = html.match(/.{0,70}(undefined|NaN|\[object Object\]).{0,70}/);
     if (m) return '渲染脏值：…' + m[0] + '…';
     const broken = unclosedTagQuotes(html);
     if (broken.length) return broken.length + ' 处标签属性引号未闭合：<' + broken[0].slice(1);
+    const sc = strayCommas(html);
+    if (sc) return sc + ' 处两个标签之间残留逗号（数组被 String() 拼进了 HTML）';
     return '';
 }
 /* 动作里调 ui.toast / shell.refresh 要有落笔的地方；此节点只建一次，

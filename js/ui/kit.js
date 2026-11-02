@@ -12,9 +12,17 @@
 
     function esc(v) { return util.esc(v); }
 
-    /* 安全取值：render 函数返回 undefined/null 时渲染空串，而不是字符串 "undefined" */
+    /* 拼 HTML 片段：null/undefined 渲染空串而不是 "undefined"；
+       数组必须逐项相接，不能落到 String(v) 上——
+       String(['<div>a</div>', '<div>b</div>']) 会在两段之间留下一个逗号，
+       浏览器把它当作匿名栅格/弹性子项，于是 split 多出一格、卡片被挤成 1/3 宽 */
     function out(v) {
         if (v == null || v === false) return '';
+        if (Array.isArray(v)) {
+            var s = '';
+            for (var i = 0; i < v.length; i++) s += out(v[i]);
+            return s;
+        }
         return String(v);
     }
 

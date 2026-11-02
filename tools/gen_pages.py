@@ -23,7 +23,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RBAC = os.path.join(ROOT, "js", "core", "rbac.js")
-DEFAULT_TOKEN = "v=20261102e"
+DEFAULT_TOKEN = "v=20261102f"
 
 ENTRY_RE = re.compile(r"\{\s*id:\s*'([^']+)'\s*,\s*file:\s*'([^']+)'\s*,\s*label:\s*'([^']+)'")
 # 站点根下不是角色目录、不该出现业务页外壳的目录
