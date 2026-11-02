@@ -5,7 +5,12 @@
     var TMS = global.TMS = global.TMS || {};
 
     var cfg = {
-        brand: { name: '汇通物流', short: 'TMS', en: 'HUITONG TMS' },
+        /* 署名是全站约定，六端外壳与登录页共用一份：写在配置里而不是各页复制，
+           改一次就全站生效，冒烟校验也按这一处断言 */
+        brand: {
+            name: '汇通物流', short: 'TMS', en: 'HUITONG TMS',
+            author: '余一叶知秋尽', site: 'https://pengline.cn/'
+        },
 
         /* 存储契约：换 schema 版本前先写迁移，切勿直接改 key */
         storage: {

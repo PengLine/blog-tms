@@ -182,6 +182,7 @@
             userChip(session) +
             '</header>' +
             '<main class="tms-content" id="tms-content"></main>' +
+            ui.copyright() +
             '</div>';
         return el;
     }
@@ -213,6 +214,7 @@
             }).join('') + '</div>' : '') +
             '</header>' +
             '<main class="tms-content" id="tms-content"></main>' +
+            ui.copyright() +
             '<nav class="tms-tabbar">' + tabs.slice(0, 5).map(function (it) {
                 return '<a class="tms-tab' + (it.id === pageId ? ' active' : '') + '" href="' + esc(hrefOf(it.file)) + buildHash(it.id, {}) + '">' +
                     '<span class="tms-ico">' + esc(it.icon) + '</span><span>' + esc(it.label) + '</span></a>';
@@ -234,8 +236,9 @@
             ui.btn('退出', { size: 'sm', act: 'shell:logout' }) + '</div>' +
             '</div></header>' +
             '<main class="tms-content" id="tms-content"></main>' +
-            '<footer class="tms-portal-foot"><div>' + esc(cfg.brand.name) + ' · 演示环境，全部数据存于本机浏览器 localStorage，' +
-            '重建数据或清理浏览器记录即恢复初始状态</div></footer>';
+            '<footer class="tms-portal-foot"><div class="tms-portal-note">' + esc(cfg.brand.name) +
+            ' · 演示环境，全部数据存于本机浏览器 localStorage，' +
+            '重建数据或清理浏览器记录即恢复初始状态</div>' + ui.copyright() + '</footer>';
         return el;
     }
 

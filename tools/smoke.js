@@ -1,6 +1,7 @@
 /* Node 冒烟校验：在无浏览器环境下装载运行时，重建种子库并校验业务不变量
    用法：node tools/smoke.js            仅建库 + 不变量校验
         node tools/smoke.js --flow     额外回放一条订单全生命周期
+        node tools/smoke.js --empty    逐页列出空态区块，定位缺数据的功能
         node tools/smoke.js --dump     输出集合行数与容量 */
 'use strict';
 
@@ -474,6 +475,29 @@ check('注册表与菜单文件同源', TMS.pages.MENU_FILE['overview'] === 'adm
     const emptyDirs = dirs.filter((d) => !fs.existsSync(path.join(ROOT, d)));
     check('六端各有页面目录', emptyDirs.length === 0, dirs.join('/') || '');
 })();
+
+/* 页脚署名与移动壳底栏契约：这两处都是「一处写错、71 页同时出问题」的全站约定，
+   出图时又最难被察觉（署名漏了看不出、底栏盖住尾屏内容要点到底部才发现） */
+(() => {
+    const site = TMS.cfg.brand.site, author = TMS.cfg.brand.author;
+    check('署名文案与链接在配置里单点维护', !!author && /^https:\/\//.test(String(site || '')), author + ' · ' + site);
+    const src = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    const kitSrc = src('js/ui/kit.js'), shellSrc = src('js/ui/shell.js'), css = src('css/app.css');
+    check('ui.copyright 已导出', /copyright:\s*copyright/.test(kitSrc) && /function copyright/.test(kitSrc));
+    const wired = (shellSrc.match(/ui\.copyright\(\)/g) || []).length;
+    check('三套外壳都落署名页脚', wired === 3, wired + '/3 处');
+    check('登录页复用同一份署名组件', /TMS\.ui\.copyright\(\)/.test(src('index.html')));
+    check('署名样式有收口且外链新窗口打开',
+        /\.tms-copyright\s*\{/.test(css) && /rel="noopener/.test(kitSrc));
+    /* 底栏一旦回到 position:fixed，正文就得靠写死的 padding-bottom 让位；
+       历史上那个选择器写成了 .tms-body.tms-shell-mobile（壳类名在内层 div 上，永不命中），
+       分拣·司机·派送三端的尾屏内容因此被盖住，这里同时锁死选择器和定位方式 */
+    const tabbar = /\.tms-tabbar\s*\{([^}]*)\}/.exec(css);
+    check('移动底栏吸底不遮正文', !!tabbar && /position:\s*sticky/.test(tabbar[1]) && !/position:\s*fixed/.test(tabbar[1]),
+        tabbar ? (tabbar[1].trim().split('\n')[0] || '') : '规则缺失');
+    check('移动正文按壳层类名留白',
+        /\.tms-shell-mobile \.tms-content\s*\{/.test(css) && !/\.tms-body\.tms-shell-mobile/.test(css));
+})();
 (() => {
     const d = TMS.pages.define('__smoke_page', { title: '冒烟页' });
     check('define 自动补齐 id 与文件名', d.id === '__smoke_page' && TMS.pages.get('__smoke_page') === d);
@@ -665,6 +689,25 @@ check('成本页签只对运营端开放', adminTabs.indexOf('cost') > -1 && cli
     '运营 ' + adminTabs.join('/') + ' · 客户 ' + clientTabs.join('/'));
 TMS.shell.state.session = null;
 
+/* 空态体检（node tools/smoke.js --empty）：页面上的「暂无数据」有两类，
+   一类是此刻业务上确实为空（今天没有待派送件），一类是这块功能压根没造数据。
+   前者是正常态、后者才是要补的洞，机器分不清，所以只逐页列给人看，不计入失败 */
+const EMPTY_AUDIT = argv.includes('--empty');
+const emptyHits = [];
+function collectEmpties(role, pageId, html) {
+    let at = 0;
+    while ((at = html.indexOf('class="tms-empty"', at)) > -1) {
+        const seg = html.slice(at, at + 600);
+        const text = (seg.match(/<p>([^<]*)<\/p>/) || [])[1] || '';
+        const sub = (seg.match(/class="tms-sub"[^>]*>([\s\S]{0,120}?)<\/div>/) || [])[1] || '';
+        const h3 = html.lastIndexOf('<h3', at);
+        const card = h3 > -1 ? ((html.slice(h3, h3 + 200).match(/<h3[^>]*>([^<]*)</) || [])[1] || '') : '';
+        emptyHits.push({ role, pageId, card, text: util_esc(text), sub: util_esc(sub).slice(0, 60) });
+        at += 16;
+    }
+}
+function util_esc(s) { return String(s || '').replace(/&[a-z]+;/g, ' ').replace(/<[^>]*>/g, '').trim(); }
+
 (() => {
     const globalActs = Object.keys(TMS.shell.actions).concat(Object.keys(TMS.pages.shared || {}));
     const unreg = [];
@@ -692,6 +735,7 @@ TMS.shell.state.session = null;
                 const data = def.load ? def.load(ctx) : {};
                 ctx.data = data;
                 const html = String(def.render(ctx, data) || '');
+                if (EMPTY_AUDIT) collectEmpties(role, id, html);
                 const broken = unclosedTagQuotes(html);
                 if (broken.length) {
                     dirty++;
@@ -718,6 +762,18 @@ TMS.shell.state.session = null;
     check('六端菜单页面全部注册', unreg.length === 0, unreg.join('、') || ROLE_TARGETS.length + ' 端 / ' + drawn + ' 页');
     check('六端菜单页面渲染干净且动作可响应', dirty === 0, dirty ? dirty + ' 页有问题' : drawn + ' 页通过');
 })();
+
+if (EMPTY_AUDIT) {
+    section('空态体检（--empty）');
+    let last = '';
+    emptyHits.forEach((h) => {
+        const key = h.role + '/' + h.pageId;
+        if (key !== last) { log('  ▸ ' + key); last = key; }
+        log('      区块「' + (h.card || '未命名') + '」空：' + h.text + (h.sub ? '｜' + h.sub : ''));
+    });
+    const pages = new Set(emptyHits.map((h) => h.role + '/' + h.pageId));
+    log(`\n  共 ${emptyHits.length} 处空态，分布在 ${pages.size} 个页面（渲染 ${ROLE_TARGETS.length} 端 / 71 页）`);
+}
 
 /* 动作与弹窗是真写入的入口，光渲染通过不算数：
    这里把六端每个页面动作按「带单据号」和「不带参数」各调一次，

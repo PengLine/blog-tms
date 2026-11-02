@@ -70,15 +70,52 @@
            运力页第一行就是「整车放空跑」，这种班次真实调度不会开 */
         function openTailTrip() {
             if (!tailDriver) return;
+            /* 末班留尾开两趟：一趟停在待发车，司机端的装车、铅封、发车才有活可点；
+               另一趟直接发车停在在途，车厢在途件、在途明细、本趟指标才不会常年空白。
+               真实司机在任何一个时点上都是一手待发、一手在途 */
+            var made = [];
+            [false, true].forEach(function (anyVehicle) {
+                var tr = tailTripOnce(anyVehicle);
+                if (tr) made.push(tr);
+            });
+            if (!made.length) return;
+            var dep = new Date(realNowMs - 3 * 3600000);
+            util.setNow(dep);
+            var rolling = made[made.length - 1];
+            TMS.operation.startTransport(rolling.id, { operator: tailDriver.name, at: dep });
+            /* 在途那趟里留一条偏离补录：件被错扫进别的分拨，是现场最常见的一种偏离。
+               司机端「超时限扫描留痕」与运营端「偏离路由」都只认带 deviant 标记的流水，
+               建库里一条没有，这两处就永远是 0，看不出系统真的在管路由偏差 */
+            var onboard = TMS.operation.ordersOfTrip(rolling.id);
+            var otherHubs = db.col('hubs').filter(function (h) {
+                return h.id !== rolling.fromHub && h.id !== rolling.toHub;
+            });
+            if (onboard.length && otherHubs.length) {
+                util.setNow(new Date(dep.getTime() + 3600000));
+                var wrong = otherHubs[Math.floor(rand() * otherHubs.length)];
+                TMS.order.addTraceNode(onboard[0].id, {
+                    node: 'TRANSIT', location: wrong.name, operator: tailDriver.name,
+                    remark: '件误上他线，落 ' + wrong.city + ' 分拨，已补录待改签', deviant: true
+                });
+            }
+            util.setNow(realNow);
+        }
+
+        /* allowAnyVehicle：司机本场往往只配一两台车，第二趟得借本场其他可派车，
+           否则「待发车 + 在途」这个组态永远凑不出来 */
+        function tailTripOnce(allowAnyVehicle) {
             /* 舱位来源是「本场已分拣 + 没挂车次」的全部在库件，留尾只是让它们别被别的班拉走，
                凑载口径与调度页的自动配载一致：一单一目的地，装得下才建班 */
             var rows = db.col('orders').filter(function (o) {
                 return o.status === 'sorted' && !o.tripId && o.hubFrom === tailHub && o.service !== '冷链';
             });
-            var vehs = util.sortBy(db.col('vehicles').filter(function (v) {
+            var own = util.sortBy(db.col('vehicles').filter(function (v) {
                 return v.driverId === tailDriver.id && v.status === 'available';
             }), 'loadKg', 'asc');
-            if (!rows.length || !vehs.length) return;
+            var vehs = own.length ? own : (allowAnyVehicle ? util.sortBy(db.col('vehicles').filter(function (v) {
+                return v.hubId === tailHub && v.status === 'available';
+            }), 'loadKg', 'asc') : []);
+            if (!rows.length || !vehs.length) return null;
             var group = util.groupBy(rows, function (o) { return o.hubFrom === o.hubTo ? 'C|' + o.destination : 'H|' + o.hubTo; });
             var kg = function (list) { return util.sum(list, function (o) { return Number(o.chargeableWeight) || 0; }); };
             var hubCity = function (id) { return (TMS.master.hubByNameOrId(id) || {}).city || ''; };
@@ -91,22 +128,37 @@
                 var dist = feeder
                     ? Math.max(35, util.distanceKm(TMS.master.cityByName(first.origin), TMS.master.cityByName(first.destination)))
                     : Math.max(35, util.distanceKm(TMS.master.cityByName(hubCity(first.hubFrom)), TMS.master.cityByName(hubCity(first.hubTo))));
-                return { key: k, list: list, kg: util.round(kg(list), 2), dist: dist, fit: util.round(kg(list) / dist, 4) };
-            }).filter(function (c) { return c.list.length >= 2; }).sort(function (a, b) { return b.fit - a.fit || b.kg - a.kg; });
+                /* 干线组一律先查在册班次：挂上班次号的趟次才是「按班发的实绩」，
+                   司机端「在册班次对照」与班次准点考核只认这一种；手工建的空班永远对不上班次表 */
+                var planned = feeder ? null : TMS.network.tripFor(first.hubFrom, first.hubTo, '陆运');
+                return {
+                    key: k, list: list, planned: planned, feeder: feeder,
+                    kg: util.round(kg(list), 2), dist: dist, fit: util.round(kg(list) / dist, 4)
+                };
+            }).filter(function (c) {
+                return c.list.length >= 2;
+            }).sort(function (a, b) {
+                return (b.planned ? 1 : 0) - (a.planned ? 1 : 0) || b.fit - a.fit || b.kg - a.kg;
+            });
             for (var i = 0; i < cand.length; i++) {
                 var picked = cand[i];
                 var veh = util.sortBy(vehs.filter(function (v) { return v.loadKg >= picked.kg; }), 'loadKg', 'asc')[0];
                 if (!veh) continue;
                 var first = picked.list[0];
-                var feeder = first.hubFrom === first.hubTo;
-                TMS.operation.createTrip({
-                    fromHub: first.hubFrom, toHub: first.hubTo, feeder: feeder, toCity: feeder ? first.destination : '',
+                var res = TMS.operation.createTrip({
+                    tripId: picked.planned ? picked.planned.id : '',
+                    fromHub: first.hubFrom, toHub: first.hubTo, feeder: picked.feeder,
+                    toCity: picked.feeder ? first.destination : '',
                     distanceKm: picked.dist, orderIds: picked.list.map(function (o) { return o.id; }),
                     vehicleId: veh.id, driverId: tailDriver.id, at: new Date(realNow),
-                    remark: '末班未发出，留场转明早首班'
+                    departAt: picked.planned ? picked.planned.departAt : undefined,
+                    remark: picked.planned
+                        ? '按 ' + picked.planned.code + ' 班配载，末班未发出转明早首班'
+                        : '末班未发出，留场转明早首班'
                 });
-                return;
+                return res.ok ? res.transport : null;
             }
+            return null;
         }
 
         /* ---------- 订单回放 ---------- */
@@ -737,6 +789,330 @@
                 'orders', o.id, util.pick(['批量导入客户订单', '调整区域运价卡', '手工核销应收', '维护网点服务范围', '导出月度对账单'], rand),
                 util.pick(branchStaff, rand).name);
         });
+
+        /* ---------- 理赔审批 ---------- */
+
+        /* 异常闭环时只建了理赔单，审批这一步从来没人走：
+           理赔台账的支出走势、客户「我的理赔」、网点理赔进度因此常年空白，
+           而审批才是理赔模块的主流程。按申报时间推进——多数核准落支出、少数驳回、留一批待审批 */
+        util.sortBy(db.col('claims'), 'createdAt', 'asc').forEach(function (c) {
+            if (c.status !== 'pending') return;
+            var roll = rand();
+            if (roll > 0.82) return;
+            var at = util.addHours(util.toDate(c.createdAt), 8 + rand() * 96);
+            if (at.getTime() > realNowMs) at = new Date(realNowMs - Math.floor(rand() * 24) * 3600000);
+            util.setNow(at);
+            if (roll < 0.68) {
+                TMS.service.approveClaim(c.id, {
+                    handler: '理赔专员',
+                    note: c.isInsured ? '保价足额，按申报价核赔' : '未保价，按运费 5 倍封顶核赔'
+                });
+            } else {
+                TMS.service.rejectClaim(c.id, util.pick(['证据不足，不予赔付', '超出索赔时效', '包装不当由客户自担'], rand), '理赔专员');
+            }
+        });
+
+        /* ---------- 偏离路由留痕 ---------- */
+
+        /* 错分错发在真实网络里就是「件被扫进了别的分拨」，轨迹上必须留下那条偏离补录；
+           回放只建异常、不补录，于是时效监控的「偏离路由」永远 0，
+           轨迹表按「仅偏离」筛出来是空的——功能在，数据从来没进过库。
+           按异常发生时刻补一条 TRANSIT，地点写错落的那个分拨，走领域接口而不是改库 */
+        var deviantDone = 0;
+        util.sortBy(db.col('exceptions'), 'occurredAt', 'desc').forEach(function (e) {
+            if (deviantDone >= 6 || e.type !== '错分错发') return;
+            var o = db.get('orders', e.orderId);
+            if (!o) return;
+            var wrong = util.pick(db.col('hubs').filter(function (h) {
+                return h.id !== o.hubFrom && h.id !== o.hubTo;
+            }), rand);
+            if (!wrong) return;
+            util.setNow(util.toDate(e.occurredAt));
+            TMS.order.addTraceNode(o.id, {
+                node: 'TRANSIT', location: wrong.name, operator: '分拨作业员',
+                remark: '件误落 ' + wrong.city + ' 分拨，改签下一班', deviant: true
+            });
+            deviantDone++;
+        });
+
+        /* ---------- 在岗快照 ---------- */
+        /* 回放收尾会把历史积压一路推到签收，代价是「此刻」没有正在发生的作业：
+           一线六端打开工作台全是空态，看不出系统怎么流转。真实分拨在任意时刻同时存在
+           待揽收、待分拣、待出港、到件待领取、滞留、待上划货款与未闭环异常。
+           这里按演示派送员的驻场网点补一小批在岗单（同城支线，二十票以内），
+           每一环都走真实领域动作，扫描流水、轨迹、应收应付与绩效仍然自洽 */
+        (function staffOnDuty() {
+            function account(role) {
+                var acc = cfg.demoAccounts.filter(function (a) { return a.role === role; })[0];
+                if (!acc) return null;
+                var u = db.findOne('users', function (x) { return x.username === acc.username; });
+                return u ? { name: acc.name, orgId: u.orgId, personId: u.personId } : null;
+            }
+            var courier = account('deliveryman'), clientAcc = account('client');
+            var br = courier ? db.get('branches', courier.orgId) : null;
+            if (!br || br.status !== 'active') return;
+            var hub = br.hubId;
+            var customer = clientAcc ? db.get('customers', clientAcc.orgId) : null;
+            var hubName = (TMS.master.hubByNameOrId(hub) || {}).name || br.name;
+            var myCourier = courier.personId ? db.get('employees', courier.personId) : null;
+
+            /* 收派网点由「地址哈希 % 同城网点数」派生，想让单落在演示网点，
+               就得试出一个命中它的地址，而不是建完单再改库里的网点字段 */
+            function addrFor(branch, kind) {
+                for (var n = 1; n < 240; n++) {
+                    var a = branch.city + '示范路' + n + '号';
+                    var hit = kind === 'dest'
+                        ? TMS.network.deliverBranch(branch.city, a)
+                        : TMS.network.collectBranch(branch.city, a);
+                    if (hit && hit.id === branch.id) return a;
+                }
+                return branch.city + '示范路 1 号';
+            }
+            var fromAddr = addrFor(br, 'origin'), toAddr = addrFor(br, 'dest');
+            function ago(hours) { return new Date(realNowMs - hours * 3600000); }
+            var seq = 0;
+
+            function newOrder(opt) {
+                var at = opt.at || ago(2 + rand() * 8);
+                util.setNow(at);
+                var goods = opt.goods || util.pick(TMS.master.GOODS, rand).name;
+                var weight = opt.weight || util.round(1.5 + rand() * 22, 2);
+                var pieces = opt.pieces || (weight > 16 ? 2 : 1);
+                var res = TMS.order.create({
+                    origin: br.city, destination: br.city, service: opt.service || '标准',
+                    customerId: customer ? customer.id : '',
+                    customer: customer ? '' : '散客',
+                    contact: customer ? customer.contact : '王敏',
+                    phone: customer ? customer.phone : PHONE(rand),
+                    goods: goods, weight: weight, pieces: pieces, dims: dimsFor(weight / pieces, goods),
+                    declaredValue: opt.declared || 0, isInsured: !!opt.declared,
+                    paymentMethod: opt.payment || '现付', codAmount: opt.cod || 0,
+                    channel: '客户经理',
+                    senderAddress: fromAddr,
+                    receiverName: util.pick(NAMES_SUR, rand) + util.pick(NAMES_GIV, rand),
+                    receiverPhone: PHONE(rand), receiverAddress: toAddr,
+                    remark: opt.remark || '', createdAt: util.iso(at),
+                    actor: (myCourier && myCourier.name) || '客户经理'
+                });
+                seq++;
+                return res.ok ? res.order : null;
+            }
+
+            /* 揽收→入库→分拣：走到哪一格就停在哪一格，停下的那一格正是在岗任务 */
+            function advance(o, to) {
+                var base = util.toDate(o.createdAt);
+                if (to === 'created') return db.get('orders', o.id);
+                util.setNow(util.addHours(base, 1 + rand()));
+                TMS.order.collect(o.id, {
+                    operator: (myCourier && myCourier.name) || '揽收员',
+                    device: util.pick(devicePool, rand), location: br.name
+                });
+                if (to === 'collected') return db.get('orders', o.id);
+                util.setNow(util.addHours(base, 2.5 + rand()));
+                TMS.order.inbound(o.id, {
+                    operator: staffOf(branchStaff, br.id, '作业员').name,
+                    device: util.pick(devicePool, rand), location: br.name
+                });
+                if (to === 'inbound') return db.get('orders', o.id);
+                util.setNow(util.addHours(base, 4 + rand()));
+                var row = db.get('orders', o.id);
+                TMS.order.sort(o.id, {
+                    operator: staffOf(sorters, row.hubFrom, '分拣员').name,
+                    chute: 'C' + util.pad(1 + Math.floor(rand() * 39), 2),
+                    device: util.pick(devicePool, rand), location: hubName
+                });
+                return db.get('orders', o.id);
+            }
+
+            /* 已分拣件装车：停在 departed 是司机端的在途，停在 arrived 是网点端的待领取。
+               到件时刻由入参决定，不写死「5 小时前」——滞留、待领取、签收各自要落在
+               不同的时间刻度上，写死一个值会让签收比到件还早，时间轴直接倒挂 */
+            function shipOut(list, stayTransit, departHours, arriveHours) {
+                var rows = list.map(function (o) { return db.get('orders', o.id); })
+                    .filter(function (o) { return o && o.status === 'sorted' && !o.tripId; });
+                if (rows.length < list.length) return null;
+                var kg = util.round(util.sum(rows, 'chargeableWeight'), 2);
+                /* 支线一趟只有几十公斤：按载重就大挑 9.6 米厢车，装载率会被压到几个点，
+                   运力复盘当场判成放空跑。就小取本场停着的接驳车，
+                   并显式带 vehicleId——createTrip 见到人工派车才不再改判外协舱位 */
+                var veh = util.sortBy(db.col('vehicles').filter(function (v) {
+                    return v.hubId === hub && v.status === 'available' && v.loadKg >= kg;
+                }), 'loadKg', 'asc')[0];
+                if (!veh) return null;
+                var dep = ago(departHours);
+                util.setNow(dep);
+                var res = TMS.operation.createTrip({
+                    fromHub: hub, toHub: hub, feeder: true, toCity: br.city,
+                    distanceKm: 48, orderIds: rows.map(function (o) { return o.id; }),
+                    vehicleId: veh.id, at: dep, remark: '区域内支线·在岗快照'
+                });
+                if (!res.ok) return null;
+                /* 司机交给领域层反查（先沿用车队档案里的固定驾驶员，本场没有在岗的才兜底），
+                   这里硬塞 tailDriver 会把武汉的司机派到上海的支线上 */
+                var who = res.driver ? res.driver.name : '司机';
+                var trId = res.transport.id;
+                util.setNow(new Date(dep.getTime() + 1800000));
+                TMS.operation.startTransport(trId, { operator: who, at: dep });
+                if (stayTransit) return trId;
+                var arr = ago(arriveHours);
+                util.setNow(arr);
+                TMS.operation.arriveTransport(trId, { operator: who, at: arr });
+                return trId;
+            }
+
+            /* 到件之后：认领即进我的派送列表，签收含代收款的单会挂出待上划货款 */
+            function assignOut(o) {
+                if (!myCourier) return;
+                util.setNow(ago(3 + rand() * 2));
+                TMS.order.assignDelivery(o.id, { courierId: myCourier.id, courier: myCourier.name, operator: myCourier.name });
+            }
+
+            function signOut(o, hoursAgo, receiver) {
+                util.setNow(ago(hoursAgo));
+                TMS.order.sign(o.id, {
+                    receiver: receiver || '本人签收', receiverPhone: o.receiverPhone || '',
+                    photo: rand() < 0.6, note: '', operator: (myCourier && myCourier.name) || '派送员',
+                    device: util.pick(devicePool, rand)
+                });
+            }
+
+            var queues = {
+                todo: [], got: [], inbound: [], sorted: [], transit: [],
+                arrived: [], stuck: [], cod: [], delivering: []
+            };
+            function push(list, o, to) {
+                if (!o) return;
+                list.push(advance(o, to));
+            }
+            /* 每一格的建单时刻都要比它的动作时刻更早，且装车时刻晚于分拣时刻，
+               否则时间轴倒挂，轨迹与滞留时长都算不出东西 */
+            for (var q = 0; q < 4; q++) {
+                var o1 = newOrder({ at: ago(0.6 + q * 1.4), remark: '需上门收货，货已备好' });
+                if (o1) queues.todo.push(o1);
+            }
+            /* 取走但还没回网点入库：件在派送员手上，揽收台这一格天天都有 */
+            push(queues.got, newOrder({ at: ago(5) }), 'collected');
+            push(queues.got, newOrder({ at: ago(6.2) }), 'collected');
+            push(queues.inbound, newOrder({ at: ago(6) }), 'inbound');
+            push(queues.inbound, newOrder({ at: ago(7.5) }), 'inbound');
+            for (var s2 = 0; s2 < 3; s2++) push(queues.sorted, newOrder({ at: ago(8 + s2 * 2) }), 'sorted');
+            for (var s3 = 0; s3 < 3; s3++) push(queues.transit, newOrder({ at: ago(12 + s3 * 2) }), 'sorted');
+            for (var s4 = 0; s4 < 5; s4++) push(queues.arrived, newOrder({ at: ago(22 + s4 * 3) }), 'sorted');
+            /* 滞留件按四天前的单造：同城标准的承诺是 72 小时，
+               压两天半才派出去的件既进「在库滞留超 48 小时」，也过承诺时效进派送员的超时风险 */
+            for (var s5 = 0; s5 < 3; s5++) push(queues.stuck, newOrder({ at: ago(96 + s5 * 4) }), 'sorted');
+            for (var s6 = 0; s6 < 2; s6++) push(queues.cod, newOrder({
+                at: ago(40 + s6 * 4), payment: '到付', cod: util.round(300 + rand() * 1500, 0),
+                declared: 1200, goods: '电子产品'
+            }), 'sorted');
+
+            /* 三段车程三种刻度：压库四天多的滞留、今天上午刚到待领取、正在跑的在途。
+               真实网点在任意时刻都是这三件货同时在库，缺一段就少一整块看板 */
+            shipOut(queues.stuck, false, 90, 88);
+            shipOut(queues.arrived, false, 8, 6);
+            shipOut(queues.cod, false, 33, 31);
+            shipOut(queues.transit, true, 5);
+
+            /* 到件之后：奇偶分一半给我今天送，另一半留在网点等认领 */
+            queues.arrived.forEach(function (o, i) {
+                var row = db.get('orders', o.id);
+                if (!row || row.status !== 'arrived') return;
+                if (i % 2 === 0) { assignOut(row); queues.delivering.push(row); }
+            });
+            /* 代收货款：签收后即应挂在我的名下待上划，未上划的差额按制度算我个人欠公司的。
+               先认领再签收，货款记录才认得到派送员 */
+            queues.cod.forEach(function (o, i) {
+                var row = db.get('orders', o.id);
+                if (!row || row.status !== 'arrived') return;
+                assignOut(row);
+                signOut(row, i ? 20 : 26, i ? '前台代收' : '本人签收');
+            });
+
+            /* 压库两天多才派出去的件：认领之后仍在我手上、且早过了承诺时效。
+               「超时风险」和「派送中」是同一条记录的两面——件在我名下但已经来不及了 */
+            var lateRow = db.get('orders', (queues.stuck[0] || {}).id);
+            if (lateRow && lateRow.status === 'arrived' && !lateRow.courierId) {
+                assignOut(lateRow);
+                queues.delivering.push(lateRow);
+            }
+
+            /* 未闭环异常：待受理、已受理未定责、已定责待闭环各留一单，
+               异常台与运营端流程看板才有阶段可看，一线端的「我的异常」也不会永远空。
+               三条各取自不同环节（待揽收 / 派送中 / 到件待领取），阶段差异才是异常的看点；
+               派送员那一条必须挂在自己名下——问题件按 courierId 归人，别人手上的件不算我的 */
+            var excTargets = [
+                queues.todo[3], queues.delivering[0], queues.arrived[3]
+            ];
+            excTargets.forEach(function (o, i) {
+                if (!o) return;
+                util.setNow(ago(2 + i * 3));
+                TMS.order.markProblem(o.id, {
+                    type: util.pick(['地址不清', '货物破损', '客户拒收', '延迟送达'], rand),
+                    level: i === 0 ? '一级' : '二级',
+                    description: util.pick(['外箱挤压变形，内件疑似受损', '超承诺时效仍未送达', '收件人拒收并要求退回', '地址不详无法联系'], rand),
+                    operator: (myCourier && myCourier.name) || '派送员',
+                    location: br.name
+                });
+                var ex = util.sortBy(TMS.service.exceptionsOf(o.id), 'reportedAt', 'desc')[0];
+                if (!ex) return;
+                if (i === 0) return;                                   // 待受理
+                util.setNow(ago(1 + i));
+                TMS.service.processException(ex.id, staffOf(branchStaff, br.id, '客服专员').name);
+                if (i === 1) return;                                   // 已受理未定责
+                var row = db.get('orders', o.id);
+                TMS.service.assignResponsibility(ex.id, {
+                    party: '司机', deduction: util.round(80 + rand() * 400, 0),
+                    responsible: row.driverName || '待指派', actor: '运营主管'
+                });                                          // 已定责待闭环
+            });
+
+            /* 客服工单：一单待受理、一单处理中，网点服务台与首页告警都要它 */
+            var tkOrder = queues.todo[0] || queues.inbound[0];
+            [0, 1].forEach(function (i) {
+                var rel = (i ? queues.delivering[0] : tkOrder);
+                if (!rel) return;
+                util.setNow(ago(1.5 + i * 5));
+                var ticket = TMS.service.createTicket({
+                    orderId: rel.id,
+                    type: i ? '催件' : '物流查询',
+                    priority: i ? '高' : '中',
+                    content: i ? '这批货今天必须到，请安排加急派送' : '请提供最新派送进度与预计到达时间',
+                    assignee: staffOf(branchStaff, br.id, '客服专员').name,
+                    channel: '企业微信'
+                });
+                if (i === 1 && ticket) {
+                    util.setNow(ago(0.5));
+                    TMS.service.processTicket(ticket.id, ticket.assignee);
+                }
+            });
+
+            /* 客户与网点的理赔进度：理赔是跟着运单走的，演示客户手上得有可查的单，
+               而网点服务台只认「这张单在不在我的进出港范围里」——
+               优先用上面刚签收的到付件，它同时满足客户与网点两个口径 */
+            var claimOrder = null;
+            claimOrder = db.get('orders', (queues.cod[0] || queues.arrived[0] || {}).id);
+            if (!claimOrder || claimOrder.status !== 'signed') {
+                claimOrder = customer
+                    ? db.col('orders').find(function (o) { return o.customerId === customer.id && o.status === 'signed'; })
+                    : null;
+            }
+            if (claimOrder && !db.col('claims').some(function (c) { return c.orderId === claimOrder.id; })) {
+                /* 理赔在签收之后申报：破损是收到货才看得见的东西，时序倒过来就成凭据造假 */
+                util.setNow(ago(18));
+                var cl = TMS.service.createClaim({
+                    orderId: claimOrder.id, type: '货物破损',
+                    amount: util.round(Math.min(declaredOf(claimOrder) || 600, 200 + rand() * 800), 0),
+                    reason: '外包装破损，内件外壳裂损', evidence: '开箱照片 4 张、运单照片 1 张',
+                    applicant: (customer && customer.contact) || '客户'
+                });
+                if (cl && cl.status === 'pending') {
+                    util.setNow(ago(6));
+                    TMS.service.approveClaim(cl.id, { handler: '理赔专员', note: '保价足额，按申报价核赔' });
+                }
+            }
+
+            util.setNow(realNow);
+        })();
 
         /* 车辆状态与在途车次对齐：避免历史车次长期占用运力 */
         var busyPlates = {};

@@ -6,7 +6,7 @@
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>登录 - 汇通物流 TMS 运输管理系统</title>
-    <link rel="stylesheet" href="css/app.css?v=20261102f">
+    <link rel="stylesheet" href="css/app.css?v=20261102h">
     <style>
         .tms-login {
             min-height: 100vh;
@@ -163,6 +163,11 @@
         }
 
         .tms-login-foot button:hover { color: #fff; }
+
+        /* 署名沿用全站同一份组件，只按深色底改配色 */
+        .tms-login-foot .tms-copyright { padding: 0; }
+        .tms-login-foot .tms-copyright a { color: rgba(255, 255, 255, .62); border-bottom-color: rgba(255, 255, 255, .28); }
+        .tms-login-foot .tms-copyright a:hover { color: #fff; border-bottom-color: #fff; }
 
         /* 右：登录卡 */
         .tms-login-panel {
@@ -355,6 +360,7 @@
             </div>
             <div class="tms-login-foot">
                 <span id="login-capacity">演示库准备中…</span>
+                <div id="login-copy"></div>
                 <button type="button" id="login-rebuild">重建演示库</button>
             </div>
         </section>
@@ -387,7 +393,7 @@
         </section>
     </div>
 
-    <script src="js/boot.js?v=20261102f"></script>
+    <script src="js/boot.js?v=20261102h"></script>
     <script>
         /* 登录页只用运行时内核，不装外壳：先建库，再把演示账号从 users 表读出来。
            账号的身份、组织、绑定人员一律取种子结果，配置里的 demoAccounts 只提供口令与角色，
@@ -408,6 +414,9 @@
 
             var seeded = TMS.db.isSeeded();
             if (!TMS.boot.ready()) { el('login-capacity').textContent = '运行时模块缺失，请检查 js/boot.js'; return; }
+
+            /* 署名与六端页脚同源：由 ui.copyright() 按 cfg.brand 渲染，登录页不另写一份 */
+            el('login-copy').innerHTML = TMS.ui.copyright();
 
             var accounts = LOOP_ORDER.map(function (role) {
                 var demo = TMS.cfg.demoAccounts.filter(function (a) { return a.role === role; })[0];

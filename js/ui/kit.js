@@ -135,6 +135,15 @@
             (sub ? '<div class="tms-sub">' + out(sub) + '</div>' : '') + '</div>';
     }
 
+    /* 全站页脚署名：三套外壳 + 登录页共用这一份，文案与链接都取自 cfg.brand，
+       换署名只改配置一处。用 div 而非 footer，门户壳里它本就嵌在 footer 内 */
+    function copyright() {
+        var b = (TMS.cfg && TMS.cfg.brand) || {};
+        return '<div class="tms-copyright">© ' + new Date().getFullYear() +
+            ' <a href="' + esc(b.site || '#') + '" target="_blank" rel="noopener noreferrer">' +
+            esc(b.author || '') + '</a></div>';
+    }
+
     function skeleton(lines) {
         var n = lines || 4, s = '';
         for (var i = 0; i < n; i++) s += '<div class="tms-skeleton" style="width:' + (100 - i * 9) + '%"></div>';
@@ -831,7 +840,7 @@
     var ui = {
         esc: esc, out: out, cls: cls, fmt: fmt, money: money, num: num, pct: pct, dash: dash,
         page: page, pageHead: pageHead, card: card, kpi: kpi, kpis: kpis, split: split, row: row, stack: stack,
-        notice: notice, empty: empty, skeleton: skeleton,
+        notice: notice, empty: empty, skeleton: skeleton, copyright: copyright,
         badge: badge, chip: chip, chips: chips, progress: progress, meter: meter, desc: desc, kv: kv, rank: rank,
         tabs: tabs, steps: steps, timeline: timeline, list: list,
         btn: btn, link: link, iconBtn: iconBtn, seg: seg,

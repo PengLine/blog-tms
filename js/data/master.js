@@ -504,23 +504,23 @@
         var i = 1;
         HUB_SEEDS.forEach(function (h) {
             for (var k = 0; k < 3; k++) {
-                out.push(device(i++, h.name, util.pick(models, rand), h.city));
+                out.push(device(i++, h.id, h.name, util.pick(models, rand), h.city));
             }
         });
         var branchesSample = BRANCH_CACHE.slice(0, 24);
         branchesSample.forEach(function (b) {
-            out.push(device(i++, b.name, util.pick(['PDA-9000', 'PDA-7500', '称重一体机'], rand), b.city));
+            out.push(device(i++, b.id, b.name, util.pick(['PDA-9000', 'PDA-7500', '称重一体机'], rand), b.city));
         });
         return out;
     }
 
-    function device(seq, owner, model, city) {
+    function device(seq, orgId, owner, model, city) {
         var r = randFactory(20260101 + seq);
         var status = util.weighted([['online', 74], ['busy', 14], ['offline', 8], ['fault', 4]], r);
         return {
             id: 'DEV' + util.pad(seq, 4),
             name: model + '-' + util.pad(seq, 3),
-            model: model, ownerName: owner, city: city,
+            model: model, orgId: orgId, ownerName: owner, city: city,
             serial: 'SN' + util.randomDigits(10),
             status: status,
             battery: status === 'offline' ? 0 : 20 + Math.floor(r() * 80),
@@ -549,12 +549,50 @@
                 status: 'active', alertCount: Math.floor(r() * 26), updatedAt: util.iso(util.addDays(util.now(), -Math.floor(r() * 40)))
             });
         });
+        /* 枢纽围栏只罩得住枢纽自己那座城市：网点所在城市没有围栏时，
+           客户端「电子围栏覆盖」和网点设置页永远显示暂无，巡检也会把每个作业城市都报成越界。
+           揽收范围按围栏几何判定，那就让每个开点的城市都有一座自己的围栏 */
+        var hubCity = {};
+        HUB_SEEDS.forEach(function (h) { hubCity[h.city] = 1; });
+        var done = {};
+        var gapIdx = -1, gapBranches = -1;
+        BRANCH_CACHE.forEach(function (b) {
+            if (!b.city || hubCity[b.city] || done[b.city]) return;
+            done[b.city] = 1;
+            var c = cityByName(b.city);
+            if (!c) return;
+            var idx = out.length;
+            var cnt = 0;
+            BRANCH_CACHE.forEach(function (x) { if (x.city === b.city) cnt++; });
+            if (cnt > gapBranches) { gapBranches = cnt; gapIdx = idx; }
+            out.push({
+                id: 'GF' + util.pad(idx + 1, 4),
+                name: b.city + '作业围栏',
+                type: 'branch', refId: b.id, city: b.city,
+                center: { lat: c.lat, lng: c.lng },
+                radiusM: 3000 + Math.floor(r() * 4000),
+                polygon: [
+                    { lat: c.lat + 0.02, lng: c.lng - 0.026 }, { lat: c.lat + 0.02, lng: c.lng + 0.026 },
+                    { lat: c.lat - 0.02, lng: c.lng + 0.026 }, { lat: c.lat - 0.02, lng: c.lng - 0.026 }
+                ],
+                status: 'active', alertCount: Math.floor(r() * 9), updatedAt: util.iso(util.addDays(util.now(), -Math.floor(r() * 30)))
+            });
+        });
+        /* 全站都覆盖 = 这页两张卡常年空着，看不出围栏在防什么。
+           留一座「半径争议、停用待复核」的城市当缺口样本：选网点最多的那座，
+           它的显式地点扫描最多，越界明细与覆盖缺口告警才都有真数据可指 */
+        if (gapIdx > -1) {
+            out[gapIdx].status = 'inactive';
+            out[gapIdx].updatedAt = util.iso(util.addDays(util.now(), -3));
+        }
         return out;
     }
 
     function buildWarehouses(rand) {
         var out = [];
-        HUB_SEEDS.slice(0, 6).forEach(function (h, i) {
+        /* 每个分拨一座仓：少一座，该分拨下的网点「库存」页就会退化到第一座仓（上海中央仓），
+           账实不符在一线端最先被看出来 */
+        HUB_SEEDS.forEach(function (h, i) {
             out.push({
                 id: 'WH' + util.pad(i + 1, 4), name: h.city + '中央仓', hubId: h.id, city: h.city,
                 type: i < 2 ? '自营仓' : '租赁仓', areaM2: h.area,

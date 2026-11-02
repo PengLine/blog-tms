@@ -929,7 +929,7 @@
             return {
                 b: b, hub: db.get('hubs', hub) || {},
                 staff: db.col('employees').filter(function (e) { return e.orgId === b.id; }),
-                devices: db.col('devices').filter(function (x) { return x.location === b.name || x.location === b.id; }),
+                devices: db.col('devices').filter(function (x) { return x.orgId === b.id; }),
                 fence: TMS.network.fenceOfCity(b.city),
                 lanes: db.col('trips').filter(function (t) { return t.fromHub === hub || t.toHub === hub; })
             };
