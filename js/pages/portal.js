@@ -21,7 +21,6 @@
     }
 
     function grid(ctx, o) {
-        o.state = o.state || ctx.state;
         return pg.grid(o);
     }
 

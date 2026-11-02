@@ -300,8 +300,8 @@
             columns: pg.orderColumns({ hide: o.hide || ['profit', 'stuck'] }).concat([
                 { key: 'act', label: '操作', sortable: false, width: '168px', render: o.rowActions || orderActions }
             ]),
-            state: ctx.state, keyName: 'id', onRow: 'order:open',
-            fields: pg.orderFields({ searchLabel: o.searchLabel || '单号 / 运单号 / 客户 / 货物' }),
+            keyName: 'id', onRow: 'order:open',
+            fields: o.fields || pg.orderFields({ searchLabel: o.searchLabel || '单号 / 运单号 / 客户 / 货物' }),
             chips: chips.chips, chipsName: chips.chipsName,
             filter: function (r, fs) { return pg.orderFilter(r, fs) && (!o.only || o.only(r, fs)); },
             search: function (r) { return [r.id, r.waybillNo, r.customer, r.goods, r.receiverName, r.senderAddress].join(' '); },
@@ -313,7 +313,7 @@
     function tripGrid(ctx, rows, opts) {
         var o = opts || {};
         return po.grid(ctx, {
-            rows: rows, keyName: 'id', state: ctx.state,
+            rows: rows, keyName: 'id',
             columns: [
                 { key: 'code', label: '车次', render: function (t) { return ui.link(esc(t.code), 'b:go', o.page || 'b-outbound'); } },
                 { key: 'line', label: '线路', render: function (t) { return '<span class="tms-nowrap">' + esc(tripLine(t)) + '</span>'; } },
@@ -332,7 +332,8 @@
                 }
             ],
             search: function (t) { return t.code + ' ' + tripLine(t) + ' ' + (t.plate || '') + ' ' + (t.driver || ''); },
-            title: o.title, sub: o.sub, emptyText: o.emptyText || '本网点归属分拨近两日没有车次', pageSize: 6
+            fields: o.fields, tools: o.tools, title: o.title, sub: o.sub,
+            emptyText: o.emptyText || '本网点归属分拨近两日没有车次', emptySub: o.emptySub, pageSize: o.pageSize || 6
         });
     }
 
@@ -363,28 +364,25 @@
                     ' · 归属分拨 ' + esc(pg.hubName(hubId())),
                 actions: ui.btn('上门揽收开单', { tone: 'primary', act: 'b:new' }),
                 body: [
-                    po.todayStrip(d.list, ROLE),
                     ui.kpis([
                         { label: '今日出港揽收', value: d.outToday.length, unit: '单', tone: 'brand', sub: '近' + os.days + '天共 ' + os.outbound + ' 单' },
                         { label: '今日进港到件', value: d.inToday.length, unit: '单', tone: 'info', sub: '待派 ' + d.waiting.length + ' 单' },
                         { label: '滞留超 24 小时', value: d.aged.length, unit: '单', tone: d.aged.length ? 'danger' : 'muted', sub: '压单先看这里' },
                         { label: '未闭环异常', value: d.ex.length, unit: '件', tone: d.ex.length ? 'warn' : 'muted', sub: '扣款 ' + fmt.money(util.sum(d.ex, 'deductionAmount')) }
                     ]),
-                    ui.card({
+                    /* 桌面端的工作台用列表而不是作业卡片：按钮还是那一步该做的事，
+                       但能排序、能搜、能翻页，主管坐在工位上要的是这个 */
+                    orderGrid(ctx, d.todo, {
                         title: '今日待办', sub: '按当前环节给的按钮就是这一步该做的事，点完即留痕',
-                        tools: ui.link('全部订单', 'b:go', 'b-order'), flat: true,
-                        body: po.taskCards(d.todo.slice(0, 6), ROLE, { emptyText: '手上的件都清了', emptySub: '进港件到齐后这里就空了' })
+                        tools: ui.link('全部订单', 'b:go', 'b-order'), pageSize: 8,
+                        fields: [{ key: 'q', type: 'search', label: '关键字', placeholder: '单号 / 运单号 / 客户 / 货物' }],
+                        hide: ['profit', 'stuck', 'courier', 'freight', 'chargeableWeight', 'customer'],
+                        emptyText: '手上的件都清了', emptySub: '进港件到齐后这里就空了'
                     }),
-                    ui.card({
-                        title: '本分拨车次', sub: '今天要与干线交接的车次', tools: ui.link('出港交接', 'b:go', 'b-outbound'), flat: true,
-                        body: d.trips.length ? ui.list(d.trips.slice(0, 5).map(function (t) {
-                            return {
-                                title: esc(t.code) + ' ' + pg.statusBadge(t.status, pg.TRIP_TEXT),
-                                sub: esc(tripLine(t)) + ' · ' + fmt.number(t.orders) + ' 单 / ' + fmt.kg(t.weight) + ' · 计划 ' + esc(t.departAt),
-                                right: ui.badge(t.loadRate ? ('装载 ' + t.loadRate + '%') : '空载', Number(t.loadRate) > 85 ? 'success' : 'muted'),
-                                act: 'b:go', arg: 'b-outbound'
-                            };
-                        })) : ui.empty('近两日没有车次', '可在「出港」页一键配载生成')
+                    tripGrid(ctx, d.trips, {
+                        title: '本分拨车次', sub: '今天要与干线交接的车次', page: 'b-outbound',
+                        tools: ui.link('出港交接', 'b:go', 'b-outbound'), pageSize: 5,
+                        emptyText: '近两日没有车次', emptySub: '可在「出港」页一键配载生成'
                     }),
                     ui.card({
                         title: '异常与告警', sub: '工单在运营端闭环后这里自动消掉', flat: true,
@@ -663,7 +661,7 @@
                         ]) : ui.empty('网点手上没有在库件', '进出港都交接干净了')
                     }),
                     po.grid(ctx, {
-                        rows: st, keyName: 'id', state: ctx.state, title: '包材库存', sub: '领用直接出库，安全库存与物料档案合计同步',
+                        rows: st, keyName: 'id', title: '包材库存', sub: '领用直接出库，安全库存与物料档案合计同步',
                         columns: [
                             { key: 'material', label: '物料', render: function (s) { return esc(s.material) + ' ' + ui.badge(esc(s.status === 'low' ? '偏低' : s.status === 'out' ? '断货' : '正常'), s.status === 'normal' ? 'success' : s.status === 'low' ? 'warn' : 'danger'); } },
                             { key: 'qty', label: '现存', align: 'right', render: function (s) { return (s.low ? '<span class="tone-danger">' : '') + fmt.number(s.qty) + ' ' + esc(s.unit) + (s.low ? '</span>' : ''); } },
@@ -676,7 +674,7 @@
                         emptyText: '该仓位没有包材库存行', emptySub: '采购收货在运营端「仓储库存」发起'
                     }),
                     po.grid(ctx, {
-                        rows: d.mv, keyName: 'id', state: ctx.state, title: '库存流水', sub: '领用/收货/调整都在这里留痕，账实不符回查看这页',
+                        rows: d.mv, keyName: 'id', title: '库存流水', sub: '领用/收货/调整都在这里留痕，账实不符回查看这页',
                         columns: [
                             { key: 'createdAt', label: '时间', render: function (m) { return ui.timeCell(m.createdAt); } },
                             { key: 'kind', label: '类型', render: function (m) { return ui.badge(esc({ in: '入库', out: '出库', adjust: '调整', purchase: '采购' }[m.kind] || m.kind), m.kind === 'out' ? 'warn' : 'muted'); } },
@@ -771,13 +769,13 @@
                         { label: '在谈理赔', value: d.claims.filter(function (c) { return c.status === 'pending'; }).length, unit: '笔', tone: 'info', sub: '运营端审批' }
                     ]),
                     po.grid(ctx, {
-                        rows: d.ex, keyName: 'id', state: ctx.state, title: '异常工单', sub: '本网点进出港件的异常，一级 2 小时、二级 6 小时未受理自动升级',
+                        rows: d.ex, keyName: 'id', title: '异常工单', sub: '本网点进出港件的异常，一级 2 小时、二级 6 小时未受理自动升级',
                         columns: po.exceptionColumns(), pageSize: 8,
                         search: function (e) { return e.id + ' ' + (e.orderId || '') + ' ' + e.type + ' ' + (e.description || '') + ' ' + (e.handler || ''); },
                         emptyText: '没有异常工单'
                     }),
                     po.grid(ctx, {
-                        rows: d.tickets, keyName: 'id', state: ctx.state, title: '客服工单', sub: '催件/改址/投诉，结单即回写订单',
+                        rows: d.tickets, keyName: 'id', title: '客服工单', sub: '催件/改址/投诉，结单即回写订单',
                         columns: [
                             { key: 'id', label: '工单', render: function (t) { return ui.idCell(t.id, 'noop', { short: true }); } },
                             { key: 'type', label: '类型', render: function (t) { return esc(t.type); } },
@@ -887,7 +885,7 @@
                         }) : ui.empty('近 ' + os.days + ' 天没有成交客户')
                     }),
                     po.grid(ctx, {
-                        rows: d.cod, keyName: 'id', state: ctx.state, title: '代收货款', sub: '到付件签收后生成待上划记录，上划进财务流水',
+                        rows: d.cod, keyName: 'id', title: '代收货款', sub: '到付件签收后生成待上划记录，上划进财务流水',
                         columns: [
                             { key: 'id', label: '记录', render: function (c) { return ui.idCell(c.id, 'noop', { short: true }); } },
                             { key: 'orderId', label: '运单', render: function (c) { return ui.idCell(c.orderId, 'order:open', { short: true }); } },
@@ -959,7 +957,7 @@
                         ], { inline: true })
                     }),
                     po.grid(ctx, {
-                        rows: d.staff, keyName: 'id', state: ctx.state, title: '网点人员', sub: '人事异动在运营端「人事管理」发起，这里只核编制',
+                        rows: d.staff, keyName: 'id', title: '网点人员', sub: '人事异动在运营端「人事管理」发起，这里只核编制',
                         columns: [
                             { key: 'name', label: '姓名', render: function (e) { return esc(e.name) + ' ' + ui.badge(esc(TMS.people.roleName(e.role)), e.role === 'deliveryman' ? 'brand' : 'muted'); } },
                             { key: 'position', label: '岗位', render: function (e) { return esc(e.position || '—'); } },
@@ -972,7 +970,7 @@
                         emptyText: '网点还没有员工档案', pageSize: 10
                     }),
                     po.grid(ctx, {
-                        rows: d.devices, keyName: 'id', state: ctx.state, title: '扫描设备', sub: '同步即上报在线与电量，故障机只能由运营端维修工单闭环',
+                        rows: d.devices, keyName: 'id', title: '扫描设备', sub: '同步即上报在线与电量，故障机只能由运营端维修工单闭环',
                         columns: [
                             { key: 'name', label: '设备', render: function (x) { return esc(x.name || x.id); } },
                             { key: 'model', label: '型号', render: function (x) { return esc(x.model || '—'); } },

@@ -231,12 +231,19 @@
         return String(str == null ? '' : str).length * 2;
     }
 
+    /* 站点根相对路径 → 当前页面能用的地址。
+       页面按角色分了目录，登录页在根、业务页在 admin/ branch/ … 之下，
+       同一个 'index.html' 在两边指向完全不同的文件，只有带上 boot.js 反推出的基准才说得清 */
+    function url(path) {
+        return (TMS.base || '') + String(path == null ? '' : path);
+    }
+
     TMS.util = {
         esc: esc, pad: pad, hash: hash, rng: rng, money: money, round: round, num: num, pct: pct,
         fmt: fmt, iso: iso, now: now, setNow: setNow, dayStart: dayStart, addHours: addHours, addDays: addDays,
         dateKey: dateKey, monthKey: monthKey, hoursBetween: hoursBetween, toDate: toDate,
         clone: clone, sum: sum, groupBy: groupBy, countBy: countBy, unique: unique, sortBy: sortBy,
         pick: pick, weighted: weighted, randomDigits: randomDigits, seasonFactor: seasonFactor, distanceKm: distanceKm,
-        chunk: chunk, bytes: bytes
+        chunk: chunk, bytes: bytes, url: url
     };
 })(window);

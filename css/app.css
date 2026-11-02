@@ -195,22 +195,34 @@ body.tms-body img { max-width: 100%; }
 
 /* ---------- 外壳骨架：门户 ---------- */
 
+/* tms-shell 的 flex 是「侧栏 + 主区」横排，门户复用它时必须是竖排：
+   沿用 row 的后果是页头、正文、页脚变成三列并排，正文被挤成 40px 宽 */
+.tms-shell-portal { display: flex; flex-direction: column; }
+
 .tms-portal-head {
     background: #fff; border-bottom: 1px solid var(--tms-line);
     position: sticky; top: 0; z-index: 30;
 }
-.tms-portal-inner { max-width: 1180px; margin: 0 auto; padding: 0 20px; height: 62px; display: flex; align-items: center; gap: 22px; }
-.tms-portal-nav { display: flex; gap: 4px; flex-wrap: wrap; }
-.tms-portal-nav a { padding: 7px 14px; border-radius: 8px; color: var(--tms-ink-2); font-size: 14px; }
+.tms-portal-inner { max-width: 1180px; margin: 0 auto; padding: 0 20px; height: 62px; display: flex; align-items: center; gap: 18px; }
+.tms-portal-brand { display: flex; align-items: center; gap: 9px; flex: none; }
+.tms-portal-brand b { font-size: 16px; color: var(--tms-ink); }
+/* 导航横向可滚：客户端七个入口，窄屏折行会把 62px 的页头撑成两行 */
+.tms-portal-nav { display: flex; gap: 4px; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tms-portal-nav::-webkit-scrollbar { display: none; }
+.tms-portal-nav a { padding: 7px 12px; border-radius: 8px; color: var(--tms-ink-2); font-size: 14px; white-space: nowrap; }
 .tms-portal-nav a:hover { background: var(--tms-bg-2); text-decoration: none; }
 .tms-portal-nav a.active { background: var(--tms-brand-soft); color: var(--tms-brand); font-weight: 600; }
+.tms-portal-side { margin-left: auto; display: flex; gap: 8px; align-items: center; flex: none; }
 .tms-hero {
     background: linear-gradient(120deg, #0f4fa8, #1668dc 55%, #4ecdc4);
     color: #fff; padding: 34px 20px; border-radius: var(--tms-r-lg); margin-bottom: 18px;
 }
 .tms-hero h2 { color: #fff; font-size: 24px; margin-bottom: 6px; }
 .tms-hero p { color: rgba(255, 255, 255, .86); margin: 0; max-width: 640px; }
-.tms-portal-foot { max-width: 1180px; margin: 26px auto 0; padding: 18px 20px 34px; color: var(--tms-ink-3); font-size: 12px; border-top: 1px solid var(--tms-line); }
+/* 页脚横铺到底，文字仍旧对齐正文的 1180 栏宽；
+   margin-top:auto 让内容不足一屏时页脚贴在视口底部，而不是浮在半空 */
+.tms-portal-foot { margin-top: auto; padding: 18px 20px 30px; color: var(--tms-ink-3); font-size: 12px; border-top: 1px solid var(--tms-line); }
+.tms-portal-foot > div { max-width: 1180px; margin: 0 auto; }
 .tms-shell-portal .tms-content { max-width: 1180px; margin: 0 auto; padding: 18px 20px; width: 100%; }
 
 /* ---------- 页面头 / 通用块 ---------- */
@@ -380,13 +392,22 @@ body.tms-body img { max-width: 100%; }
     border: 1px solid var(--tms-line); color: var(--tms-ink-3); font-size: 12px; white-space: nowrap;
 }
 
-/* 筛选栏 */
+/* 筛选栏：永远排在列表之上（见 registry.grid 的 head → chips → body → foot） */
 .tms-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
-.tms-filters .tms-field { flex: 0 1 178px; }
-.tms-filters .tms-field.grow { flex: 1 1 240px; }
-.tms-search { position: relative; flex: 1 1 220px; max-width: 320px; }
+.tms-filters > .tms-filter { flex: 0 1 178px; min-width: 150px; }
+.tms-filters > .tms-filter.tms-search { flex: 1 1 220px; max-width: 320px; }
+.tms-filters > .tms-filter-actions { margin-left: auto; display: flex; gap: 8px; align-items: flex-end; flex: 0 0 auto; }
+.tms-search { position: relative; }
 .tms-search .tms-input { padding-left: 30px; }
 .tms-search .tms-ico { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--tms-ink-4); font-size: 14px; }
+/* 筛选栏的搜索格上面还压着一行 label，图标要贴着输入框而不是整格中心 */
+.tms-filter.tms-search .tms-ico { top: auto; transform: none; bottom: 9px; }
+
+/* 一张列表 = 一个 data-sk 状态容器：筛选、快捷标签、分页条都归它自己，
+   一页放两张表时互不干扰（委托按 closest('[data-sk]') 找回写目标） */
+.tms-grid > .tms-filters { margin-bottom: 10px; }
+.tms-grid > .tms-filters + .tms-chips { margin-top: -4px; }
+.tms-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
 
 /* ---------- 表格 ---------- */
 

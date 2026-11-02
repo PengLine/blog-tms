@@ -12,7 +12,7 @@
             key: 'tmsDB_v7',
             userKey: 'tmsSession',
             profileKey: 'tmsProfile',
-            schema: 8,
+            schema: 9,
             /* localStorage 配额按 UTF-16 计，浏览器约 5MB（≈250 万字符）：
                建库设计点控制在 ~1.8M 字符（3.6MB）以内，留出运行期写入余量；
                超软阈值先按天裁剪流水，仍超硬阈值才按集合优先级归档最旧记录，保证写入不会整库失败 */
@@ -123,13 +123,19 @@
             claimDays: 7               // 理赔时效
         },
 
+        /* 每个角色一个目录，页面文件名不再重复角色前缀（admin/order.html 就是运营端订单页）。
+           dir 是登录门户与跨角色跳转的路径来源，菜单里的 file 必须落在同一个目录下，
+           对不上的话 gen_pages.py 会生成到别处、guard 也会把人弹回首页。
+           layout 决定外壳骨架：desktop＝侧栏+顶栏的桌面后台，mobile＝一线作业的手感，
+           portal＝客户的网页门户——网点管理员做的是订单、库存、客服、经营报表，
+           本质是后台管理，不是举着手机的作业岗，所以和运营端共用桌面壳 */
         roles: {
-            admin: { name: '运营管理员', portal: 'tms-index.html', home: 'overview' },
-            branch: { name: '网点管理员', portal: 'branch-index.html', home: 'b-home' },
-            sorter: { name: '分拣员', portal: 'sorter-index.html', home: 's-home' },
-            transporter: { name: '运输员', portal: 'transporter-index.html', home: 't-home' },
-            deliveryman: { name: '派送员', portal: 'deliveryman-index.html', home: 'd-home' },
-            client: { name: '客户', portal: 'client-index.html', home: 'c-home' }
+            admin: { name: '运营管理员', dir: 'admin', home: 'overview', layout: 'desktop' },
+            branch: { name: '网点管理员', dir: 'branch', home: 'b-home', layout: 'desktop' },
+            sorter: { name: '分拣员', dir: 'sorter', home: 's-home', layout: 'mobile' },
+            transporter: { name: '运输员', dir: 'transporter', home: 't-home', layout: 'mobile' },
+            deliveryman: { name: '派送员', dir: 'deliveryman', home: 'd-home', layout: 'mobile' },
+            client: { name: '客户', dir: 'client', home: 'c-home', layout: 'portal' }
         },
 
         /* 演示账号：只登记口令与角色，所属组织和人员档案由种子引擎绑定真实员工/客户
@@ -156,6 +162,13 @@
         }
         return nodeMap[code] || { code: code, name: code, stdHours: 8, stage: '' };
     };
+
+    /* 门户文件由目录派生：目录名就是角色 key，登录跳转与守卫只需要读 roles[x].portal 一处 */
+    Object.keys(cfg.roles).forEach(function (key) {
+        var r = cfg.roles[key];
+        r.key = key;
+        r.portal = r.dir + '/index.html';
+    });
 
     TMS.cfg = cfg;
 })(window);

@@ -143,11 +143,33 @@
         return (global.innerWidth || 1280) < 860;
     }
 
-    /* grid({ rows, columns, state, keyName, onRow, filter, search, searchKey, valueOf,
+    /* 每个列表都要有自己的状态：一页放两张表（网点「揽收」页的待揽收 + 今日已揽）时，
+       共用一份 state 的后果是在上面搜索框打字会把下面那张不相干的表一起筛没，
+       翻页也会互相拽着走。键取页面 + 卡片标题，同名标题必须显式给 stateKey */
+    function stateKeyOf(o) {
+        if (o.stateKey) return o.stateKey;
+        var page = (TMS.shell && TMS.shell.state && TMS.shell.state.pageId) || 'page';
+        return page + ':' + (o.title || 'grid');
+    }
+
+    /* 列表本身就带搜索能力（o.search）却没给筛选字段时，搜索框也得露面：
+       只有表格没有输入口的列表，用户只会认为「这页不能查」 */
+    function fieldsOf(o) {
+        var fields = (o.fields || []).slice();
+        var hasSearch = fields.some(function (f) { return f.type === 'search' || f.key === 'q'; });
+        if (!hasSearch && o.search) {
+            fields.unshift({ key: 'q', type: 'search', label: o.searchLabel || '关键字', placeholder: o.searchLabel || '输入关键字筛选' });
+        }
+        return fields;
+    }
+
+    /* grid({ rows, columns, state, stateKey, keyName, onRow, filter, search, searchKey, valueOf,
              fields, chips, chipsName, tools, title, sub, unit, sizeOptions, pageSize, dense, zebra, emptyText, emptySub })
-       —— 列表页的全部管线：筛选 → 搜索 → 排序 → 分页 → 表格/卡片 → 分页条 */
+       —— 列表页的全部管线：筛选 → 搜索 → 排序 → 分页 → 表格/卡片 → 分页条
+       控件永远排在列表之上，分页条永远在列表之下 */
     function grid(o) {
-        var state = o.state || ui.state(o.stateKey || 'grid');
+        var key = stateKeyOf(o);
+        var state = ui.useState(key, o.state);
         var fs = filtersOf(state);
         var rows = o.rows || [];
         if (o.filter) rows = rows.filter(function (r) { return o.filter(r, fs, state); });
@@ -171,13 +193,14 @@
                 dense: o.dense, zebra: o.zebra === false ? false : true,
                 emptyText: o.emptyText || '没有符合条件的数据', emptySub: o.emptySub
             });
-        var head = o.fields && o.fields.length ? ui.filters(o.fields, fs, { actions: o.tools })
+        var fields = fieldsOf(o);
+        var head = fields.length ? ui.filters(fields, fs, { actions: o.tools })
             : (o.tools ? '<div class="tms-row" style="justify-content:flex-end;margin-bottom:10px">' + ui.out(o.tools) + '</div>' : '');
-        var chips = o.chips ? '<div class="tms-row" style="margin:2px 0 10px">' +
+        var chips = o.chips ? '<div class="tms-chips">' +
             ui.chips(o.chips, { name: o.chipsName, value: fs[o.chipsName || ''] }) + '</div>' : '';
         var foot = (state.total > state.pageSize || state.page > 1)
             ? ui.pager(state, { unit: o.unit, sizeOptions: o.sizeOptions, label: '共' }) : '';
-        var inner = head + chips + body + foot;
+        var inner = '<div class="tms-grid" data-sk="' + esc(key) + '">' + head + chips + body + foot + '</div>';
         return o.title ? ui.card({ title: o.title, sub: o.sub, flat: true, body: inner }) : inner;
     }
 

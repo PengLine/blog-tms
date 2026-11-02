@@ -1,6 +1,7 @@
-/* 应用外壳：桌面（运营端）/ 移动（网点·分拣·司机·派送）/ 门户（客户端）三套骨架 + 路由 + 全局动作
-   页面只写内容与动作，导航、权限、刷新、告警、时钟都由 shell 统一装配
-   路由：每个菜单项一个 HTML 文件（无 SPA），hash 形如 #pageId?orderId=HL… 支持深链到子页 */
+/* 应用外壳：桌面（运营端·网点端）/ 移动（分拣·司机·派送）/ 门户（客户端）三套骨架 + 路由 + 全局动作
+   页面只写内容与导航，导航、权限、刷新、告警、时钟都由 shell 统一装配
+   路由：每个菜单项一个 HTML 文件（无 SPA），按角色分目录存放，
+        hash 形如 #pageId?orderId=HL… 支持深链到子页 */
 (function (global) {
     'use strict';
 
@@ -42,10 +43,16 @@
         return item ? item.file : null;
     }
 
+    /* 菜单里的 file 是站点根相对路径（admin/order.html），页面自己住在角色目录里，
+       所以链接一律经 util.url 换算基准：根目录的登录页基准为空，角色页的基准是 ../。
+       少这一步，角色页点侧栏就会跳去 admin/admin/order.html */
     function currentFile() {
-        var path = String(global.location.pathname || '');
-        var name = path.slice(path.lastIndexOf('/') + 1);
-        return name || 'index.html';
+        var segs = String(global.location.pathname || '').split('/').filter(Boolean);
+        return segs.length > 1 ? segs.slice(-2).join('/') : (segs[0] || 'index.html');
+    }
+
+    function hrefOf(file) {
+        return file ? util.url(file) : file;
     }
 
     function go(pageId, params, opts) {
@@ -53,7 +60,7 @@
         var s = shell.state;
         var target = fileOf(pageId, s.session ? s.session.role : s.portal);
         if (target && target !== currentFile() && !o.forceHash) {
-            global.location.href = target + buildHash(pageId, params);
+            global.location.href = hrefOf(target) + buildHash(pageId, params);
             return;
         }
         global.location.hash = buildHash(pageId, params);
@@ -62,19 +69,26 @@
 
     /* ---------- 外壳渲染 ---------- */
 
+    /* 外壳形态由 cfg.roles 声明，不在这里写死角色名单：
+       运营端和网点端是后台（desktop），分拣/司机/派送是手持作业（mobile），客户是网页门户（portal） */
     function layoutOf(portal) {
-        if (portal === 'admin') return 'desktop';
-        if (portal === 'client') return 'portal';
-        return 'mobile';
+        var conf = cfg.roles[portal] || {};
+        return conf.layout || 'mobile';
     }
 
-    function navCounts(role) {
+    /* 侧栏角标：运营端数全库，网点只数自己这一份。
+       不加口径的后果是网点工作台顶着一个「异常 47」，其中 40 单根本不归它管 */
+    function navCounts(session) {
         var out = {};
         try {
-            var orders = db.col('orders');
+            var orders = db.col('orders').filter(TMS.pages.orderScope(session));
+            var mine = {};
+            orders.forEach(function (o) { mine[o.id] = true; });
             out.order = orders.length;
-            out['tms-order'] = orders.length;
-            out.exception = db.col('exceptions').filter(function (e) { return e.status !== 'resolved'; }).length;
+            out['tms-order'] = out.order;
+            out.exception = db.col('exceptions').filter(function (e) {
+                return e.status !== 'resolved' && (!e.orderId || mine[e.orderId]);
+            }).length;
             out['b-service'] = out.exception;
             out.transport = db.col('transports').filter(function (t) { return ['pending', 'loading', 'departed'].indexOf(t.status) > -1; }).length;
             out.pending = db.col('payables').filter(function (p) { return p.status === 'pending'; }).length;
@@ -85,12 +99,12 @@
     }
 
     function sideNav(session, activeId) {
-        var menu = TMS.rbac.adminMenu(session);
-        var counts = navCounts(session.role);
+        var menu = TMS.rbac.navGroups(session);
+        var counts = navCounts(session);
         return '<nav class="tms-side-nav">' + menu.map(function (g) {
             return '<div class="tms-nav-group">' + esc(g.group) + '</div>' + g.items.map(function (it) {
                 var n = counts[it.id] || counts[it.perm && it.perm.split(':')[0]] || 0;
-                return '<a class="tms-nav-item' + (it.id === activeId ? ' active' : '') + '" href="' + esc(it.file) + buildHash(it.id, {}) + '">' +
+                return '<a class="tms-nav-item' + (it.id === activeId ? ' active' : '') + '" href="' + esc(hrefOf(it.file)) + buildHash(it.id, {}) + '">' +
                     '<span class="tms-ico">' + esc(it.icon) + '</span><span>' + esc(it.label) + '</span>' +
                     (n ? '<span class="tms-nav-count' + (it.id === 'exception' ? ' alert' : '') + '">' + n + '</span>' : '') + '</a>';
             }).join('');
@@ -139,7 +153,7 @@
     }
 
     function desktopChrome(session, pageId, title) {
-        var menu = TMS.rbac.adminMenu(session);
+        var menu = TMS.rbac.navGroups(session);
         var crumb = '';
         menu.forEach(function (g) {
             g.items.forEach(function (it) {
@@ -151,7 +165,7 @@
         el.innerHTML =
             '<aside class="tms-side" id="tms-side">' +
             '<div class="tms-side-brand"><span class="tms-side-logo">' + esc(cfg.brand.short) + '</span>' +
-            '<div><b>' + esc(cfg.brand.name) + '</b><span>运输管理系统</span></div></div>' +
+            '<div><b>' + esc(cfg.brand.name) + '</b><span>' + esc(roleName(session)) + '</span></div></div>' +
             sideNav(session, pageId) +
             '<div class="tms-side-foot" id="tms-side-foot"></div></aside>' +
             '<div class="tms-main">' +
@@ -164,12 +178,19 @@
             '<span class="tms-clock" id="tms-clock"></span>' +
             '<span id="tms-days">' + daysSeg(shell.state.days) + '</span>' +
             bell(session) +
-            ui.iconBtn('⚙', 'shell:data', '演示数据维护', {}) +
+            (hasPerm('data:reset') ? ui.iconBtn('⚙', 'shell:data', '演示数据维护', {}) : '') +
             userChip(session) +
             '</header>' +
             '<main class="tms-content" id="tms-content"></main>' +
             '</div>';
         return el;
+    }
+
+    /* 侧栏副标题点出这是哪一端：网点和运营的桌面壳长得一样，
+       不写清楚的话使用者会以为自己在总部后台 */
+    function roleName(session) {
+        var conf = cfg.roles[session.role];
+        return session.role === 'admin' ? '运输管理系统' : ((conf && conf.name) || session.role);
     }
 
     function mobileChrome(session, pageId, title) {
@@ -193,7 +214,7 @@
             '</header>' +
             '<main class="tms-content" id="tms-content"></main>' +
             '<nav class="tms-tabbar">' + tabs.slice(0, 5).map(function (it) {
-                return '<a class="tms-tab' + (it.id === pageId ? ' active' : '') + '" href="' + esc(it.file) + buildHash(it.id, {}) + '">' +
+                return '<a class="tms-tab' + (it.id === pageId ? ' active' : '') + '" href="' + esc(hrefOf(it.file)) + buildHash(it.id, {}) + '">' +
                     '<span class="tms-ico">' + esc(it.icon) + '</span><span>' + esc(it.label) + '</span></a>';
             }).join('') + '</nav>';
         return el;
@@ -205,17 +226,16 @@
         el.className = 'tms-shell tms-shell-portal';
         el.innerHTML =
             '<header class="tms-portal-head"><div class="tms-portal-inner">' +
-            '<div style="display:flex;align-items:center;gap:9px"><span class="tms-side-logo" style="background:var(--tms-brand)">' + esc(cfg.brand.short) + '</span>' +
-            '<b style="color:var(--tms-ink);font-size:16px">' + esc(cfg.brand.name) + '</b></div>' +
+            '<div class="tms-portal-brand"><span class="tms-side-logo">' + esc(cfg.brand.short) + '</span><b>' + esc(cfg.brand.name) + '</b></div>' +
             '<nav class="tms-portal-nav">' + items.filter(function (it) { return hasPerm(it.perm); }).map(function (it) {
-                return '<a class="' + (it.id === pageId ? 'active' : '') + '" href="' + esc(it.file) + buildHash(it.id, {}) + '">' + esc(it.label) + '</a>';
+                return '<a class="' + (it.id === pageId ? 'active' : '') + '" href="' + esc(hrefOf(it.file)) + buildHash(it.id, {}) + '">' + esc(it.label) + '</a>';
             }).join('') + '</nav>' +
-            '<div style="margin-left:auto;display:flex;gap:8px;align-items:center">' + userChip(session) +
+            '<div class="tms-portal-side">' + userChip(session) +
             ui.btn('退出', { size: 'sm', act: 'shell:logout' }) + '</div>' +
             '</div></header>' +
             '<main class="tms-content" id="tms-content"></main>' +
-            '<footer class="tms-portal-foot">' + esc(cfg.brand.name) + ' · 演示环境，全部数据存于本机浏览器 localStorage，' +
-            '重建数据或清理浏览器记录即恢复初始状态</footer>';
+            '<footer class="tms-portal-foot"><div>' + esc(cfg.brand.name) + ' · 演示环境，全部数据存于本机浏览器 localStorage，' +
+            '重建数据或清理浏览器记录即恢复初始状态</div></footer>';
         return el;
     }
 
@@ -243,12 +263,12 @@
         }
         if (def.perm && !TMS.auth.can(def.perm)) {
             ui.toast('没有访问「' + (def.title || pageId) + '」的权限', 'error');
-            global.location.replace(cfg.roles[session.role].portal);
+            global.location.replace(hrefOf(cfg.roles[session.role].portal));
             return;
         }
         /* 深链指向其他页面文件时先跳过去：一个 HTML 只承载自己注册的那组页面 */
         if (def.file && def.file !== currentFile()) {
-            global.location.replace(def.file + buildHash(def.id, hash.params));
+            global.location.replace(hrefOf(def.file) + buildHash(def.id, hash.params));
             return;
         }
 
@@ -289,6 +309,9 @@
         if (!chrome) return;
         var titleEl = chrome.querySelector('.tms-crumb b, .tms-appbar b');
         if (titleEl) titleEl.textContent = def.title;
+        /* 门户壳顶栏不放页面标题（标题在正文的 .tms-page-head 里），
+           但浏览器标签页得有名字，否则客户切个标签回来全是同一个站点名 */
+        document.title = def.title + ' · ' + cfg.brand.name;
         var activeId = def.id;
         qsa(chrome, '.tms-nav-item,.tms-tab,.tms-portal-nav a,.tms-chip').forEach(function (a) {
             var on = a.getAttribute('data-arg') === activeId || String(a.getAttribute('href') || '').indexOf('#' + activeId) > -1;
@@ -358,9 +381,14 @@
                 if (e.key !== 'Enter') return;
                 var q = jump.value.trim();
                 if (!q) return;
-                var order = db.findOne('orders', function (o) { return o.id === q || o.waybillNo === q || (o.receiverPhone && String(o.receiverPhone).slice(-4) === q); });
-                if (!order) { ui.toast('未找到单号 ' + q, 'warn'); return; }
-                go(TMS.pages.orderPageFor(shell.state.session.role), { orderId: order.id });
+                /* 直达也要讲口径：网点输入别人网点的一票，不该把它拉到详情抽屉里 */
+                var session = shell.state.session;
+                var inScope = db.col('orders').filter(TMS.pages.orderScope(session));
+                var order = inScope.filter(function (o) {
+                    return o.id === q || o.waybillNo === q || (o.receiverPhone && String(o.receiverPhone).slice(-4) === q);
+                })[0];
+                if (!order) { ui.toast('你的数据范围内没有单号 ' + q, 'warn'); return; }
+                go(TMS.pages.orderPageFor(session.role), { orderId: order.id });
             });
         }
         var clock = chrome.querySelector('#tms-clock');
@@ -371,6 +399,14 @@
         var d = util.now();
         el.textContent = util.dateKey(d) + ' ' + util.fmt.time(d);
         global.setTimeout(function () { if (el.parentNode) tick(el); }, 30000);
+    }
+
+    /* 列表控件都包在 [data-sk] 里：一页放两张表时它们的状态必须分开，
+       否则「待揽收」翻页会把「今日揽收记录」一起拽到第 2 页。
+       页签、时间窗这类不属于列表的控件回落到页面级状态 */
+    function stateFor(el) {
+        var host = el && el.closest ? el.closest('[data-sk]') : null;
+        return ui.state(host ? host.getAttribute('data-sk') : shell.state.pageId);
     }
 
     shell.actions = {
@@ -396,6 +432,9 @@
             });
         },
         'shell:data': function (arg, el) {
+            /* 按钮只对持有 data:reset 的角色露面，动作本身再挡一道：
+               键盘/旧链接仍能触达这里，重建会连带清掉别人录的数据 */
+            if (!hasPerm('data:reset')) { ui.toast('没有数据维护权限', 'error'); return; }
             ui.popup(el, [
                 { icon: '⟳', label: '重建演示数据', act: 'shell:rebuild', tone: 'danger' },
                 { icon: '⤓', label: '导出当前库 JSON', act: 'shell:export' },
@@ -499,31 +538,40 @@
         },
         'shell:logout': function () { TMS.auth.logout(); },
         'shell:days': function (n) { shell.state.days = Number(n) || 7; shell.refresh(); },
-        'sort': function (key) {
-            var st = ui.state(shell.state.pageId);
+        'sort': function (key, el) {
+            var st = stateFor(el);
             if (st.sort === key) st.dir = st.dir === 'asc' ? 'desc' : 'asc';
             else { st.sort = key; st.dir = 'desc'; }
             shell.refresh();
         },
-        'page': function (n) { var st = ui.state(shell.state.pageId); st.page = Number(n) || 1; shell.refresh(); },
-        'page:size': function (n) { var st = ui.state(shell.state.pageId); st.pageSize = Number(n); st.page = 1; shell.refresh(); },
+        'page': function (n, el) { var st = stateFor(el); st.page = Number(n) || 1; shell.refresh(); },
+        'page:size': function (n, el) { var st = stateFor(el); st.pageSize = Number(n); st.page = 1; shell.refresh(); },
         'filter': function (value, el) {
-            var st = ui.state(shell.state.pageId);
+            var st = stateFor(el);
             var name = el.getAttribute('name');
             if (!name) return;
             st.filters[name] = value;
             st.page = 1;
-            /* 文本框在容器内输入：局部状态已更新，直接重渲染即可保留焦点外的其他状态 */
+            /* 文本框在容器内输入：局部状态已更新，直接重渲染即可保留焦点外的其他状态。
+               重渲染会换掉整个 DOM，要把焦点还回同一个列表的同一个输入口，
+               否则在一页两张表时打字会跳到上面那张的搜索框里 */
             shell.refresh();
-            var again = document.querySelector('[name="' + name + '"]');
-            if (again && again.focus) { again.focus(); }
+            var host = el.closest ? (el.closest('[data-sk]') || document) : document;
+            var again = host.querySelector('[name="' + name + '"]');
+            if (again && again.focus) {
+                again.focus();
+                if (typeof again.setSelectionRange === 'function') {
+                    var len = String(again.value || '').length;
+                    again.setSelectionRange(len, len);
+                }
+            }
         },
         /* chips 标签筛选：arg 形如 status|transit，竖线后的空串表示回到「全部」 */
-        'chip': function (arg) {
+        'chip': function (arg, el) {
             var s = String(arg || '');
             var i = s.indexOf('|');
             if (i < 0) return;
-            var st = ui.state(shell.state.pageId);
+            var st = stateFor(el);
             st.filters[s.slice(0, i)] = s.slice(i + 1);
             st.page = 1;
             shell.refresh();

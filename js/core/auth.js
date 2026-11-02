@@ -4,7 +4,9 @@
 
     var TMS = global.TMS = global.TMS || {};
     var cfg = TMS.cfg;
-
+    /* 站点根相对路径 → 当前页可用地址：登录页在站点根，业务页在各角色目录下，
+       同一个 'index.html' 字符串在两边指的是不同文件 */
+    var url = function (p) { return TMS.util.url(p); };
     function store() {
         try { return global.localStorage; } catch (err) { return null; }
     }
@@ -14,7 +16,11 @@
         if (!s) return null;
         try {
             var raw = s.getItem(cfg.storage.userKey);
-            return raw ? JSON.parse(raw) : null;
+            var sess = raw ? JSON.parse(raw) : null;
+            /* 门户地址每次现读角色配置，不用会话里存的那份：
+               页面目录一改（比如按角色分目录），老会话里的旧路径会把人直接送进 404 */
+            if (sess && cfg.roles[sess.role]) sess.portal = cfg.roles[sess.role].portal;
+            return sess;
         } catch (err) { return null; }
     }
 
@@ -96,22 +102,22 @@
             loginAt: TMS.util.iso(TMS.util.now())
         };
         writeSession(session);
-        return { ok: true, session: session, redirect: session.portal };
+        return { ok: true, session: session, redirect: url(session.portal) };
     }
 
     function logout() {
         writeSession(null);
-        global.location.href = 'index.html';
+        global.location.href = url('index.html');
     }
 
     /* 页面守卫：角色不符即退回登录页；require 为空表示只要求登录 */
     function require(allowedRoles) {
         var s = readSession();
-        if (!s) { global.location.replace('index.html'); return null; }
+        if (!s) { global.location.replace(url('index.html')); return null; }
         if (allowedRoles && allowedRoles.length) {
             var list = typeof allowedRoles === 'string' ? [allowedRoles] : allowedRoles;
             if (list.indexOf(s.role) === -1) {
-                global.location.replace(s.portal || 'index.html');
+                global.location.replace(url(s.portal || 'index.html'));
                 return null;
             }
         }

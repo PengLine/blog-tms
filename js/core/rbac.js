@@ -50,7 +50,7 @@
     var ROLE_PERMS = {
         admin: ['*'],
         branch: ['overview:view', 'order:view', 'order:create', 'order:advance', 'order:change', 'tracking:view',
-            'scan:operate', 'loading:operate', 'exception:create', 'service:handle', 'cod:remit',
+            'scan:operate', 'loading:operate', 'sorting:operate', 'exception:create', 'service:handle', 'cod:remit',
             'customer:manage', 'warehouse:manage', 'report:view', 'evaluation:manage'],
         sorter: ['overview:view', 'order:view', 'tracking:view', 'scan:operate', 'sorting:operate',
             'loading:operate', 'exception:create', 'report:view'],
@@ -64,103 +64,104 @@
     /* 运营端菜单：外壳按 role + 权限过滤渲染 */
     var ADMIN_MENU = [
         { group: '运营总览', items: [
-            { id: 'overview', file: 'tms-index.html', label: '运营仪表盘', icon: '◎', perm: 'overview:view' },
-            { id: 'operation', file: 'tms-operation.html', label: '经营报表', icon: '▤', perm: 'report:view' },
-            { id: 'timing', file: 'tms-timing.html', label: '时效监控', icon: '◷', perm: 'report:view' },
-            { id: 'monitor', file: 'tms-monitor.html', label: '系统监控', icon: '♨', perm: 'monitor:view' }
+            { id: 'overview', file: 'admin/index.html', label: '运营仪表盘', icon: '◎', perm: 'overview:view' },
+            { id: 'operation', file: 'admin/operation.html', label: '经营报表', icon: '▤', perm: 'report:view' },
+            { id: 'timing', file: 'admin/timing.html', label: '时效监控', icon: '◷', perm: 'report:view' },
+            { id: 'monitor', file: 'admin/monitor.html', label: '系统监控', icon: '♨', perm: 'monitor:view' }
         ] },
         { group: '订单履约', items: [
-            { id: 'order', file: 'tms-order.html', label: '订单管理', icon: '▦', perm: 'order:view' },
-            { id: 'route', file: 'tms-route.html', label: '路由管理', icon: '⇄', perm: 'route:view' },
-            { id: 'tracking', file: 'tms-tracking.html', label: '轨迹中心', icon: '◈', perm: 'tracking:view' },
-            { id: 'scan', file: 'tms-scan.html', label: '扫描记录', icon: '⌕', perm: 'scan:operate' }
+            { id: 'order', file: 'admin/order.html', label: '订单管理', icon: '▦', perm: 'order:view' },
+            { id: 'route', file: 'admin/route.html', label: '路由管理', icon: '⇄', perm: 'route:view' },
+            { id: 'tracking', file: 'admin/tracking.html', label: '轨迹中心', icon: '◈', perm: 'tracking:view' },
+            { id: 'scan', file: 'admin/scan.html', label: '扫描记录', icon: '⌕', perm: 'scan:operate' }
         ] },
         { group: '运输作业', items: [
-            { id: 'sorting', file: 'tms-sorting.html', label: '分拣管理', icon: '⛁', perm: 'sorting:operate' },
-            { id: 'loading', file: 'tms-loading.html', label: '装卸作业', icon: '⛃', perm: 'loading:operate' },
-            { id: 'transport', file: 'tms-transport.html', label: '车次调度', icon: '⛴', perm: 'transport:view' },
-            { id: 'delivery', file: 'tms-delivery.html', label: '末端派送', icon: '⛶', perm: 'delivery:operate' }
+            { id: 'sorting', file: 'admin/sorting.html', label: '分拣管理', icon: '⛁', perm: 'sorting:operate' },
+            { id: 'loading', file: 'admin/loading.html', label: '装卸作业', icon: '⛃', perm: 'loading:operate' },
+            { id: 'transport', file: 'admin/transport.html', label: '车次调度', icon: '⛴', perm: 'transport:view' },
+            { id: 'delivery', file: 'admin/delivery.html', label: '末端派送', icon: '⛶', perm: 'delivery:operate' }
         ] },
         { group: '异常与客服', items: [
-            { id: 'exception', file: 'tms-exception.html', label: '异常工单', icon: '⚠', perm: 'exception:handle' },
-            { id: 'workflow', file: 'tms-workflow.html', label: '闭环看板', icon: '⟳', perm: 'exception:handle' },
-            { id: 'service', file: 'tms-service.html', label: '客服工单', icon: '☏', perm: 'service:handle' },
-            { id: 'claim', file: 'tms-claim.html', label: '理赔管理', icon: '¥', perm: 'claim:approve' }
+            { id: 'exception', file: 'admin/exception.html', label: '异常工单', icon: '⚠', perm: 'exception:handle' },
+            { id: 'workflow', file: 'admin/workflow.html', label: '闭环看板', icon: '⟳', perm: 'exception:handle' },
+            { id: 'service', file: 'admin/service.html', label: '客服工单', icon: '☏', perm: 'service:handle' },
+            { id: 'claim', file: 'admin/claim.html', label: '理赔管理', icon: '¥', perm: 'claim:approve' }
         ] },
         { group: '计费结算', items: [
-            { id: 'rate', file: 'tms-rate.html', label: '运价卡', icon: '≡', perm: 'rate:manage' },
-            { id: 'cod', file: 'tms-cod.html', label: '代收货款', icon: '↧', perm: 'cod:remit' },
-            { id: 'finance', file: 'tms-finance.html', label: '财务流水', icon: '▥', perm: 'finance:view' },
-            { id: 'receivable', file: 'tms-receivable.html', label: '应收对账', icon: '↗', perm: 'finance:view' },
-            { id: 'payable', file: 'tms-payable.html', label: '成本应付', icon: '↘', perm: 'finance:settle' },
-            { id: 'audit', file: 'tms-audit.html', label: '计费复核', icon: '✓', perm: 'order:audit' }
+            { id: 'rate', file: 'admin/rate.html', label: '运价卡', icon: '≡', perm: 'rate:manage' },
+            { id: 'cod', file: 'admin/cod.html', label: '代收货款', icon: '↧', perm: 'cod:remit' },
+            { id: 'finance', file: 'admin/finance.html', label: '财务流水', icon: '▥', perm: 'finance:view' },
+            { id: 'receivable', file: 'admin/receivable.html', label: '应收对账', icon: '↗', perm: 'finance:view' },
+            { id: 'payable', file: 'admin/payable.html', label: '成本应付', icon: '↘', perm: 'finance:settle' },
+            { id: 'audit', file: 'admin/audit.html', label: '计费复核', icon: '✓', perm: 'order:audit' }
         ] },
         { group: '网络与运力', items: [
-            { id: 'network', file: 'tms-network.html', label: '网络规划', icon: '⊞', perm: 'network:manage' },
-            { id: 'customer', file: 'tms-customer.html', label: '客户合同', icon: '☗', perm: 'customer:manage' },
-            { id: 'vehicle', file: 'tms-vehicle.html', label: '车辆管理', icon: '⛟', perm: 'vehicle:manage' },
-            { id: 'capacity', file: 'tms-capacity.html', label: '运力资源', icon: '⛰', perm: 'vehicle:manage' },
-            { id: 'warehouse', file: 'tms-warehouse.html', label: '仓储库存', icon: '⛅', perm: 'warehouse:manage' },
-            { id: 'material', file: 'tms-material.html', label: '物料管理', icon: '⛔', perm: 'warehouse:manage' },
-            { id: 'geofence', file: 'tms-geofence.html', label: '电子围栏', icon: '⬡', perm: 'geofence:manage' }
+            { id: 'network', file: 'admin/network.html', label: '网络规划', icon: '⊞', perm: 'network:manage' },
+            { id: 'customer', file: 'admin/customer.html', label: '客户合同', icon: '☗', perm: 'customer:manage' },
+            { id: 'vehicle', file: 'admin/vehicle.html', label: '车辆管理', icon: '⛟', perm: 'vehicle:manage' },
+            { id: 'capacity', file: 'admin/capacity.html', label: '运力资源', icon: '⛰', perm: 'vehicle:manage' },
+            { id: 'warehouse', file: 'admin/warehouse.html', label: '仓储库存', icon: '⛅', perm: 'warehouse:manage' },
+            { id: 'material', file: 'admin/material.html', label: '物料管理', icon: '⛔', perm: 'warehouse:manage' },
+            { id: 'geofence', file: 'admin/geofence.html', label: '电子围栏', icon: '⬡', perm: 'geofence:manage' }
         ] },
         { group: '组织与绩效', items: [
-            { id: 'hr', file: 'tms-hr.html', label: '人事管理', icon: '☗', perm: 'hr:manage' },
-            { id: 'user', file: 'tms-user.html', label: '用户权限', icon: '⚿', perm: 'user:manage' },
-            { id: 'evaluation', file: 'tms-evaluation.html', label: '员工考核', icon: '★', perm: 'evaluation:manage' },
-            { id: 'performance', file: 'tms-performance.html', label: '绩效看板', icon: '♙', perm: 'evaluation:manage' }
+            { id: 'hr', file: 'admin/hr.html', label: '人事管理', icon: '☗', perm: 'hr:manage' },
+            { id: 'user', file: 'admin/user.html', label: '用户权限', icon: '⚿', perm: 'user:manage' },
+            { id: 'evaluation', file: 'admin/evaluation.html', label: '员工考核', icon: '★', perm: 'evaluation:manage' },
+            { id: 'performance', file: 'admin/performance.html', label: '绩效看板', icon: '♙', perm: 'evaluation:manage' }
         ] }
     ];
 
-    /* 角色端导航：移动外壳底部标签 + 更多功能列表 */
+    /* 角色端导航：移动外壳靠 tab 字段分出底部标签与「更多功能」，
+       桌面外壳（网点）靠 group 字段分段侧栏；两种壳都只渲染有权限的项 */
     var PORTAL_MENU = {
         branch: [
-            { id: 'b-home', file: 'branch-index.html', label: '工作台', icon: '◎', tab: true },
-            { id: 'b-collect', file: 'branch-collection.html', label: '揽收', icon: '↗', tab: true, perm: 'order:create' },
-            { id: 'b-inbound', file: 'branch-inbound.html', label: '进港', icon: '⇩', tab: true, perm: 'scan:operate' },
-            { id: 'b-outbound', file: 'branch-outbound.html', label: '出港', icon: '⇧', tab: true, perm: 'loading:operate' },
-            { id: 'b-order', file: 'branch-order.html', label: '订单', icon: '▦', tab: true, perm: 'order:view' },
-            { id: 'b-stock', file: 'branch-inventory.html', label: '库存', icon: '⛁', perm: 'warehouse:manage' },
-            { id: 'b-sorting', file: 'branch-sorting.html', label: '分拣', icon: '⛃', perm: 'sorting:operate' },
-            { id: 'b-service', file: 'branch-service.html', label: '异常客服', icon: '⚠', perm: 'exception:create' },
-            { id: 'b-operation', file: 'branch-operation.html', label: '网点经营', icon: '▤', perm: 'report:view' },
-            { id: 'b-system', file: 'branch-system.html', label: '网点设置', icon: '⚿', perm: 'customer:manage' }
+            { id: 'b-home', file: 'branch/index.html', label: '工作台', icon: '◎', group: '网点概况' },
+            { id: 'b-operation', file: 'branch/operation.html', label: '网点经营', icon: '▤', group: '网点概况', perm: 'report:view' },
+            { id: 'b-collect', file: 'branch/collection.html', label: '揽收', icon: '↗', group: '进出港作业', perm: 'order:create' },
+            { id: 'b-inbound', file: 'branch/inbound.html', label: '进港', icon: '⇩', group: '进出港作业', perm: 'scan:operate' },
+            { id: 'b-sorting', file: 'branch/sorting.html', label: '分拣交接', icon: '⛃', group: '进出港作业', perm: 'sorting:operate' },
+            { id: 'b-outbound', file: 'branch/outbound.html', label: '出港', icon: '⇧', group: '进出港作业', perm: 'loading:operate' },
+            { id: 'b-order', file: 'branch/order.html', label: '订单', icon: '▦', group: '业务管理', perm: 'order:view' },
+            { id: 'b-stock', file: 'branch/inventory.html', label: '库存', icon: '⛁', group: '业务管理', perm: 'warehouse:manage' },
+            { id: 'b-service', file: 'branch/service.html', label: '异常客服', icon: '⚠', group: '业务管理', perm: 'exception:create' },
+            { id: 'b-system', file: 'branch/system.html', label: '网点设置', icon: '⚿', group: '基础档案', perm: 'customer:manage' }
         ],
         sorter: [
-            { id: 's-home', file: 'sorter-index.html', label: '工作台', icon: '◎', tab: true },
-            { id: 's-scan', file: 'sorter-scan.html', label: '扫描', icon: '⌕', tab: true, perm: 'scan:operate' },
-            { id: 's-sorting', file: 'sorter-sorting.html', label: '分拣', icon: '⛁', tab: true, perm: 'sorting:operate' },
-            { id: 's-schedule', file: 'sorter-schedule.html', label: '排班', icon: '◷', tab: true },
-            { id: 's-clock', file: 'sorter-clock.html', label: '打卡', icon: '⏱', tab: true },
-            { id: 's-performance', file: 'sorter-performance.html', label: '绩效', icon: '★', perm: 'report:view' }
+            { id: 's-home', file: 'sorter/index.html', label: '工作台', icon: '◎', tab: true },
+            { id: 's-scan', file: 'sorter/scan.html', label: '扫描', icon: '⌕', tab: true, perm: 'scan:operate' },
+            { id: 's-sorting', file: 'sorter/sorting.html', label: '分拣', icon: '⛁', tab: true, perm: 'sorting:operate' },
+            { id: 's-schedule', file: 'sorter/schedule.html', label: '排班', icon: '◷', tab: true },
+            { id: 's-clock', file: 'sorter/clock.html', label: '打卡', icon: '⏱', tab: true },
+            { id: 's-performance', file: 'sorter/performance.html', label: '绩效', icon: '★', perm: 'report:view' }
         ],
         transporter: [
-            { id: 't-home', file: 'transporter-index.html', label: '工作台', icon: '◎', tab: true },
-            { id: 't-loading', file: 'transporter-loading.html', label: '装车', icon: '⛃', tab: true, perm: 'loading:operate' },
-            { id: 't-departure', file: 'transporter-departure.html', label: '发车', icon: '⇨', tab: true, perm: 'transport:view' },
-            { id: 't-route', file: 'transporter-route.html', label: '线路', icon: '⇄', tab: true },
-            { id: 't-clock', file: 'transporter-clock.html', label: '打卡', icon: '⏱', tab: true },
-            { id: 't-performance', file: 'transporter-performance.html', label: '绩效', icon: '★', perm: 'report:view' },
-            { id: 't-schedule', file: 'transporter-schedule.html', label: '排班', icon: '◷', perm: 'transport:view' }
+            { id: 't-home', file: 'transporter/index.html', label: '工作台', icon: '◎', tab: true },
+            { id: 't-loading', file: 'transporter/loading.html', label: '装车', icon: '⛃', tab: true, perm: 'loading:operate' },
+            { id: 't-departure', file: 'transporter/departure.html', label: '发车', icon: '⇨', tab: true, perm: 'transport:view' },
+            { id: 't-route', file: 'transporter/route.html', label: '线路', icon: '⇄', tab: true },
+            { id: 't-clock', file: 'transporter/clock.html', label: '打卡', icon: '⏱', tab: true },
+            { id: 't-performance', file: 'transporter/performance.html', label: '绩效', icon: '★', perm: 'report:view' },
+            { id: 't-schedule', file: 'transporter/schedule.html', label: '排班', icon: '◷', perm: 'transport:view' }
         ],
         deliveryman: [
-            { id: 'd-home', file: 'deliveryman-index.html', label: '工作台', icon: '◎', tab: true },
-            { id: 'd-tasks', file: 'deliveryman-tasks.html', label: '派送', icon: '▦', tab: true, perm: 'delivery:operate' },
-            { id: 'd-collection', file: 'deliveryman-collection.html', label: '揽收', icon: '↗', tab: true, perm: 'order:create' },
-            { id: 'd-exception', file: 'deliveryman-exception.html', label: '异常', icon: '⚠', tab: true, perm: 'exception:create' },
-            { id: 'd-clock', file: 'deliveryman-clock.html', label: '打卡', icon: '⏱', tab: true },
-            { id: 'd-performance', file: 'deliveryman-performance.html', label: '绩效', icon: '★', perm: 'report:view' },
-            { id: 'd-areas', file: 'deliveryman-areas.html', label: '责任区域', icon: '⬡' },
-            { id: 'd-contacts', file: 'deliveryman-contacts.html', label: '客户通讯录', icon: '☏' }
+            { id: 'd-home', file: 'deliveryman/index.html', label: '工作台', icon: '◎', tab: true },
+            { id: 'd-tasks', file: 'deliveryman/tasks.html', label: '派送', icon: '▦', tab: true, perm: 'delivery:operate' },
+            { id: 'd-collection', file: 'deliveryman/collection.html', label: '揽收', icon: '↗', tab: true, perm: 'order:create' },
+            { id: 'd-exception', file: 'deliveryman/exception.html', label: '异常', icon: '⚠', tab: true, perm: 'exception:create' },
+            { id: 'd-clock', file: 'deliveryman/clock.html', label: '打卡', icon: '⏱', tab: true },
+            { id: 'd-performance', file: 'deliveryman/performance.html', label: '绩效', icon: '★', perm: 'report:view' },
+            { id: 'd-areas', file: 'deliveryman/areas.html', label: '责任区域', icon: '⬡' },
+            { id: 'd-contacts', file: 'deliveryman/contacts.html', label: '客户通讯录', icon: '☏' }
         ],
         client: [
-            { id: 'c-home', file: 'client-index.html', label: '首页', icon: '◎', tab: true },
-            { id: 'c-send', file: 'client-send.html', label: '寄件', icon: '✈', tab: true, perm: 'order:create' },
-            { id: 'c-order', file: 'client-order.html', label: '订单', icon: '▦', tab: true, perm: 'order:view' },
-            { id: 'c-tracking', file: 'client-tracking.html', label: '跟踪', icon: '◈', tab: true, perm: 'tracking:view' },
-            { id: 'c-branch', file: 'client-branch.html', label: '网点', icon: '⌖' },
-            { id: 'c-profile', file: 'client-profile.html', label: '我的', icon: '☗', tab: true },
-            { id: 'c-points', file: 'client-points.html', label: '积分', icon: '★' }
+            { id: 'c-home', file: 'client/index.html', label: '首页', icon: '◎', tab: true },
+            { id: 'c-send', file: 'client/send.html', label: '寄件', icon: '✈', tab: true, perm: 'order:create' },
+            { id: 'c-order', file: 'client/order.html', label: '订单', icon: '▦', tab: true, perm: 'order:view' },
+            { id: 'c-tracking', file: 'client/tracking.html', label: '跟踪', icon: '◈', tab: true, perm: 'tracking:view' },
+            { id: 'c-branch', file: 'client/branch.html', label: '网点', icon: '⌖' },
+            { id: 'c-profile', file: 'client/profile.html', label: '我的', icon: '☗', tab: true },
+            { id: 'c-points', file: 'client/points.html', label: '积分', icon: '★' }
         ]
     };
 
@@ -269,6 +270,25 @@
         return (PORTAL_MENU[roleKey] || []).slice();
     }
 
+    /* 桌面侧栏的唯一取数口：运营端直接吃 ADMIN_MENU 的分组，
+       网点这类平铺菜单按 item.group 归段后给出同样的形状，外壳不用分情况写两遍。
+       权限过滤在这里做完 —— 把运营端菜单漏给网点会话，等于多一条越权路径 */
+    function navGroups(session) {
+        var roleKey = session ? session.role : 'admin';
+        if (roleKey === 'admin') return adminMenu(session);
+        var perms = permissionsFor(roleKey);
+        var all = perms.indexOf('*') > -1;
+        var out = [];
+        var idx = {};
+        portalMenu(roleKey).forEach(function (it) {
+            if (!all && it.perm && perms.indexOf(it.perm) < 0) return;
+            var g = it.group || '功能';
+            if (idx[g] === undefined) { idx[g] = out.length; out.push({ group: g, items: [] }); }
+            out[idx[g]].items.push(it);
+        });
+        return out;
+    }
+
     function findMenu(roleKey, pageId) {
         var list = roleKey === 'admin' ? ADMIN_MENU.reduce(function (a, g) { return a.concat(g.items); }, []) : portalMenu(roleKey);
         for (var i = 0; i < list.length; i++) if (list[i].id === pageId) return list[i];
@@ -304,6 +324,7 @@
         modules: modules,
         adminMenu: adminMenu,
         portalMenu: portalMenu,
+        navGroups: navGroups,
         findMenu: findMenu,
         guard: guard
     };

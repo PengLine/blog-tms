@@ -21,7 +21,7 @@ global.localStorage = {
     clear: () => storageMap.clear()
 };
 global.addEventListener = () => {};
-global.location = { href: '', hash: '', pathname: '/tms-index.html', replace() {}, search: '' };
+global.location = { href: '', hash: '', pathname: '/admin/index.html', replace() {}, search: '' };
 global.scrollTo = () => {};
 global.URL = { createObjectURL: () => 'blob:smoke' };
 
@@ -60,7 +60,7 @@ global.innerWidth = 1440;
 
 const MODULES = [
     'js/core/config.js', 'js/core/utils.js', 'js/core/bus.js', 'js/core/db.js', 'js/core/ids.js',
-    'js/core/auth.js', 'js/core/rbac.js',
+    'js/core/auth.js', 'js/core/rbac.js', 'js/core/migrations.js',
     'js/data/master.js', 'js/domain/pricing.js', 'js/domain/network.js', 'js/data/seed.js',
     'js/domain/order.js', 'js/domain/operation.js', 'js/domain/finance.js', 'js/domain/service.js',
     'js/domain/people.js', 'js/domain/stats.js', 'js/domain/audit.js', 'js/domain/jobs.js',
@@ -421,11 +421,59 @@ check('外壳与注册器已装配', !!(TMS.ui && TMS.charts && TMS.shell && TMS
     const files = fs.readdirSync(path.join(ROOT, 'js/pages')).filter((f) => /\.js$/.test(f));
     const missing = files.filter((f) => bootSrc.indexOf("'js/pages/" + f + "'") === -1);
     check('boot.js 登记了全部页面模块', missing.length === 0, missing.join('、') || files.length + ' 个模块');
-    // 冒烟清单和浏览器清单不一致 = 测了一套、跑的是另一套
-    const notInSmoke = files.filter((f) => MODULES.indexOf('js/pages/' + f) === -1);
-    check('冒烟与 boot 加载同一组页面模块', notInSmoke.length === 0, notInSmoke.join('、') || files.length + ' 个');
+    /* 冒烟清单和浏览器清单不一致 = 测了一套、跑的是另一套：
+       只比对 js/pages 不够，core/domain 里少一个模块照样能让页面「在 Node 里好好的」 */
+    const allFiles = ['core', 'data', 'domain', 'ui', 'pages'].reduce(function (acc, dir) {
+        return acc.concat(fs.readdirSync(path.join(ROOT, 'js', dir)).filter((f) => /\.js$/.test(f))
+            .map((f) => 'js/' + dir + '/' + f));
+    }, []).concat('js/boot.js');
+    const declared = (bootSrc.match(/'(js\/[a-z]+\/[A-Za-z0-9_.-]+\.js)'/g) || []).map((s) => s.slice(1, -1));
+    const ghost = declared.filter((m) => allFiles.indexOf(m) === -1);
+    check('boot 登记的模块文件都在', ghost.length === 0, ghost.join('、') || declared.length + ' 个');
+    const notInSmoke = declared.filter((m) => MODULES.indexOf(m) === -1);
+    check('冒烟与 boot 加载同一组模块', notInSmoke.length === 0, notInSmoke.join('、') || declared.length + ' 个');
+    /* 模块清单是站点根相对路径，注入前必须乘上从 boot.js 自身 src 反推的基准；
+       少了这一步，角色目录下的页面会去加载 admin/js/core/config.js 然后白屏 */
+    check('boot 按自身 src 反推站点基准', /TMS\.base\s*=\s*BASE/.test(bootSrc) && /BASE \+ path/.test(bootSrc));
 })();
-check('注册表与菜单文件同源', TMS.pages.MENU_FILE['overview'] === 'tms-index.html' && TMS.pages.MENU_FILE['b-home'] === 'branch-index.html');
+check('注册表与菜单文件同源', TMS.pages.MENU_FILE['overview'] === 'admin/index.html' && TMS.pages.MENU_FILE['b-home'] === 'branch/index.html');
+
+/* 目录布局契约：菜单里的 file 同时回答「这页归哪个角色」和「文件在哪个目录」，
+   两边错一处就是登录跳错端、侧栏 404，所以逐条核对磁盘，而不是只看内存里的清单 */
+(() => {
+    const pairs = [];
+    TMS.rbac.ADMIN_MENU.forEach((g) => g.items.forEach((it) => pairs.push(['admin', it.file])));
+    Object.keys(TMS.rbac.PORTAL_MENU).forEach((role) => {
+        TMS.rbac.PORTAL_MENU[role].forEach((it) => pairs.push([role, it.file]));
+    });
+    const offDir = pairs.filter(([role, f]) => {
+        const segs = String(f || '').split('/');
+        return segs.length !== 2 || segs[0] !== (TMS.cfg.roles[role] || {}).dir;
+    });
+    check('页面文件住在自己角色的目录下', offDir.length === 0,
+        offDir.map(([r, f]) => r + '→' + f).join('、') || pairs.length + ' 条菜单');
+
+    const menuFiles = [...new Set(pairs.map(([, f]) => f))];
+    const absent = menuFiles.filter((f) => !fs.existsSync(path.join(ROOT, f)));
+    check('菜单登记的页面文件都在磁盘上', absent.length === 0, absent.join('、') || menuFiles.length + ' 个文件');
+
+    const stray = fs.readdirSync(ROOT).filter((n) => /\.html$/.test(n) && n !== 'index.html');
+    check('站点根只留登录入口，业务页全部进目录', stray.length === 0, stray.join('、') || 'index.html');
+
+    /* 深一层的页面必须把资源引用也降一层，否则 ../css/app.css 写成 css/app.css 就是 404 空壳 */
+    const flat = menuFiles.filter((f) => {
+        const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+        return src.indexOf('src="../js/boot.js') === -1 || src.indexOf('href="../css/app.css') === -1;
+    });
+    check('角色页外壳按目录深度引用资源', flat.length === 0, flat.join('、') || menuFiles.length + ' 个外壳');
+    const loginSrc = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    check('登录页从站点根引用资源', loginSrc.indexOf('src="js/boot.js') > -1 && loginSrc.indexOf('../js/boot.js') === -1);
+
+    /* 一个 HTML 只承载本角色目录里的页面：跨目录深链靠 hash 归位，路径混了就永远对不上 */
+    const dirs = [...new Set(menuFiles.map((f) => f.split('/')[0]))];
+    const emptyDirs = dirs.filter((d) => !fs.existsSync(path.join(ROOT, d)));
+    check('六端各有页面目录', emptyDirs.length === 0, dirs.join('/') || '');
+})();
 (() => {
     const d = TMS.pages.define('__smoke_page', { title: '冒烟页' });
     check('define 自动补齐 id 与文件名', d.id === '__smoke_page' && TMS.pages.get('__smoke_page') === d);
@@ -464,6 +512,17 @@ check('单号直达按角色落地',
     check('列表管线渲染出表格与分页条', html.indexOf('tms-table') > -1 && html.indexOf('tms-pager') > -1 && gs.rows.length === 10);
     check('列定义 hide 生效', html.indexOf('毛利') === -1 && html.indexOf('派送员') === -1);
     check('列表渲染无脏值', !/undefined|NaN/.test(html));
+    /* 用户要的「搜索参数放到上面」是管线级的约定：筛选栏在表格之上、分页条在表格之下 */
+    (() => {
+        const gi = html.indexOf('class="tms-grid');
+        const fi = html.indexOf('tms-filters');
+        const ti = html.indexOf('tms-table');
+        const pi = html.indexOf('tms-pager');
+        check('筛选栏在列表之上、分页条在列表之下', gi > -1 && fi > gi && fi < ti && pi > ti,
+            'grid@' + gi + ' filters@' + fi + ' table@' + ti + ' pager@' + pi);
+        const p = markupProblem(html);
+        check('列表标签结构闭合', !p, p);
+    })();
 })();
 
 (() => {
@@ -486,7 +545,7 @@ check('单号直达按角色落地',
             check(label + ' 渲染不抛错', false, err.message);
             return;
         }
-        check(label + ' 渲染完整', html.length > 60 && !/undefined|NaN|object Object/.test(html), html.length + ' 字符');
+        check(label + ' 渲染完整', html.length > 60 && !/undefined|NaN|object Object/.test(html) && !unclosedTagQuotes(html).length, html.length + ' 字符');
     });
     check('履约步骤覆盖全部主状态', (TMS.pages.statusSteps(sample).match(/tms-step-name/g) || []).length === TMS.cfg.orderFlow.length);
     check('轨迹条目与扫描流水一致', (TMS.pages.traceTimeline(sample.id).match(/tms-tl-item/g) || []).length === TMS.order.traces(sample.id).length);
@@ -514,7 +573,74 @@ TMS.cfg.demoAccounts.forEach((a) => {
 const menuIdsOf = (role) => (role === 'admin'
     ? TMS.rbac.ADMIN_MENU.reduce((a, g) => a.concat(g.items), [])
     : (TMS.rbac.PORTAL_MENU[role] || [])).map((it) => it.id);
+
+/* 外壳形态与侧栏取数口径：网点做的是后台管理，给它手机壳就会让列表退化成卡片流；
+   反过来，桌面壳一旦改吃 ADMIN_MENU，就等于在网点的菜单里挂了一排越权入口 */
+(() => {
+    const groups = TMS.rbac.navGroups(SESSION_BY_ROLE.branch);
+    const ids = groups.reduce((a, g) => a.concat(g.items.map((i) => i.id)), []);
+    check('网点端声明为桌面后台', TMS.cfg.roles.branch.layout === 'desktop' && TMS.cfg.roles.client.layout === 'portal',
+        Object.keys(TMS.cfg.roles).map((r) => r + '→' + TMS.cfg.roles[r].layout).join(' '));
+    check('网点侧栏按组只出自己的页面',
+        groups.length >= 3 && ids.every((i) => /^b-/.test(i)) && ids.length === TMS.rbac.PORTAL_MENU.branch.length,
+        groups.map((g) => g.group + '(' + g.items.length + ')').join(' '));
+    check('运营端侧栏仍是分组全量', TMS.rbac.navGroups(SESSION_BY_ROLE.admin).length === TMS.rbac.ADMIN_MENU.length,
+        TMS.rbac.navGroups(SESSION_BY_ROLE.admin).length + ' 组');
+})();
+
+/* 改 ROLE_PERMS 出厂默认不等于改了老库：权限的活事实存在 roles 行里，
+   不写迁移就会让老浏览器永远看不到新增的那一格菜单 */
+(() => {
+    const v8 = ['overview:view', 'order:view', 'order:create', 'order:advance', 'order:change', 'tracking:view',
+        'scan:operate', 'loading:operate', 'exception:create', 'service:handle', 'cod:remit',
+        'customer:manage', 'warehouse:manage', 'report:view', 'evaluation:manage'];
+    const roles = [
+        { code: 'branch', builtin: true, permissionCodes: v8.slice() },
+        { code: 'branch', builtin: true, permissionCodes: v8.slice(0, 6) },
+        { code: 'client', builtin: true, permissionCodes: v8.slice() }
+    ];
+    TMS.migrations[TMS.cfg.storage.schema]({ data: { roles: roles } }, TMS);
+    check('v9 迁移只补出厂权限、不覆盖手工勾过的组合',
+        roles[0].permissionCodes.indexOf('sorting:operate') > -1 &&
+        roles[1].permissionCodes.length === 6 && roles[2].permissionCodes.length === v8.length,
+        'branch ' + roles[0].permissionCodes.length + ' 项 / 定制 ' + roles[1].permissionCodes.length + ' 项');
+    check('网点出厂权限含分拣交接', TMS.rbac.defaultPerms('branch').indexOf('sorting:operate') > -1);
+})();
+/* 模板字符串里少写一个引号（如 autocomplete="off>）不会抛错，但浏览器会把后面的整段标签
+   当成这个属性的值吞进去，页面结构当场塌掉，肉眼只看到「样式混乱」。
+   这里按「引号内不算标签结束」的规则走一遍，把没闭合的引号揪出来 */
+function unclosedTagQuotes(html) {
+    const bad = [];
+    let i = 0;
+    while (i < html.length) {
+        const lt = html.indexOf('<', i);
+        if (lt < 0) break;
+        const next = html[lt + 1];
+        if (next === '!' || next === '/' || !/[a-zA-Z]/.test(next || '')) { i = lt + 1; continue; }
+        let j = lt + 1, quote = null;
+        while (j < html.length) {
+            const c = html[j];
+            if (quote) { if (c === quote) quote = null; }
+            else if (c === '"' || c === "'") quote = c;
+            else if (c === '>' || c === '<') break;
+            j++;
+        }
+        if (quote || html[j] !== '>') bad.push(html.slice(lt, Math.min(lt + 90, html.length)));
+        i = j + 1;
+    }
+    return bad;
+}
+
 const autoYes = { then: (cb) => { cb(true); return autoYes; }, catch: () => autoYes };
+
+/* 一段渲染结果的两类结构病：脏值 与 引号未闭合 */
+function markupProblem(html) {
+    const m = html.match(/.{0,70}(undefined|NaN|\[object Object\]).{0,70}/);
+    if (m) return '渲染脏值：…' + m[0] + '…';
+    const broken = unclosedTagQuotes(html);
+    if (broken.length) return broken.length + ' 处标签属性引号未闭合：<' + broken[0].slice(1);
+    return '';
+}
 /* 动作里调 ui.toast / shell.refresh 要有落笔的地方；此节点只建一次，
    免得它落进 domLog 的切片窗口里被当成「弹层脏值」 */
 TMS.shell.state.content = realCreateElement('div');
@@ -556,6 +682,11 @@ TMS.shell.state.session = null;
                 const data = def.load ? def.load(ctx) : {};
                 ctx.data = data;
                 const html = String(def.render(ctx, data) || '');
+                const broken = unclosedTagQuotes(html);
+                if (broken.length) {
+                    dirty++;
+                    console.error('  ✗ ' + role + '/' + id + ' 有标签属性引号未闭合（' + broken.length + ' 处）：<' + broken[0].slice(1));
+                }
                 if (html.length < 40) { dirty++; console.error('  ✗ ' + role + '/' + id + ' 渲染内容过少：' + html.length + ' 字符'); }
                 else if (/undefined|NaN|\[object Object\]/.test(html)) {
                     dirty++;
@@ -584,7 +715,6 @@ TMS.shell.state.session = null;
    角色端的动作前缀（b/s/srt/t/d/c）大多收的是订单号，少数收车次、设备、格口，
    所以先按动作全名查表，查不到再退到前缀默认池 */
 (() => {
-    const DIRTY = /undefined|NaN|\[object Object\]/;
     const POOL_BY_PREFIX = {
         ord: 'orders', ex: 'exceptions', wf: 'exceptions', cs: 'tickets', cl: 'claims',
         cod: 'codRecords', rt: 'rateCards', ar: 'receivables', ap: 'payables', fin: 'finances',
@@ -648,11 +778,9 @@ TMS.shell.state.session = null;
                 console.error('  ✗ 表单提交抛错（' + o.title + '）：' + err.message + '\n' + (err.stack || '').split('\n')[1]);
             }
             domLog.slice(mark).forEach((n) => {
-                if (n.innerHTML && DIRTY.test(n.innerHTML)) {
-                    bad++;
-                    const m = n.innerHTML.match(/.{0,60}(undefined|NaN|\[object Object\]).{0,60}/);
-                    console.error('  ✗ 表单提交后渲染脏值（' + o.title + '）：…' + (m ? m[0] : '') + '…');
-                }
+                if (!n.innerHTML) return;
+                const p = markupProblem(n.innerHTML);
+                if (p) { bad++; console.error('  ✗ 表单提交后弹层 ' + p + '（' + o.title + '）'); }
             });
         }
         return handle;
@@ -692,10 +820,9 @@ TMS.shell.state.session = null;
                             '\n' + (err.stack || '').split('\n')[1]);
                     }
                     domLog.slice(mark).forEach((n) => {
-                        if (!n.innerHTML || !DIRTY.test(n.innerHTML)) return;
-                        bad++;
-                        const m = n.innerHTML.match(/.{0,70}(undefined|NaN|\[object Object\]).{0,70}/);
-                        console.error('  ✗ ' + role + '/' + id + ' 动作 ' + act + ' 弹层渲染脏值：…' + (m ? m[0] : '') + '…');
+                        if (!n.innerHTML) return;
+                        const p = markupProblem(n.innerHTML);
+                        if (p) { bad++; console.error('  ✗ ' + role + '/' + id + ' 动作 ' + act + ' 弹层 ' + p); }
                     });
                 });
             });

@@ -299,12 +299,13 @@
         }).join('');
     }
 
-    /* field(def, value)：def.type 决定控件形态，未知 type 一律当 text（不静默丢弃） */
-    function field(def, value) {
+    /* field(def, value, domId)：def.type 决定控件形态，未知 type 一律当 text（不静默丢弃）
+       domId 只在同一页要放两组同名字段时才需要（筛选栏用它避开重复 id） */
+    function field(def, value, domId) {
         var f = typeof def === 'string' ? { key: def, label: def } : (def || {});
         var v = value == null ? (f.value == null ? '' : f.value) : value;
         var type = f.type || 'text';
-        var id = 'f_' + f.key;
+        var id = domId || 'f_' + f.key;
         var change = attr('data-change', f.change);
         var input;
         var datalist = '';
@@ -331,7 +332,7 @@
         } else if (type === 'city') {
             datalist = '<datalist id="tms-cities">' + cityList().map(function (c) { return '<option value="' + esc(c) + '">'; }).join('') + '</datalist>';
             input = '<input class="tms-input" id="' + id + '" name="' + esc(f.key) + '" list="tms-cities" value="' + esc(v) + '"' + change +
-                attr('placeholder', f.placeholder || '输入城市名') + (f.required ? ' required' : '') + ' autocomplete="off>';
+                attr('placeholder', f.placeholder || '输入城市名') + (f.required ? ' required' : '') + ' autocomplete="off">';
         } else if (type === 'datetime') {
             input = '<input class="tms-input" id="' + id + '" type="datetime-local" name="' + esc(f.key) + '" value="' + esc(String(v || '').slice(0, 16)) + '"' + change + (f.disabled ? ' disabled' : '') + '>';
         } else if (type === 'date') {
@@ -343,7 +344,7 @@
         } else {
             input = '<input class="tms-input" id="' + id + '" type="' + (type === 'password' ? 'password' : 'text') + '" name="' + esc(f.key) + '" value="' + esc(v) + '"' + change +
                 attr('placeholder', f.placeholder) + (f.readonly ? ' readonly' : '') + (f.disabled ? ' disabled' : '') +
-                attr('maxlength', f.maxlength) + (f.required ? ' required' : '') + ' autocomplete="off>';
+                attr('maxlength', f.maxlength) + (f.required ? ' required' : '') + ' autocomplete="off">';
         }
 
         /* prepend/append 单位、prefix/suffix 文本一律渲染进 input-group，不依赖组件外部样式 */
@@ -735,6 +736,7 @@
 
     /* 筛选栏：字段与 field() 同构，值从 state 取；控件自动带 data-change="filter"，
        外壳委托后由页面把 change 写回 state 并重渲染，输入即筛选无需回车 */
+    var filterSeq = 0;
     function filters(fields, state, opts) {
         var o = opts || {};
         return '<div class="tms-filters">' + (fields || []).map(function (f) {
@@ -742,12 +744,18 @@
             Object.keys(f).forEach(function (k) { def[k] = f[k]; });
             if (!def.type) def.type = 'select';
             if (!def.change) def.change = 'filter';
+            /* 一页放两张表时同名筛选框会撞 id，label 指到上面那张的输入口：
+               id 每次渲染递增，name 保持字段名不变（委托靠 name 回写状态） */
+            def.key = def.key || 'f';
+            var id = 'flt_' + (++filterSeq) + '_' + def.key;
             var isSearch = def.type === 'search';
-            if (isSearch) { def.type = 'text'; def.placeholder = def.placeholder || '单号 / 客户 / 地址'; }
-            var html = field(def, (state || {})[f.key]);
-            return '<div class="' + (isSearch ? 'tms-search' : '') + '">' + (isSearch ? '<span class="tms-ico">⌕</span>' : '') + html + '</div>';
+            if (isSearch) { def.type = 'text'; def.placeholder = def.placeholder || def.label || '单号 / 客户 / 地址'; }
+            var html = field(def, (state || {})[f.key], id);
+            /* 每格都包一个 tms-filter：栅格宽度给外壳，输入框自己填满，
+               不包的话 .tms-field 只是包装 div 的后代，flex 尺寸根本落不到栏位上 */
+            return '<div class="tms-filter' + (isSearch ? ' tms-search' : '') + '">' + (isSearch ? '<span class="tms-ico">⌕</span>' : '') + html + '</div>';
         }).join('') +
-            (o.actions ? '<div class="tms-field" style="justify-content:flex-end">' + out(o.actions) + '</div>' : '') +
+            (o.actions ? '<div class="tms-filter-actions">' + out(o.actions) + '</div>' : '') +
             '</div>';
     }
 
@@ -832,6 +840,13 @@
             ui.state.map = ui.state.map || {};
             if (!ui.state.map[key]) ui.state.map[key] = init || { page: 1, pageSize: TMS.cfg.pageSize, sort: null, dir: 'desc', filters: {} };
             return ui.state.map[key];
+        },
+        /* 同一个状态对象挂到多个键上：页面自己持有的 ctx.state 与列表卡片上的 data-sk
+           必须指向同一份，否则委托写回的是列表状态、页面读的却是页状态，筛选会「点了不生效」 */
+        useState: function (key, obj) {
+            ui.state.map = ui.state.map || {};
+            if (obj) ui.state.map[key] = obj;
+            return ui.state(key);
         },
         resetState: function (key) { if (ui.state.map) delete ui.state.map[key]; }
     };
