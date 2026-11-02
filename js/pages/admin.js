@@ -865,7 +865,8 @@
                     alertCard,
                     ui.card({
                         title: '审计链校验', sub: '每条日志带 prev + 内容哈希，事后改库必定露馅', flat: true,
-                        tools: ui.btn('重新校验', { size: 'sm', act: 'mo:verify' }),
+                        tools: ui.btn('留痕台账', { size: 'sm', act: 'mo:audit' }) +
+                            ui.btn('重新校验', { size: 'sm', act: 'mo:verify' }),
                         body: (d.verify.ok
                             ? ui.notice('全链 ' + d.verify.count + ' 条日志校验通过，锚点 ' + esc(db.load().auditAnchor || 'GENESIS'), 'success', '未被篡改')
                             : ui.notice('第 ' + d.verify.index + ' 条起断链：' + esc(d.verify.message), 'danger', '需要核查数据被外部修改的路径')) +
@@ -895,9 +896,48 @@
                 var v = TMS.audit.verify();
                 ui.toast(v.ok ? ('审计链完整（' + v.count + ' 条）') : ('断链：' + v.message), v.ok ? 'success' : 'error');
             },
-            'mo:device': function (id) { deviceModal(id); }
+            'mo:device': function (id) { deviceModal(id); },
+            'mo:audit': function (action) { auditLedger(action); }
         }
     });
+
+    /* 审计日志只有「最近六条」这一个窗口，出事故要翻的是全量与某一类动作。
+       动作字典在领域层（ACTIONS），下拉/标签都从 actionOptions 出，
+       页面不再自己抄一份动作清单——加了新动作却忘了同步字典，台账就会显示成英文 key。
+       换过滤条件时抽屉必须原地替换：ui.drawer 每次都往 body 追加一层，
+       不关掉上一张的话点十个标签就叠十张，最上面那张永远是第一次打开的全量 */
+    var ledgerSheet = null;
+    function auditLedger(action) {
+        var opts = TMS.audit.actionOptions();
+        var rows = TMS.audit.list({ pageSize: 400, page: 1 }).rows.filter(function (l) {
+            return !action || l.action === action;
+        });
+        rows = util.sortBy(rows, 'at', 'desc');
+        if (ledgerSheet) ledgerSheet.close();
+        ledgerSheet = ui.drawer({
+            title: '操作留痕台账',
+            sub: '哈希链串起的只追加日志 · 全库 ' + db.col('auditLogs').length + ' 条，' +
+                (action ? '按「' + esc(TMS.audit.ACTIONS[action] || action) + '」过滤' : '未过滤') + '，展示最近 ' + rows.length + ' 条',
+            body: ui.stack([
+                '<div class="tms-row" style="flex-wrap:wrap">' +
+                    ui.link('全部动作', 'mo:audit', '', { tone: action ? 'ghost' : 'brand' }) +
+                    opts.map(function (o) {
+                        return ui.link(o.label, 'mo:audit', o.value, { tone: o.value === action ? 'brand' : 'ghost' });
+                    }).join('') + '</div>',
+                rows.length ? ui.table({
+                    dense: true, keyName: 'id', rows: rows,
+                    columns: [
+                        { key: 'at', label: '时刻', render: function (l) { return '<span class="tms-mono">' + esc(fmt.dateTime(l.at)) + '</span>'; } },
+                        { key: 'action', label: '动作', render: function (l) { return esc(TMS.audit.ACTIONS[l.action] || l.action); } },
+                        { key: 'entity', label: '对象', render: function (l) { return esc(l.entity) + ' <span class="tms-dim tms-mono">' + esc(l.refId || '—') + '</span>'; } },
+                        { key: 'detail', label: '内容' },
+                        { key: 'actor', label: '操作人' },
+                        { key: 'hash', label: '链位', render: function (l) { return '<span class="tms-dim tms-mono">' + esc(l.hash) + '</span>'; } }
+                    ]
+                }) : ui.empty('该动作还没有留痕', '换一个动作标签，或回台账页执行一次该操作')
+            ])
+        });
+    }
 
     function describeJob(out) {
         if (!out) return '无变更';
@@ -1753,6 +1793,7 @@
                 { key: 'device', label: '终端', type: 'select', options: [{ value: '', label: '节点默认终端' }].concat(ui.optionsOf(db.col('devices'), 'id', 'name')) },
                 { key: 'weight', label: '称重(kg)', type: 'number', min: 0, hint: '仅称重节点需要，留空表示与计费重一致' },
                 { key: 'result', label: '扫描结果', type: 'select', options: ui.optionsOf(['ok', '货物破损', '面单无法识别', '重复扫描', '拒收']) },
+                { key: 'deviant', label: '记为偏离路由', type: 'checkbox', hint: '错分、绕转、误落他线——勾上后该节点计入「偏离轨迹」，与时效看板同源' },
                 { key: 'remark', label: '备注', type: 'textarea', rows: 2 }
             ],
             okText: '写入流水',
@@ -1761,14 +1802,24 @@
                 var o = db.get('orders', key) || db.findOne('orders', function (x) { return x.waybillNo === key; });
                 if (!o) return '找不到单号 ' + key;
                 if (!data.node) return '请选择作业节点';
+                /* 人工补录最容易写的就是「件其实不在该去的地方」。
+                   拿上一站的地点和本次地点对着计划路由比：计划里从这一站出发不该到那里，
+                   就是绕转/错分，系统先替操作员判一次，勾不勾都留得住痕 */
+                var trs = TMS.order.traces(o.id);
+                var last = trs.length ? trs[trs.length - 1] : null;
+                var auto = !!(last && last.location && data.location &&
+                    TMS.network.deviates(TMS.network.planOf(o), last.location, data.location));
                 var scan = TMS.order.addScan(o, data.node, {
                     at: data.at || undefined, location: data.location, operator: data.operator,
                     device: data.device, weight: data.weight === '' ? undefined : data.weight,
-                    result: data.result, remark: data.remark
+                    result: data.result, remark: data.remark, deviant: !!data.deviant || auto
                 });
                 TMS.audit.log('order.advance', 'orders', o.id,
-                    '补录扫描 ' + cfg.nodeOf(scan.node).name + ' @' + scan.opTime, actor());
-                ui.toast('已补录 ' + cfg.nodeOf(scan.node).name + ' · ' + o.id, 'success');
+                    '补录扫描 ' + cfg.nodeOf(scan.node).name + ' @' + scan.opTime +
+                    ((data.deviant || auto) ? '（偏离路由' + (auto && !data.deviant ? '·系统判定' : '') + '）' : ''), actor());
+                ui.toast('已补录 ' + cfg.nodeOf(scan.node).name + ' · ' + o.id +
+                    (auto && !data.deviant ? '；本次地点与计划路由不符，已自动记为偏离' : ''),
+                    auto ? 'warn' : 'success');
             }
         });
     }
@@ -13728,7 +13779,6 @@
             TMS.shell.refresh();
             ui.toast('已清除单人员筛选', 'info');
         },
-        'perf:seg': function () { /* 分组由外壳统一处理，这里只需保证动作可被回放 */ },
         'perf:check': function () { evalCheck(); },
         'perf:goEval': function () {
             var fs = pg.filtersOf(ui.state('performance'));

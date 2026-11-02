@@ -392,26 +392,6 @@
         return out;
     }
 
-    function performanceSummary(period) {
-        var rows = db.col('performances').filter(function (p) { return !period || p.period === period; });
-        var byRole = {};
-        rows.forEach(function (p) {
-            var role = (db.get('employees', p.employeeId) || {}).role || 'other';
-            (byRole[role] = byRole[role] || []).push(p);
-        });
-        return {
-            count: rows.length,
-            avgScore: rows.length ? util.round(util.sum(rows, 'score') / rows.length, 1) : 0,
-            byGrade: ['A+', 'A', 'B', 'C', 'D'].map(function (g) { return { label: g, value: rows.filter(function (p) { return p.grade === g; }).length }; }),
-            byRole: Object.keys(byRole).map(function (k) {
-                var g = byRole[k];
-                return { label: roleName(k), value: g.length, avgScore: util.round(util.sum(g, 'score') / g.length, 1), bottom: withMetrics(util.sortBy(g, 'score', 'asc')[0]) };
-            }).sort(function (a, b) { return b.avgScore - a.avgScore; }),
-            top: util.sortBy(rows, 'score', 'desc').slice(0, 8).map(withMetrics),
-            bottom: util.sortBy(rows, 'score', 'asc').slice(0, 8).map(withMetrics)
-        };
-    }
-
     function roleName(r) {
         return ({ admin: '职能管理', branch: '网点/分拨', sorter: '分拣员', transporter: '司机', deliveryman: '派送员', client: '客户' })[r] || r;
     }
@@ -495,7 +475,7 @@
         computePerformance: computePerformance, computeMetrics: computeMetrics, withMetrics: withMetrics,
         defaultPeriod: defaultPeriod,
         generatePerformances: generatePerformances,
-        performanceSummary: performanceSummary, roleName: roleName, gradeOf: gradeOf,
+        roleName: roleName, gradeOf: gradeOf,
         evaluate: evaluate, finalizeEvaluation: finalizeEvaluation,
         awardPoints: awardPoints, redeemPoints: redeemPoints, pointsOf: pointsOf
     };

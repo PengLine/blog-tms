@@ -93,10 +93,13 @@
             if (onboard.length && otherHubs.length) {
                 util.setNow(new Date(dep.getTime() + 3600000));
                 var wrong = otherHubs[Math.floor(rand() * otherHubs.length)];
-                TMS.order.addTraceNode(onboard[0].id, {
-                    node: 'TRANSIT', location: wrong.name, operator: tailDriver.name,
-                    remark: '件误上他线，落 ' + wrong.city + ' 分拨，已补录待改签', deviant: true
+                var offScan = TMS.order.addScan(onboard[0], 'TRANSIT', {
+                    location: wrong.name, operator: tailDriver.name,
+                    remark: '件误上他线，落 ' + wrong.city + ' 分拨，已补录待改签',
+                    at: new Date(dep.getTime() + 3600000), deviant: true
                 });
+                db.commit('scans', onboard[0].id, 'order:trace');
+                if (offScan) offScan.source = 'manual';
             }
             util.setNow(realNow);
         }
@@ -817,23 +820,69 @@
         /* 错分错发在真实网络里就是「件被扫进了别的分拨」，轨迹上必须留下那条偏离补录；
            回放只建异常、不补录，于是时效监控的「偏离路由」永远 0，
            轨迹表按「仅偏离」筛出来是空的——功能在，数据从来没进过库。
-           按异常发生时刻补一条 TRANSIT，地点写错落的那个分拨，走领域接口而不是改库 */
+           按异常发生时刻补一条 TRANSIT，地点写错落的那个分拨，走领域接口而不是改库。
+           时刻必须落在「已分拣」与「已到件」之间：分拣前谈不上误落他线分拨，
+           到件之后再插一条 TRANSIT 会让轨迹时间倒挂、还会造出跳步的假状态。
+           异常登记得早或报得晚是常态，所以取异常时刻夹进这段窗口，而不是把单子挑掉——
+           挑掉会让围栏越界与偏离轨迹重新变回零，页面又是「功能在、数据不在」 */
         var deviantDone = 0;
+        var traceIdx = TMS.order.scanIndex();
         util.sortBy(db.col('exceptions'), 'occurredAt', 'desc').forEach(function (e) {
             if (deviantDone >= 6 || e.type !== '错分错发') return;
             var o = db.get('orders', e.orderId);
             if (!o) return;
+            var hops = traceIdx[o.id] || [];
+            var sortedAt = TMS.order.stageAt(o, 'sorted', hops);
+            if (!sortedAt) return;
+            var arrivedAt = TMS.order.stageAt(o, 'arrived', hops);
+            var lo = util.toDate(sortedAt).getTime() + 60000;
+            var at = util.toDate(e.occurredAt).getTime();
+            at = Math.max(lo, arrivedAt ? Math.min(at, util.toDate(arrivedAt).getTime()) : at);
             var wrong = util.pick(db.col('hubs').filter(function (h) {
                 return h.id !== o.hubFrom && h.id !== o.hubTo;
             }), rand);
             if (!wrong) return;
-            util.setNow(util.toDate(e.occurredAt));
-            TMS.order.addTraceNode(o.id, {
-                node: 'TRANSIT', location: wrong.name, operator: '分拨作业员',
-                remark: '件误落 ' + wrong.city + ' 分拨，改签下一班', deviant: true
+            util.setNow(new Date(at));
+            TMS.order.addScan(o, 'TRANSIT', {
+                location: wrong.name, operator: '分拨作业员',
+                remark: '件误落 ' + wrong.city + ' 分拨，改签下一班（人工补录）',
+                at: new Date(at), deviant: true
             });
+            db.commit('scans', o.id, 'order:trace');
             deviantDone++;
         });
+
+        /* ---------- 围栏外作业留痕 ---------- */
+        /* 主数据特意留一座「停用待复核」的围栏当缺口样本，可常规作业的扫描地点由订单派生、并不落库，
+           只有显式带 location 的流水才参与围栏判定。于是围栏页的「覆盖缺口」「越界作业明细」
+           两张卡常年空着，fence:gap 告警也永远是 0——判定逻辑在，样本数据不在。
+           真实成因是终端定位漂移、现场作业在围栏外：按问题件节点补录，只追加流水，不动订单主状态 */
+        (function offFenceScan() {
+            var gap = db.col('geofences').filter(function (g) { return g.status !== 'active'; })[0];
+            if (!gap) return;
+            var inGap = {};
+            db.col('branches').forEach(function (b) { if (b.city === gap.city) inGap[b.name] = b; });
+            if (!Object.keys(inGap).length) return;
+            var clock = util.now();
+            var realNow = new Date();
+            var done = 0;
+            util.sortBy(db.col('orders'), 'updatedAt', 'desc').forEach(function (o) {
+                if (done >= 8) return;
+                if (['cancelled', 'signed', 'returned'].indexOf(o.status) > -1) return;
+                var dest = TMS.order.branchName(o, 'dest'), orig = TMS.order.branchName(o, 'origin');
+                var where = inGap[dest] ? dest : (inGap[orig] ? orig : '');
+                if (!where) return;
+                var at = new Date(realNow.getTime() - (3 + rand() * 96) * 3600000);
+                util.setNow(at);
+                TMS.order.addScan(o, 'PROBLEM', {
+                    location: where, operator: '网点作业员', device: 'PDA-9000',
+                    remark: '现场扫描点不在 ' + gap.city + ' 作业围栏内（终端定位漂移）', at: at
+                });
+                db.commit('scans', o.id, 'order:trace');
+                done++;
+            });
+            util.setNow(clock);
+        })();
 
         /* ---------- 在岗快照 ---------- */
         /* 回放收尾会把历史积压一路推到签收，代价是「此刻」没有正在发生的作业：
@@ -931,25 +980,49 @@
                 var rows = list.map(function (o) { return db.get('orders', o.id); })
                     .filter(function (o) { return o && o.status === 'sorted' && !o.tripId; });
                 if (rows.length < list.length) return null;
-                var kg = util.round(util.sum(rows, 'chargeableWeight'), 2);
-                /* 支线一趟只有几十公斤：按载重就大挑 9.6 米厢车，装载率会被压到几个点，
-                   运力复盘当场判成放空跑。就小取本场停着的接驳车，
-                   并显式带 vehicleId——createTrip 见到人工派车才不再改判外协舱位 */
+                var dep = ago(departHours);
+                /* 快照队列每一格都要留在自己的刻度上：补车时不能顺手把「待领取」「在途」
+                   那几格预定好的件拉走，否则后面几次 shipOut 凑不齐人，界面当场空一格 */
+                var reserved = {};
+                [queues.todo, queues.got, queues.inbound, queues.sorted, queues.transit,
+                    queues.arrived, queues.stuck, queues.cod].forEach(function (q) {
+                        (q || []).forEach(function (o) { if (o) reserved[o.id] = 1; });
+                    });
+                var mine = {};
+                rows.forEach(function (o) { mine[o.id] = 1; });
                 var veh = util.sortBy(db.col('vehicles').filter(function (v) {
-                    return v.hubId === hub && v.status === 'available' && v.loadKg >= kg;
+                    return v.hubId === hub && v.status === 'available';
                 }), 'loadKg', 'asc')[0];
                 if (!veh) return null;
-                var dep = ago(departHours);
+                var bar = util.round(veh.loadKg * TMS.cfg.cost.selfLoadMin, 2);
+                var kg = util.round(util.sum(rows, 'chargeableWeight'), 2);
+                /* 支线一趟只有二三十公斤，硬塞 vehicleId 会绕过 createTrip 的自有/外协改判：
+                   四百公斤的接驳车拉 25 公斤，装载率压到 6%，运力复盘判成放空跑。
+                   真实调度是凑不满不发——先从本场已分拣、且发车时刻之前就已存在的件里补，
+                   补得过 selfLoadMin 才派自有车；补不出来就交回领域层按协议舱位外协，
+                   把车位留给真正满载的干线 */
+                if (kg < bar) {
+                    db.col('orders').forEach(function (o) {
+                        if (kg >= bar || rows.length >= 60) return;
+                        if (o.status !== 'sorted' || o.tripId || reserved[o.id] || mine[o.id]) return;
+                        if (o.hubFrom !== hub && o.hubTo !== hub) return;
+                        if (util.toDate(o.createdAt) > dep) return;
+                        rows.push(o);
+                        mine[o.id] = 1;
+                        kg = util.round(kg + (Number(o.chargeableWeight) || 0), 2);
+                    });
+                }
                 util.setNow(dep);
                 var res = TMS.operation.createTrip({
                     fromHub: hub, toHub: hub, feeder: true, toCity: br.city,
                     distanceKm: 48, orderIds: rows.map(function (o) { return o.id; }),
-                    vehicleId: veh.id, at: dep, remark: '区域内支线·在岗快照'
+                    vehicleId: kg >= bar ? veh.id : '', at: dep, remark: '区域内支线·在岗快照'
                 });
                 if (!res.ok) return null;
                 /* 司机交给领域层反查（先沿用车队档案里的固定驾驶员，本场没有在岗的才兜底），
-                   这里硬塞 tailDriver 会把武汉的司机派到上海的支线上 */
-                var who = res.driver ? res.driver.name : '司机';
+                   这里硬塞 tailDriver 会把武汉的司机派到上海的支线上。
+                   改走舱位就没有司机，交接人是网点那边的人，别冒充司机 */
+                var who = res.driver ? res.driver.name : '网点交接员';
                 var trId = res.transport.id;
                 util.setNow(new Date(dep.getTime() + 1800000));
                 TMS.operation.startTransport(trId, { operator: who, at: dep });
@@ -1109,6 +1182,33 @@
                     util.setNow(ago(6));
                     TMS.service.approveClaim(cl.id, { handler: '理赔专员', note: '保价足额，按申报价核赔' });
                 }
+            }
+
+            /* 「今日揽收记录」按自然日筛：快照的揽收时刻挂在下单后一两小时，
+               零点刚过那半小时里它还落在昨天，网点工作台首屏直接空一格。
+               真实网点每天的第一笔揽收就发生在早上，这里把两单待揽收按「刚刚」收掉，
+               当天台账与「入库称重」入口当场有对象可点 */
+            var dayStart = new Date(realNow); dayStart.setHours(0, 5, 0, 0);
+            var pickT0 = Math.max(dayStart.getTime(), realNow.getTime() - 30 * 60000);
+            var pickedToday = 0;
+            queues.todo.forEach(function (o) {
+                if (pickedToday >= 2) return;
+                var at = pickT0 + pickedToday * 5 * 60000;
+                if (at >= realNow.getTime() - 30000) return;
+                var row = db.get('orders', o.id);
+                if (!row || row.status !== 'created') return;
+                util.setNow(new Date(at));
+                TMS.order.collect(o.id, {
+                    operator: (myCourier && myCourier.name) || '揽收员',
+                    device: util.pick(devicePool, rand), location: br.name
+                });
+                pickedToday++;
+            });
+            if (pickedToday) {
+                queues.todo = queues.todo.filter(function (x) {
+                    var r = db.get('orders', x.id);
+                    return r && r.status === 'created';
+                });
             }
 
             util.setNow(realNow);

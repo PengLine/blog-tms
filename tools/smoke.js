@@ -2,6 +2,7 @@
    用法：node tools/smoke.js            仅建库 + 不变量校验
         node tools/smoke.js --flow     额外回放一条订单全生命周期
         node tools/smoke.js --empty    逐页列出空态区块，定位缺数据的功能
+        node tools/smoke.js --loop     逐动作比对写库次数，揪「点了不落库」的断链
         node tools/smoke.js --dump     输出集合行数与容量 */
 'use strict';
 
@@ -351,10 +352,8 @@ section('只读统计 API');
         'stats.traceStats': () => TMS.stats.traceStats(7),
         'stats.routeStats': () => TMS.stats.routeStats(),
         'stats.networkStats': () => TMS.stats.networkStats(30),
-        'stats.capacityStats': () => TMS.stats.capacityStats(),
         'stats.customerRanking': () => TMS.stats.customerRanking(10),
         'stats.scanStats': () => TMS.stats.scanStats(7),
-        'stats.materialStats': () => TMS.stats.materialStats(),
         'stats.systemStats': () => TMS.stats.systemStats(),
         'finance.financeSummary': () => TMS.finance.financeSummary(7),
         'finance.financeTrend': () => TMS.finance.financeTrend(14),
@@ -367,7 +366,9 @@ section('只读统计 API');
         'service.claimStats': () => TMS.service.claimStats(),
         'operation.tripStats': () => TMS.operation.tripStats(7),
         'operation.costView': () => TMS.operation.costView(transports[0]),
-        'people.performanceSummary': () => TMS.people.performanceSummary(),
+        'network.loadPlan': () => TMS.network.loadPlan(orders.slice(0, 12), TMS.master.vehicleType('MID')),
+        'network.deviates': () => TMS.network.deviates(TMS.network.planOf(orders[0]), '上海', '哈尔滨'),
+        'audit.actionOptions': () => TMS.audit.actionOptions(),
         'people.roster': () => TMS.people.roster(day),
         'audit.list': () => TMS.audit.list(5),
         'db.info': () => TMS.db.info()
@@ -386,13 +387,16 @@ section('只读统计 API');
     const perfPeriods = util.unique(db.col('performances').map((p) => p.period)).sort();
     const perfMonth = perfPeriods[perfPeriods.length - 1];
     const dayOfToday = Number(util.dateKey(util.now()).slice(-2));
-    const summary = TMS.people.performanceSummary(perfMonth);
-    const dCount = (summary.byGrade.filter((g) => g.label === 'D')[0] || { value: 0 }).value;
+    /* 档位分布直接按账期现算：绩效页用的就是这个口径（util.countBy(rows,'grade')），
+       断言跟着页面走，不依赖某个只有测试在调的聚合函数 */
+    const perfRows = db.col('performances').filter((p) => p.period === perfMonth);
+    const dCount = perfRows.filter((p) => p.grade === 'D').length;
+    const avgScore = perfRows.length ? util.round(util.sum(perfRows, 'score') / perfRows.length, 1) : 0;
     check('绩效账期唯一且走关账规则', perfPeriods.length === 1 && perfMonth === TMS.people.defaultPeriod(), perfPeriods.join(' '));
     check('绩效账期不落进刚开头的月份', perfMonth !== util.monthKey(util.now()) || dayOfToday >= 14,
         perfMonth + ' · 今日 ' + util.dateKey(util.now()));
-    check('绩效档位分布不是一边倒', summary.count > 0 && dCount / summary.count < 0.6,
-        perfMonth + ' · ' + summary.count + ' 人 · 均分 ' + summary.avgScore + ' · D 档 ' + dCount + ' 人 · 覆盖 ' +
+    check('绩效档位分布不是一边倒', perfRows.length > 0 && dCount / perfRows.length < 0.6,
+        perfMonth + ' · ' + perfRows.length + ' 人 · 均分 ' + avgScore + ' · D 档 ' + dCount + ' 人 · 覆盖 ' +
         TMS.people.computeMetrics(db.get('employees', db.col('performances')[0].employeeId), perfMonth).windowDays + ' 天');
     check('考核留有未定级草稿', db.col('evaluations').some((e) => e.status === 'pending'),
         db.col('evaluations').filter((e) => e.status === 'pending').length + ' 条 pending');
@@ -708,6 +712,105 @@ function collectEmpties(role, pageId, html) {
 }
 function util_esc(s) { return String(s || '').replace(/&[a-z]+;/g, ' ').replace(/<[^>]*>/g, '').trim(); }
 
+/* ---------- 闭环审计 ---------- */
+const LOOP_AUDIT = argv.includes('--loop');
+/* 领域接口接入审计：种子建完库之后、页面跑起来之前，把每个领域模块的导出函数包一层。
+   按源码文本找方法名会冤枉人——plateOf、stdHoursOf 这类查询函数常常是被别的领域函数链式调用的，
+   文本匹配把「内部复用」误判成「没入口」，反之页面拼了个同名局部变量又能骗过去。
+   这里只认运行时：页面 load/render/actions 期间真正被执行到的，就是接进了界面；
+   一次都没被碰到的导出函数，才是业务链条上缺的最后一米——功能写完了，界面上按不出来 */
+const DOMAIN_MODS = ['order', 'operation', 'finance', 'service', 'people', 'pricing', 'network', 'stats', 'master', 'jobs', 'audit'];
+const apiHits = new Set();
+const apiTotal = new Set();
+const apiRestore = [];
+if (LOOP_AUDIT) {
+    DOMAIN_MODS.forEach((m) => {
+        const api = TMS[m];
+        if (!api) return;
+        Object.keys(api).forEach((fn) => {
+            if (typeof api[fn] !== 'function') return;
+            const key = m + '.' + fn;
+            apiTotal.add(key);
+            const real = api[fn];
+            apiRestore.push(() => { api[fn] = real; });
+            api[fn] = function () { apiHits.add(key); return real.apply(api, arguments); };
+        });
+    });
+}
+
+/* 动作「跑得通」和动作「把业务往前推了一格」是两件事。
+   node tools/smoke.js --loop 在每次调用前后统计写库次数（create/update/remove/touch/commit），
+   一次写都没有的动作就只是个 toast——链路在这里断了，页面看起来仍然是满的。
+   只读动作（开抽屉、导出、跳转、筛选）写进 READ_ONLY 白名单，
+   白名单之外一律算缺陷，这样以后加按钮忘了落库会被当场抓住 */
+const READ_ONLY_ACT = new Set([
+    'ui:close', 'ui:back', 'ui:toast', 'ui:filter', 'ui:sort', 'ui:reset'
+]);
+/* 判定「点了没反应」看函数体，不看写库次数。
+   冒烟给不出每个动作需要的主键——动作拿不到合法 id 就在 if (!row) return 处提前退出，
+   写库次数为零是误会了它。直接读源码：一个动作既没碰存储、没调领域服务、没开抽屉弹窗、
+   没翻页、没导出、没复制、没刷新，那它就只是弹了句提示。
+   这类断链与主键无关，机器判得准，可以当硬门禁用 */
+const LIVE_RE = /(^|[^.\w])db\.(col|get|find|create|update|remove|removeWhere|touch|commit|batch|persist|rev)|TMS\.(order|operation|finance|service|people|pricing|network|stats|master|jobs|audit|ids|auth|rbac|shell)\.|\w*Modal\s*\(|\bopen[A-Z]\w*\s*\(|ui\.(drawer|modal|formModal|confirm|prompt)|\bgo\s*\(|\bhref\s*=|location\s*=|exportGrid|\bdownload\b|clipboard|window\.open|refresh\s*\(|reload\s*\(|\bstate\s*\(/;
+const stubHits = [];
+
+/* 动作体常常只是一行 'cust:open': function (id) { customerModal(id); }——
+   真正落库的是同文件里的具名函数。只看动作本身会把这类正常按钮全判成断链，
+   所以顺着调用到的标识符把同页的函数体也读进来，递归三层足够覆盖 helper → modal → onSubmit */
+const PAGE_TEXTS = fs.readdirSync(path.join(ROOT, 'js/pages'))
+    .map((f) => fs.readFileSync(path.join(ROOT, 'js/pages', f), 'utf8')).join('\n');
+const GLOBALS = new Set(['ui', 'db', 'pg', 'util', 'fmt', 'esc', 'TMS', 'Number', 'String', 'Object',
+    'Array', 'JSON', 'Math', 'Date', 'parseInt', 'parseFloat', 'isNaN', 'encodeURIComponent',
+    'decodeURIComponent', 'RegExp', 'setTimeout', 'clearTimeout', 'alert', 'confirm', 'Function',
+    'if', 'for', 'while', 'switch', 'return', 'typeof', 'catch', 'Boolean', 'push', 'filter',
+    'map', 'forEach', 'join', 'split', 'slice', 'sort', 'some', 'every', 'indexOf', 'test', 'replace', 'trim']);
+function bodyOf(name) {
+    const re = new RegExp('function\\s+' + name + '\\s*\\(|(?:var|let|const)\\s+' + name + '\\s*=\\s*(?:function|\\()');
+    const at = PAGE_TEXTS.search(re);
+    if (at < 0) return '';
+    const open = PAGE_TEXTS.indexOf('{', at);
+    if (open < 0) return '';
+    let depth = 0;
+    for (let i = open; i < PAGE_TEXTS.length; i++) {
+        const c = PAGE_TEXTS[i];
+        if (c === '{') depth++;
+        else if (c === '}' && --depth === 0) return PAGE_TEXTS.slice(at, i + 1);
+    }
+    return '';
+}
+function liveSrc(fnSrc, depth) {
+    let out = fnSrc;
+    if (LIVE_RE.test(out) || depth > 3) return out;
+    const seen = new Set();
+    let m;
+    const callRe = /(?:^|[^\w.$])([a-zA-Z_$][\w$]*)\s*\(/g;
+    while ((m = callRe.exec(fnSrc))) {
+        const name = m[1];
+        if (GLOBALS.has(name) || seen.has(name)) continue;
+        seen.add(name);
+        const sub = bodyOf(name);
+        if (!sub) continue;
+        out += '\n' + sub;
+        if (LIVE_RE.test(out)) return out;
+    }
+    return liveSrc(out, depth + 1);
+}
+let writes = {};
+let emptyWrites = [];
+const countWrite = (name) => { writes[name] = (writes[name] || 0) + 1; };
+const realCreate = db.create, realUpdate = db.update, realRemove = db.remove;
+const realRemoveWhere = db.removeWhere, realTouch = db.touch, realCommit = db.commit;
+if (LOOP_AUDIT) {
+    db.create = (n, r, o) => { countWrite(n); return realCreate(n, r, o); };
+    db.update = (n, id, p) => { const hit = realUpdate(n, id, p); if (hit) countWrite(n); else emptyWrites.push(n + '/' + id); return hit; };
+    db.remove = (n, id) => { if (realRemove(n, id)) countWrite(n); };
+    db.removeWhere = (n, f) => { const m = realRemoveWhere(n, f); if (m) countWrite(n); return m; };
+    db.touch = (n) => { countWrite(n); realTouch(n); };
+    db.commit = (n, id, reason) => { countWrite('@commit'); realCommit(n, id, reason); };
+}
+const loopHits = [];
+const readWrite = () => { const w = writes; writes = {}; return w; };
+
 (() => {
     const globalActs = Object.keys(TMS.shell.actions).concat(Object.keys(TMS.pages.shared || {}));
     const unreg = [];
@@ -810,14 +913,20 @@ if (EMPTY_AUDIT) {
         if (f.type === 'number') return f.min != null ? Number(f.min) : 1;
         if (f.type === 'checkbox') return false;
         if (f.type === 'select' || f.type === 'radio') {
-            const o = opts[0];
-            if (o === undefined) return '';
-            return (o && typeof o === 'object') ? (o.value === undefined ? '' : o.value) : o;
+            /* 取第一个「真有值」的选项：选项表常以 { value:'', label:'全部' } 开头占位，
+               按位置取第一个就等于每次都提交空值，校验当场拦下，闭环审计会把它误报成断链 */
+            const valOf = (o) => (o && typeof o === 'object') ? o.value : o;
+            const hit = opts.filter((o) => { const v = valOf(o); return v !== '' && v !== null && v !== undefined; })[0];
+            return hit === undefined ? '' : valOf(hit);
         }
         if (f.type === 'date') return util.dateKey(util.now());
         if (f.type === 'datetime') return util.iso(util.now());
         if (f.type === 'city') return '上海';
-        return '';
+        if (f.type === 'money' || f.type === 'amount') return 100;
+        if (f.type === 'switch') return true;
+        /* 文本类默认给内容而不是空串：多数 onSubmit 的必填校验只看空值，
+           喂空串等于每次都被业务规则拒掉，审计就分不清「校验拦住了」和「压根没落库」 */
+        return '冒烟样本';
     };
     const fakeForm = (fields, preset) => {
         const out = {};
@@ -830,10 +939,13 @@ if (EMPTY_AUDIT) {
 
     const realConfirm = TMS.ui.confirm;
     const realFormModal = TMS.ui.formModal;
-    let submits = 0, actCalls = 0, bad = 0;
+    let submits = 0, actCalls = 0, bad = 0, modals = 0, sheets = 0;
+    const realDrawer = TMS.ui.drawer;
     TMS.ui.confirm = () => autoYes;
+    TMS.ui.drawer = function (o) { sheets++; return realDrawer.call(TMS.ui, o); };
     TMS.ui.formModal = function (o) {
         const handle = realFormModal.call(TMS.ui, o);
+        modals++;
         if (typeof o.onSubmit === 'function') {
             const mark = domLog.length;
             submits++;
@@ -875,15 +987,29 @@ if (EMPTY_AUDIT) {
             };
             try { ctx.data = def.load ? def.load(ctx) : {}; } catch (err) { ctx.data = {}; }
             Object.keys(def.actions).forEach((act) => {
+                /* 静态判一次「点了没反应」：与主键无关，不受冒烟假数据影响 */
+                if (LOOP_AUDIT && !READ_ONLY_ACT.has(act) && !LIVE_RE.test(liveSrc(String(def.actions[act]), 0))) {
+                    stubHits.push(role + '/' + id + '/' + act);
+                }
+                let navMark = navs, modalMark = modals, sheetMark = sheets;
                 [argOf(act), ''].forEach((arg) => {
                     const mark = domLog.length;
                     actCalls++;
+                    readWrite();
                     try {
                         def.actions[act](arg, null);
                     } catch (err) {
                         bad++;
                         console.error('  ✗ ' + role + '/' + id + ' 动作 ' + act + '（arg=' + arg + '）抛错：' + err.message +
                             '\n' + (err.stack || '').split('\n')[1]);
+                    }
+                    if (LOOP_AUDIT) {
+                        const w = readWrite();
+                        const touched = Object.keys(w).filter((k) => k !== '@commit').length;
+                        if (!(touched || (navs - navMark) || (sheets - sheetMark)) && !READ_ONLY_ACT.has(act)) {
+                            loopHits.push({ role, pageId: id, act, arg, kind: (modals - modalMark) ? '表单被校验拦住或只弹不写' : '点了没反应' });
+                        }
+                        modalMark = modals; navMark = navs; sheetMark = sheets;
                     }
                     domLog.slice(mark).forEach((n) => {
                         if (!n.innerHTML) return;
@@ -897,9 +1023,140 @@ if (EMPTY_AUDIT) {
     });
     TMS.shell.go = realGo;
     TMS.ui.confirm = realConfirm;
+    TMS.ui.drawer = realDrawer;
     TMS.ui.formModal = realFormModal;
     check('六端页面动作全部可执行且弹层无脏值', bad === 0,
         actCalls + ' 次调用 / ' + submits + ' 次表单提交 / ' + navs + ' 次翻页' + (bad ? '，' + bad + ' 处问题' : ''));
+    if (LOOP_AUDIT) {
+        /* 领域接口有没有接进界面：导出了一百个方法、页面只碰到八十一个，
+           剩下那十九个就是「功能写了但没入口」——业务闭环断在最后一米。
+           两路并判，缺一都会冤枉人：
+           · 只看源码，会把 order.stdHoursOf 这种「页面没写、但被别的领域函数链式带出来」的
+             内部复用误判成没入口；
+           · 只看运行时，冒烟里的假主键会让动作在 if (!row) return 处提前退出，
+             于是 createTrip、addScan 这种核心写操作全被误报成没人调。
+           所以：源码里没出现、运行时也没被执行过，才是真的没有入口 */
+        section('闭环审计（--loop）：领域接口未接入界面');
+        const pageSrc = fs.readdirSync(path.join(ROOT, 'js/pages'))
+            .map((f) => fs.readFileSync(path.join(ROOT, 'js/pages', f), 'utf8')).join('\n');
+        const MOD_SRC = {};
+        DOMAIN_MODS.forEach((m) => {
+            const rel = m === 'master' ? 'js/data/master.js' : 'js/domain/' + m + '.js';
+            MOD_SRC[m] = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+        });
+        /* 取一个模块级声明的完整体：函数用 function 名( 或 var 名 = function(，
+           表引用（RULES = [...]）也算，否则「run: traceOvertime」这一跳没人接力。
+           只认行首缩进的声明，不然 .costTotal( 这类调用会被误当成定义 */
+        function domainBody(mod, fn) {
+            const src = MOD_SRC[mod];
+            if (!src) return '';
+            const re = new RegExp('^\\s*(?:function\\s+' + fn + '\\s*\\(|' +
+                '(?:var|let|const)\\s+' + fn + '\\s*=\\s*(?:function\\s*\\(|[\\[{]))', 'gm');
+            const m = re.exec(src);
+            if (!m) return '';
+            let depth = 0;
+            for (let i = m.index; i < src.length; i++) {
+                const c = src[i];
+                if (c === '{' || c === '[') depth++;
+                else if (c === '}' || c === ']') {
+                    if (!--depth) return src.slice(m.index, i + 1);
+                }
+            }
+            return '';
+        }
+                const seeded = new Set();
+        apiTotal.forEach((key) => {
+            if (apiHits.has(key) || new RegExp('\\b' + key.split('.')[1] + '\\b').test(pageSrc)) seeded.add(key);
+        });
+        /* 链式可达：页面没直接点它，但它被某个「已接入」的接口调了出去。
+           不这么算就会把 network.loadPlan（由 operation.dispatch 内部复用）、
+           jobs.addAlert（巡检任务内部调用）这类误报成断链。
+           方向是从已知的往外推：取可达函数的函数体，扫它调了谁，收敛到不动点。
+           种子除页面还算核心/视图/种子脚本——它们里写的 TMS.mod.fn 一定跑过 */
+        const shellSrc = ['js/data/seed.js', 'js/boot.js', 'js/core/utils.js', 'js/core/db.js', 'js/core/auth.js',
+            'js/core/rbac.js', 'js/core/migrations.js', 'js/ui/kit.js', 'js/ui/charts.js', 'js/ui/shell.js',
+            'js/pages/registry.js']
+            .map((rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8')).join('\n');
+        const ALLKEY = new Set(apiTotal);
+        shellSrc.replace(/TMS\.(\w+)\.(\w+)/g, (_, m, fn) => {
+            const k = m + '.' + fn;
+            if (ALLKEY.has(k)) seeded.add(k);
+            return _;
+        });
+        const reachable = new Set(seeded);
+        /* 每个模块声明过的函数名——只有它们能当调用图的节点，
+           否则 body 里的 money、iso 这类 util 词会把遍历炸开 */
+        const DECLARED = {};
+        Object.keys(MOD_SRC).forEach((m) => {
+            const set = new Set();
+            let dm;
+            const dre = /^\s*(?:function\s+|var\s+|let\s+|const\s+)([a-zA-Z_$][\w$]*)\s*(?:\(|=)/gm;
+            while ((dm = dre.exec(MOD_SRC[m]))) set.add(dm[1]);
+            DECLARED[m] = set;
+        });
+        const bodies = {};
+        function calleesOf(node) {
+            if (!(node in bodies)) bodies[node] = domainBody(node.split('.')[0], node.split('.')[1]);
+            const body = bodies[node];
+            if (!body) return [];
+            const out = [];
+            /* 跨模块写全名 TMS.operation.costTotal(...)；同模块只写裸名 costTotal(...)，
+               且既看调用也看引用——RULES 里的 run: traceOvertime 不带动括号，
+               只认「调用」就会把整条巡检链看成没入口 */
+            let m;
+            const qualified = /TMS\.(\w+)\.(\w+)/g;
+            while ((m = qualified.exec(body))) out.push(m[1] + '.' + m[2]);
+            const same = node.split('.')[0];
+            const bare = /(^|[^\w.$])([a-zA-Z_$][\w$]*)\b/g;
+            while ((m = bare.exec(body))) if (DECLARED[same] && DECLARED[same].has(m[2])) out.push(same + '.' + m[2]);
+            return out;
+        }
+        /* 遍历的是「函数节点」而不是「导出接口」：页面 → reprice → feeParts → contRateOf。
+           中间的 feeParts 没导出，但它是这一跳的唯一通路，卡住就会冤枉整条链 */
+        const walked = new Set();
+        const frontier = Array.from(reachable);
+        while (frontier.length) {
+            const node = frontier.shift();
+            if (walked.has(node)) continue;
+            walked.add(node);
+            calleesOf(node).forEach((c) => {
+                if (ALLKEY.has(c)) reachable.add(c);
+                if (!walked.has(c)) frontier.push(c);
+            });
+        }
+        const orphans = [];
+        apiTotal.forEach((key) => { if (!reachable.has(key)) orphans.push(key); });
+        orphans.sort();
+        orphans.forEach((k) => log('  ▸ ' + k));
+        log('\n  ' + orphans.length + ' / ' + apiTotal.size + ' 个领域接口在六端页面里没有任何入口');
+        check('领域接口没有一个写了却没入口', orphans.length === 0,
+            orphans.length ? orphans.slice(0, 8).join('、') : apiTotal.size + ' 个接口全部接得上界面或已被调用链带出');
+        apiRestore.forEach((fn) => fn());
+
+        db.create = realCreate; db.update = realUpdate; db.remove = realRemove;
+        db.removeWhere = realRemoveWhere; db.touch = realTouch; db.commit = realCommit;
+        /* 硬门禁：函数体里既不落库、不开界面、不跳转、不导出的动作，就是断链的按钮 */
+        check('页面动作没有一个只弹提示', stubHits.length === 0,
+            stubHits.length ? stubHits.slice(0, 8).join('、') : '所有动作都推进了业务或界面');
+        section('闭环审计（--loop）：只弹提示、不推进任何事的动作');
+        stubHits.forEach((k) => log('  ▸ ' + k));
+        log('  共 ' + stubHits.length + ' 个');
+        section('闭环审计（--loop）：冒烟假主键下没推进业务的动作（仅参考，非门禁）');
+        const seen = new Set();
+        loopHits.forEach((h) => {
+            const key = h.role + '/' + h.pageId + '/' + h.act;
+            if (seen.has(key)) return;
+            seen.add(key);
+        });
+        log('  ' + seen.size + ' 个 / 共调用 ' + actCalls + ' 次——多数是动作拿到的是冒烟编的主键，'
+            + '在 if (!row) return 处退出，不代表页面有缺陷');
+        const dup = {};
+        emptyWrites.forEach((k) => { dup[k] = (dup[k] || 0) + 1; });
+        if (Object.keys(dup).length) {
+            log('\n  空写（update 找不到目标行，通常是引用失效）：');
+            Object.keys(dup).slice(0, 12).forEach((k) => log('    ' + k + ' × ' + dup[k]));
+        }
+    }
 })();
 
 if (argv.includes('--dump')) {

@@ -670,20 +670,6 @@
         return { ok: true, forward: o, reverse: res.order };
     }
 
-    /* 手动补录轨迹节点（运营端补扫/漏扫修正） */
-    function addTraceNode(orderId, data) {
-        var d = data || {};
-        var o = db.get('orders', orderId);
-        if (!o) return { ok: false, message: '订单不存在' };
-        var at = d.at ? util.iso(d.at) : util.iso(util.now());
-        var scan = addScan(o, d.node || 'TRANSIT', {
-            location: d.location || o.origin, operator: d.operator || '运营管理员',
-            remark: (d.remark || '') + '（人工补录）', result: 'ok', at: at, deviant: !!d.deviant, source: 'manual'
-        });
-        db.commit('scans', orderId, 'order:trace');
-        return { ok: true, scan: scan };
-    }
-
     function update(orderId, patch) { return db.update('orders', orderId, patch); }
 
     function detail(orderId) {
@@ -736,7 +722,7 @@
         create: create, moveTo: moveTo, advance: advance,
         collect: collect, inbound: inbound, sort: sort, depart: depart, arrive: arrive,
         assignDelivery: assignDelivery, sign: sign, markProblem: markProblem, releaseProblem: releaseProblem,
-        cancel: cancel, change: change, createReverseOrder: createReverseOrder, addTraceNode: addTraceNode,
+        cancel: cancel, change: change, createReverseOrder: createReverseOrder,
         traces: traces, detail: detail, update: update, view: view,
         statusIndex: statusIndex, isTerminal: isTerminal, isLate: isLate, isSignedLate: isSignedLate,
         stuckHours: stuckHours, statusOptions: statusOptions, LABEL: LABEL, FLOW: FLOW,

@@ -29,11 +29,6 @@
 
     function trips() { return TMS.db.col('trips'); }
 
-    function hubById(id) {
-        var h = master.hubByNameOrId(id);
-        return h ? { id: h.id, name: h.name, city: h.city, zone: h.zone } : null;
-    }
-
     var routeCache = {};
 
     /* 规划路由：命中已维护路由则复用（保证路由页可统计偏差），否则按班次图临时规划 */
@@ -253,7 +248,7 @@
     TMS.network = {
         cityOfText: cityOfText, fenceOfCity: fenceOfCity, pointInFence: pointInFence,
         citiesInFence: citiesInFence, fenceAudit: fenceAudit,
-        cityInfo: cityInfo, hubOf: hubOf, hubById: hubById,
+        cityInfo: cityInfo, hubOf: hubOf,
         branchesOf: branchesOf, branch: branch, collectBranch: collectBranch, deliverBranch: deliverBranch,
         planRoute: planRoute, planOf: planOf, tripFor: tripFor, pickVehicle: pickVehicle, loadPlan: loadPlan,
         promiseAt: promiseAt, deviates: deviates, invalidateCache: invalidateCache,

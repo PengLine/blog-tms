@@ -506,6 +506,15 @@
             var destHub = hubId ? key : key.slice(from.length + 1);
             var trip = TMS.network.tripFor(from, destHub, opts.mode);
             var picked = list.slice(0, opts.limit || 40);
+            /* 「单车上限」按票数卡是个假约束：四十件重货能压塌 4.2 米厢车，
+               四十件轻抛货塞完还剩半个车厢。班次档案里写了该跑哪种车型，
+               就照那台车的载重与容积同时卡（各留 5%/8% 的安全边），
+               装不下的留在原地等下一班——配载配的是舱位，不是票数 */
+            var plannedVeh = trip && trip.vehicleType ? TMS.master.vehicleType(trip.vehicleType) : null;
+            if (plannedVeh) {
+                picked = TMS.network.loadPlan(picked, plannedVeh).orders;
+                if (!picked.length) return;
+            }
             var res = createTrip({
                 tripId: trip ? trip.id : '', fromHub: from, toHub: destHub,
                 orderIds: picked.map(function (o) { return o.id; }),

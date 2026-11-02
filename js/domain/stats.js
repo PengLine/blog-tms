@@ -218,35 +218,6 @@
         return { branches: util.sortBy(branches, 'outbound', 'desc'), hubs: util.sortBy(hubs, 'pieces', 'desc') };
     }
 
-    function capacityStats() {
-        var vehicles = db.col('vehicles');
-        var trips = db.col('transports');
-        var recent = trips.slice(-120);
-        var byStatus = util.countBy(vehicles, 'status');
-        var byType = {};
-        TMS.master.VEHICLE_TYPES.forEach(function (t) {
-            var g = vehicles.filter(function (v) { return v.typeCode === t.code; });
-            byType[t.code] = { label: t.name, count: g.length, loadKg: t.loadKg, busy: g.filter(function (v) { return v.status === 'busy'; }).length };
-        });
-        var trips7 = trips.filter(function (t) { return util.toDate(t.date || t.createdAt).getTime() >= util.addDays(util.now(), -6).getTime(); });
-        var selfTrips7 = trips7.filter(function (t) { return t.dispatchType !== 'ltl'; });
-        return {
-            total: vehicles.length,
-            available: byStatus.available || 0, busy: byStatus.busy || 0,
-            maintenance: byStatus.maintenance || 0, offline: byStatus.offline || 0,
-            utilization: vehicles.length ? util.round((byStatus.busy || 0) / vehicles.length * 100, 1) : 0,
-            byType: Object.keys(byType).map(function (k) { return byType[k]; }),
-            trips7: trips7.length,
-            selfTrips: trips7.filter(function (t) { return t.dispatchType !== 'ltl'; }).length,
-            ltlTrips: trips7.filter(function (t) { return t.dispatchType === 'ltl'; }).length,
-            avgLoadRate: selfTrips7.length ? util.round(util.sum(selfTrips7, 'loadRate') / selfTrips7.length, 1) : 0,
-            totalKm: util.sum(trips7, TMS.operation.distanceOf),
-            totalWeight: util.round(util.sum(trips7, 'weight'), 1),
-            costPerKg: util.sum(trips7, 'weight') ? util.round(util.sum(trips7, TMS.operation.costTotal) / util.sum(trips7, 'weight'), 2) : 0,
-            maintenanceDue: vehicles.filter(function (v) { return util.toDate(v.nextCheckAt) <= util.addDays(util.now(), 15); }).length
-        };
-    }
-
     function customerRanking(limit) {
         var byCust = util.groupBy(db.col('orders'), 'customerId');
         var rows = db.col('customers').map(function (c) {
@@ -287,25 +258,6 @@
             exception: rows.filter(function (s) { return s.result && s.result !== 'ok'; }).length,
             byNode: Object.keys(byNode).map(function (k) { return { label: k, value: byNode[k].length }; }).sort(function (a, b) { return b.value - a.value; }),
             byDevice: Object.keys(devices).map(function (k) { return devices[k]; }).sort(function (a, b) { return b.count - a.count; }).slice(0, 12)
-        };
-    }
-
-    function materialStats() {
-        var mats = db.col('materials');
-        return {
-            total: mats.length,
-            low: mats.filter(function (m) { return m.stock < m.safeStock; }).length,
-            value: util.money(util.sum(mats, function (m) { return (Number(m.stock) || 0) * (Number(m.price) || 0); })),
-            byStatus: ['normal', 'low', 'out'].map(function (s) {
-                return { label: s === 'normal' ? '库存充足' : (s === 'low' ? '低于安全库存' : '断货'), value: mats.filter(function (m) { return m.status === s; }).length };
-            }),
-            warehouses: db.col('warehouses').map(function (w) {
-                return {
-                    label: w.name, area: w.areaM2, used: w.usedArea,
-                    utilization: w.areaM2 ? util.round(w.usedArea / w.areaM2 * 100, 1) : 0,
-                    pieces: w.usedPieces, capacity: w.capacityPieces
-                };
-            })
         };
     }
 
@@ -391,8 +343,8 @@
     TMS.stats = {
         overview: overview, orderTrend: orderTrend, breakdown: breakdown,
         lifecycleStats: lifecycleStats, timingStats: timingStats, traceStats: traceStats,
-        routeStats: routeStats, networkStats: networkStats, capacityStats: capacityStats,
-        customerRanking: customerRanking, scanStats: scanStats, materialStats: materialStats,
+        routeStats: routeStats, networkStats: networkStats,
+        customerRanking: customerRanking, scanStats: scanStats,
         systemStats: systemStats, ordersWithin: ordersWithin, orgStats: orgStats
     };
 })(window);
