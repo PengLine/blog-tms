@@ -220,6 +220,67 @@
         return Math.round(2 * R * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s)) * 10) / 10;
     }
 
+    /* 射线法判点在不在多边形环内：围栏勾出来的就是这种任意多边形，
+       圆半径罩不住「沿着一条江只往东延伸三公里」这类真实边界。
+       环不必闭合，首尾重点都吃 */
+    function pointInRing(pt, ring) {
+        if (!pt || !ring || ring.length < 3) return false;
+        var inside = false;
+        for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            var a = ring[i], b = ring[j];
+            if (!a || !b || a.lat == null || b.lat == null) return false;
+            if ((a.lat > pt.lat) !== (b.lat > pt.lat) &&
+                pt.lng < (b.lng - a.lng) * (pt.lat - a.lat) / (b.lat - a.lat) + a.lng) inside = !inside;
+        }
+        return inside;
+    }
+
+    /* 鞋带公式（梯形式）算环面积（km²）：A = ½|Σ(x₂-x₁)(y₂+y₁)|。
+       纬度差要按 cos(纬度) 收缩，否则越往北算出来的面积越大，
+       勾同样形状的两块围栏会报出完全不同的数。
+       ½ 只能出现在最外层一次——在累加里再除一次，全站面积会集体少一半 */
+    function ringAreaKm2(ring) {
+        if (!ring || ring.length < 3) return 0;
+        var rad = Math.PI / 180, R = 6371;
+        var lat0 = 0;
+        ring.forEach(function (p) { lat0 += p.lat; });
+        lat0 = Math.cos(lat0 / ring.length * rad);
+        var s = 0;
+        for (var i = 0; i < ring.length; i++) {
+            var a = ring[i], b = ring[(i + 1) % ring.length];
+            s += (b.lng - a.lng) * rad * lat0 * (b.lat + a.lat) * rad * R * R;
+        }
+        return Math.round(Math.abs(s / 2) * 10) / 10;
+    }
+
+    /* 环的几何中心：地图要按它定位，围栏详情页也拿它当「这一点落在不在圈内」的样本 */
+    function ringCentroid(ring) {
+        if (!ring || !ring.length) return null;
+        var lat = 0, lng = 0;
+        ring.forEach(function (p) { lat += p.lat; lng += p.lng; });
+        return { lat: round(lat / ring.length, 6), lng: round(lng / ring.length, 6) };
+    }
+
+    /* 勾一版不规则边界：顶点按 n 等分后抖动、边长在基准半径上下浮动。
+       真实市区边界从来不是方的，轴对齐矩形会严丝合缝拼在一起，看着就像凑数。
+       建库和老库补建档共用这一份，两处各写一套就会出现「新围栏是勾的、补的是画的」 */
+    function blobRing(anchor, radiusM, rand) {
+        if (!anchor) return [];
+        var rnd = rand || Math.random;
+        var n = 5 + Math.floor(rnd() * 3);
+        var start = rnd() * Math.PI * 2;
+        var ring = [];
+        for (var i = 0; i < n; i++) {
+            var ang = start + (Math.PI * 2 / n) * i + (rnd() - 0.5) * (Math.PI / n);
+            var m = (Number(radiusM) || 0) * (0.72 + rnd() * 0.5);
+            ring.push({
+                lat: round(anchor.lat + m * Math.sin(ang) / 111320, 6),
+                lng: round(anchor.lng + m * Math.cos(ang) / (111320 * Math.cos(anchor.lat * Math.PI / 180)), 6)
+            });
+        }
+        return ring;
+    }
+
     function chunk(arr, size) {
         var out = [];
         for (var i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
@@ -244,6 +305,7 @@
         dateKey: dateKey, monthKey: monthKey, hoursBetween: hoursBetween, toDate: toDate,
         clone: clone, sum: sum, groupBy: groupBy, countBy: countBy, unique: unique, sortBy: sortBy,
         pick: pick, weighted: weighted, randomDigits: randomDigits, seasonFactor: seasonFactor, distanceKm: distanceKm,
-        chunk: chunk, bytes: bytes, url: url
+        chunk: chunk, bytes: bytes, url: url,
+        pointInRing: pointInRing, ringAreaKm2: ringAreaKm2, ringCentroid: ringCentroid, blobRing: blobRing
     };
 })(window);

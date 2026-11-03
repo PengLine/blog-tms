@@ -37,10 +37,13 @@
         { code: 'network:manage', name: '网点与分拨', module: '网络' },
         { code: 'vehicle:manage', name: '车辆管理', module: '网络' },
         { code: 'warehouse:manage', name: '仓储物料', module: '网络' },
+        { code: 'address:manage', name: '派送地址维护', module: '网络' },
+        { code: 'address:review', name: '派送地址审核', module: '网络' },
         { code: 'hr:manage', name: '人事管理', module: '组织' },
         { code: 'user:manage', name: '用户权限', module: '组织' },
         { code: 'evaluation:manage', name: '考核绩效', module: '组织' },
         { code: 'geofence:manage', name: '电子围栏', module: '系统' },
+        { code: 'geofence:operate', name: '本城围栏维护', module: '网络' },
         { code: 'monitor:view', name: '系统监控', module: '系统' },
         { code: 'data:reset', name: '数据重建', module: '系统' }
     ];
@@ -51,7 +54,13 @@
         admin: ['*'],
         branch: ['overview:view', 'order:view', 'order:create', 'order:advance', 'order:change', 'tracking:view',
             'scan:operate', 'loading:operate', 'sorting:operate', 'exception:create', 'service:handle', 'cod:remit',
-            'customer:manage', 'warehouse:manage', 'report:view', 'evaluation:manage'],
+            'customer:manage', 'warehouse:manage', 'report:view', 'evaluation:manage',
+            /* 只给维护、不给审核：网点自己提交自己放行，图2 的审核环节就形同虚设，
+               结论必须由运营端（address:review）下 */
+            'address:manage',
+            /* 网点能勾本城的派送围栏与派送员编号围栏，够不到分拨场地围栏：
+               干线的前提是总部规划的，给网点一个改到货围栏的入口等于让它重写别人的承诺 */
+            'geofence:operate'],
         sorter: ['overview:view', 'order:view', 'tracking:view', 'scan:operate', 'sorting:operate',
             'loading:operate', 'exception:create', 'report:view'],
         transporter: ['overview:view', 'order:view', 'tracking:view', 'scan:operate', 'loading:operate',
@@ -67,6 +76,7 @@
             { id: 'overview', file: 'admin/index.html', label: '运营仪表盘', icon: '◎', perm: 'overview:view' },
             { id: 'operation', file: 'admin/operation.html', label: '经营报表', icon: '▤', perm: 'report:view' },
             { id: 'timing', file: 'admin/timing.html', label: '时效监控', icon: '◷', perm: 'report:view' },
+            { id: 'overtime', file: 'admin/overtime.html', label: '超时运单管理', icon: '⧗', perm: 'report:view' },
             { id: 'monitor', file: 'admin/monitor.html', label: '系统监控', icon: '♨', perm: 'monitor:view' }
         ] },
         { group: '订单履约', items: [
@@ -97,6 +107,7 @@
         ] },
         { group: '网络与运力', items: [
             { id: 'network', file: 'admin/network.html', label: '网络规划', icon: '⊞', perm: 'network:manage' },
+            { id: 'address', file: 'admin/address.html', label: '派送地址', icon: '⌖', perm: 'address:review' },
             { id: 'customer', file: 'admin/customer.html', label: '客户合同', icon: '☗', perm: 'customer:manage' },
             { id: 'vehicle', file: 'admin/vehicle.html', label: '车辆管理', icon: '⛟', perm: 'vehicle:manage' },
             { id: 'capacity', file: 'admin/capacity.html', label: '运力资源', icon: '⛰', perm: 'vehicle:manage' },
@@ -125,6 +136,8 @@
             { id: 'b-order', file: 'branch/order.html', label: '订单', icon: '▦', group: '业务管理', perm: 'order:view' },
             { id: 'b-stock', file: 'branch/inventory.html', label: '库存', icon: '⛁', group: '业务管理', perm: 'warehouse:manage' },
             { id: 'b-service', file: 'branch/service.html', label: '异常客服', icon: '⚠', group: '业务管理', perm: 'exception:create' },
+            { id: 'b-address', file: 'branch/address.html', label: '派送地址', icon: '⌖', group: '基础档案', perm: 'address:manage' },
+            { id: 'b-geofence', file: 'branch/geofence.html', label: '派送围栏', icon: '⬡', group: '基础档案', perm: 'geofence:operate' },
             { id: 'b-system', file: 'branch/system.html', label: '网点设置', icon: '⚿', group: '基础档案', perm: 'customer:manage' }
         ],
         sorter: [

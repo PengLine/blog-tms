@@ -595,10 +595,13 @@
 
     /* openOrder(id, opts)：任意页面点单号都能拉开同一份详情，
        抽屉里再按角色跳到自己的列表页（运营端 order / 网点 b-order …）。
-       opts.footer 由调用页追加动作按钮——详情是共用组件，业务动作属于打开它的页面 */
+       opts.footer 由调用页追加动作按钮——详情是共用组件，业务动作属于打开它的页面。
+       入参先过 TMS.order.byCode：单元格里挂的动作有不少直接把列表上那一列（运单号）当参数传进来，
+       只认订单号就会让「点了有单号的行却报找不到」，而单号本身在页面上是看得见的 */
     function openOrder(id, opts) {
         var o = opts || {};
-        var detail = TMS.order.detail(id);
+        var hit = TMS.order.byCode(id);
+        var detail = hit ? TMS.order.detail(hit.id) : null;
         if (!detail) { ui.toast('未找到订单 ' + id, 'warn'); return null; }
         if (drawer) drawer.close();
         var order = detail.order;
@@ -724,6 +727,250 @@
         return true;
     }
 
+    /* 派送地址详情抽屉（运营端与网点端共用）：图2 的「审核记录 + 审查记录」双留痕要按时间轴摊开，
+       两个端各写一遍必然漂移。按钮挂哪些动作由页面传进来——网点端只有「修改」，
+       通过与打回是审核人的动作，传给网点端就等于给它一条越权路径 */
+    var ADR_TONE = { pending: 'warn', revise: 'danger', revised: 'info', approved: 'success' };
+
+    function addressDrawer(id, opts) {
+        var o = opts || {};
+        var a = TMS.address.get(id);
+        if (!a) { ui.toast('地址记录不存在', 'warn'); return; }
+        var revs = TMS.address.reviewsOf(id);
+        var verdicts = revs.filter(function (r) { return r.kind === TMS.address.KIND.review; });
+        var issues = a.issues || [];
+        var wait = TMS.address.holdHours(a);
+        var over = TMS.address.isOverdue(a);
+        var full = (a.city || '') + (a.district || '') + (a.detail || '');
+        var items = revs.map(function (x) {
+            var roleName = ((cfg.roles || {})[x.actorRole] || {}).name || x.actorRole;
+            var snap = x.snapshot;
+            return {
+                title: esc(x.action) + ' ' + ui.badge(x.kind, x.kind === TMS.address.KIND.review ? 'brand' : 'muted') +
+                    (x.result ? ' ' + ui.badge(x.result, x.result === '通过' ? 'success' : 'danger') : ''),
+                time: fmt.dateTime(x.at),
+                tone: x.result === '打回' ? 'err' : (x.result === '通过' ? 'ok' : (x.toStatus === 'pending' ? 'warn' : '')),
+                body: esc(x.actor) + (roleName ? '（' + esc(roleName) + '）' : '') + ' · 第 ' + x.rounds + ' 轮' +
+                    (x.fromStatus && x.toStatus ? '　' + esc(TMS.address.labelOf(x.fromStatus)) + ' → ' + esc(TMS.address.labelOf(x.toStatus)) : '') +
+                    (x.reason ? '<br>理由：' + esc(x.reason) : '') +
+                    (x.note ? '<br>' + esc(x.note) : '') +
+                    (snap ? '<br><span class="tms-dim">留档：' + esc(snap.phone) + ' · ' + esc((snap.city || '') + (snap.district || '') + (snap.detail || '')) + '</span>' : '')
+            };
+        });
+        var at = TMS.address.FLOW.indexOf(a.status);
+        var steps = ui.steps(TMS.address.FLOW.map(function (s, i) {
+            var cur = i === at;
+            return {
+                label: TMS.address.labelOf(s),
+                state: i < at || (cur && a.status === 'approved') ? 'done' : (cur ? (over ? 'late' : 'current') : 'todo'),
+                time: cur ? (a.status === 'approved' ? fmt.dateTime(a.approvedAt) : (over ? '超时限 ' : '停留 ') + wait + ' 小时')
+                    : (i === 1 && a.rejectReason ? esc(a.rejectReason) : '')
+            };
+        }));
+        var head = ui.desc([
+            { label: '状态', value: ui.badge(TMS.address.labelOf(a.status), ADR_TONE[a.status], { dot: true }) + (over ? ' ' + ui.badge('超时限', 'danger') : '') },
+            { label: '手机号', value: '<span class="tms-mono">' + esc(a.phone) + '</span>　' + esc(a.receiver || '未填收件人') },
+            { label: '地址', value: esc(full) },
+            { label: '归属网点', value: a.branchName ? esc(a.branchName) : '<span class="tone-danger">认不出服务城市，无法归属</span>' },
+            { label: '规范化体检', value: issues.length ? issues.map(function (x) { return ui.badge(esc(x), 'danger'); }).join(' ') : ui.badge('要素齐全，可派送', 'success') },
+            { label: '建议写法', value: a.suggest ? '<span class="tms-dim">' + esc(a.suggest) + '</span>' : '<span class="tms-dim">—</span>' },
+            { label: '提交 / 审核', value: (a.maintainCount || 1) + ' 次提交 · ' + verdicts.length + ' 轮结论 · ' + revs.length + ' 条留痕' },
+            { label: '来源', value: esc(a.source || '网点维护') + (a.owner ? '（' + esc(a.owner) + '）' : '') + ' · 建档 ' + fmt.dateTime(a.createdAt) }
+        ]);
+        var foot = '';
+        /* 图2 里「待修改」不是能被审核的状态——它只能等网点改完变成「已修改」。
+           这里少判一次，按钮点下去就会被领域层拒绝，等于给了条死路 */
+        var reviewable = a.status === 'pending' || a.status === 'revised';
+        if (reviewable && o.pass) foot += ui.btn('审核通过', { size: 'sm', tone: 'primary', act: o.pass, arg: id });
+        if (reviewable && o.reject) foot += ui.btn('打回修改', { size: 'sm', tone: 'danger', act: o.reject, arg: id });
+        if (a.status === 'approved' && o.reopen) foot += ui.btn('发起复审', { size: 'sm', act: o.reopen, arg: id });
+        if (o.edit) foot += ui.btn('修改内容', { size: 'sm', act: o.edit, arg: id });
+        if (o.orders) foot += ui.link('该号在途单', o.orders, a.phone, { tone: 'ghost' });
+        if (o.del) foot += ui.btn('删除档案', { size: 'sm', tone: 'ghost', act: o.del, arg: id });
+        ui.drawer({
+            title: '派送地址 · ' + esc(a.phone),
+            sub: esc(full) + ' · 审核与审查双记录',
+            body: head + steps + ui.timeline(items),
+            footer: foot + ui.btn('关闭', { size: 'sm', act: 'ui:close' })
+        });
+    }
+
+    /* ---------- 电子围栏：图形摘要、图1 判定演示与建档表单 ----------
+       运营端和网点端要的是同一套东西（同一份字典、同一条判定链、同一个校验），
+       各写一遍就会出现「运营端说可派送、网点端说要自提」。
+       差异只有范围：网点端传 city，档案下拉与本城绑定、城市不让改 */
+    var GF_TEXT = cfg.fence.LABEL;
+
+    function fenceRefName(g) {
+        if (!g || !g.refId) return '不绑定场地';
+        if (g.refName) return g.refName;
+        if (g.type === 'courier') {
+            var e = db.get('employees', g.refId);
+            return e ? e.name + '（' + e.badge + '）' : g.refId;
+        }
+        if (g.type === 'branch') {
+            var b = db.get('branches', g.refId);
+            return b ? b.name : g.refId;
+        }
+        var h = TMS.master.hubByNameOrId(g.refId);
+        return h ? h.name : g.refId;
+    }
+
+    /* 绑定对象的取值域跟着类型走：编号围栏只能挂派送员。
+       city 传进来时只列本城档案——网点勾的围栏罩不住外市的派送员 */
+    function fenceRefOptions(type, city) {
+        var scoped = function (rows, label) {
+            var list = city ? rows.filter(function (x) { return x.city === city; }) : rows;
+            return [{ value: '', label: label }].concat(ui.optionsOf(util.sortBy(list, 'id'), 'id', 'name'));
+        };
+        if (type === 'courier') {
+            return scoped(db.col('employees').filter(function (x) {
+                return x.role === 'deliveryman' && x.status === 'active';
+            }), '（必须绑一位在册派送员）');
+        }
+        if (type === 'branch') return scoped(db.col('branches'), '不绑定（按城市布点）');
+        return [{ value: '', label: '不绑定场地' }].concat(ui.optionsOf(db.col('hubs'), 'id', 'name'));
+    }
+
+    function fenceGeomCell(g) {
+        var geo = TMS.network.geometryOf(g);
+        return geo.kind === 'polygon'
+            ? geo.points + ' 点勾画 · ' + geo.areaKm2 + ' km²'
+            : '半径圆 · ' + util.round(geo.radiusM / 1000, 2) + ' km';
+    }
+
+    /* 图1 的三条问句各自要一张围栏来回答，合成一个「覆盖/没覆盖」就看不出漏在哪一环。
+       types 传子集时只列那几行——网点端没有分拨围栏，给它看「无到货围栏」是添乱 */
+    function fenceProbe(city, types) {
+        var point = TMS.master.cityByName(city);
+        if (!point) return null;
+        var list = types || cfg.fence.TYPES;
+        var rows = [];
+        if (list.indexOf('hub') > -1) {
+            var hub = TMS.network.fenceAt(point, 'hub');
+            rows.push({
+                ask: cfg.fence.ASKS.hub, fence: hub, type: 'hub',
+                verdict: hub ? ui.badge('到货围栏内', 'success') : ui.badge('无到货围栏', 'muted'),
+                note: hub ? fenceRefName(hub) + ' · ' + hub.city : '该市没有分拨场地围栏，到件扫描无法核验是否入库'
+            });
+        }
+        if (list.indexOf('branch') > -1) {
+            var br = TMS.network.fenceAt(point, 'branch');
+            rows.push({
+                ask: cfg.fence.ASKS.branch, fence: br, type: 'branch',
+                verdict: br ? ui.badge('可派送', 'success') : ui.badge('不可派送 · 需自提', 'danger'),
+                note: br ? fenceRefName(br) + ' · ' + fenceGeomCell(br) : '该市没有在用的机构派送围栏，收件点只能到网点自提'
+            });
+        }
+        if (list.indexOf('courier') > -1) {
+            var cf = TMS.network.courierFenceAt(point);
+            rows.push({
+                ask: cfg.fence.ASKS.courier, fence: cf && cf.fence, type: 'courier',
+                verdict: cf ? ui.badge('自动绑编号', 'success') : ui.badge('需手动指定派送编号', 'warn'),
+                note: cf ? cf.courier.name + '（' + cf.courier.badge + '）· ' + cf.fence.name
+                    : '收件点不在任何派送员编号围栏内，派单时会退回人工指定'
+            });
+        }
+        return { city: city, point: point, rows: rows };
+    }
+
+    /* 建档表单。类型不进这张表：它决定「绑定对象」的取值域（分拨 / 网点 / 派送员），
+       在同一次提交里改类型会让下拉选项和已选值打架。要换类型就删了重建——
+       围栏本来就三类各管一件事，混着改等于把图1 的三层判定揉回一层。
+       allowTypes 是给网点端的护栏：越出允许范围的类型直接退回默认可建类型 */
+    function fenceFormModal(id, opts) {
+        var o = opts || {};
+        var g = id ? db.get('geofences', id) : null;
+        var allow = o.allowTypes || cfg.fence.TYPES;
+        var want = (g && g.type) || o.type || 'branch';
+        var type = allow.indexOf(want) > -1 ? want : allow[0];
+        var typeLabel = GF_TEXT[type] || ('未知类型 ' + type);
+        var ask = cfg.fence.ASKS[type] || '这张围栏管哪一段作业';
+        var points = o.points || null;
+        var geo = points
+            ? { kind: 'polygon', points: points.length, areaKm2: util.ringAreaKm2(points), radiusM: 0 }
+            : TMS.network.geometryOf(g || {});
+        var presetCity = o.city || (g && g.city) || '';
+        /* 勾画带进来的顶点已经确定了位置，城市先按重心反查预填：
+           让人再手选一次，选出来的还是 saveFence 马上改掉的那个值 */
+        var drawnAt = points ? TMS.network.nearestCity(util.ringCentroid(points)) : null;
+        if (!presetCity && drawnAt) presetCity = drawnAt.city.name;
+        var suggest = (function () {
+            var b = TMS.network.fenceAudit(Math.max(7, Number(o.days) || 7)).breaches
+                .filter(function (x) { return x.city === presetCity; })[0];
+            return b ? b.radiusM : (type === 'hub' ? 2000 : type === 'courier' ? 1500 : 25000);
+        })();
+        /* 城市反查：勾画过的围栏由 saveFence 按几何重心复核，这里只保证没勾边界时城市是真的 */
+        ui.formModal({
+            title: (g ? '编辑围栏「' + g.name + '」' : '新建' + typeLabel),
+            sub: ask + (points ? ' · 已带入 ' + points.length + ' 个勾画顶点' : ''),
+            notice: points
+                ? '勾画边界约 <b>' + geo.areaKm2 + ' km²</b>' + (presetCity ? '，重心离 <b>' + presetCity + '</b> 最近' : '') +
+                '，保存后按顶点环判定，半径不再参与计算。'
+                : (g ? '改半径会立刻改变覆盖判定与越界告警。' : '也可以先在地图上勾边界，闭合后再回到这里补名称与绑定。'),
+            values: {
+                name: (g && g.name) || (o.preset && o.preset.name) || (presetCity ? presetCity + typeLabel : ''),
+                city: presetCity, refId: (g && g.refId) || (o.preset && o.preset.refId) || '',
+                radiusM: (g && g.radiusM) || suggest, status: (g && g.status) || 'active', note: (g && g.note) || ''
+            },
+            fields: [
+                { key: 'name', label: '围栏名称', required: true, span: 2, placeholder: '例：' + (typeLabel + '福州') },
+                o.cityLock
+                    ? { key: 'city', label: '所在城市', readonly: true, tip: '本网点只能维护' + presetCity + '的围栏；勾画过的围栏还会按几何重心复核城市' }
+                    : { key: 'city', label: '所在城市', type: 'city', required: true, tip: '圆心取该城市质心；勾画过的围栏会按几何重心反查城市，不认手填' },
+                {
+                    key: 'refId', label: '绑定对象', type: 'select', options: fenceRefOptions(type, o.cityLock ? presetCity : ''),
+                    required: type === 'hub' || type === 'courier', span: 2,
+                    placeholder: type === 'courier' ? '（必须绑一位在册派送员）' : '不绑定场地'
+                },
+                {
+                    key: 'radiusM', label: '覆盖半径', type: 'number', min: 100, max: 120000, step: 500, unit: '米',
+                    readonly: !!points, tip: points ? '已勾边界，半径仅作展示' : '没勾边界时它就是这个围栏的全部形状'
+                },
+                { key: 'status', label: '状态', type: 'select', placeholder: false, options: Object.keys(cfg.fence.STATUS).map(function (k) { return { value: k, label: cfg.fence.STATUS[k] }; }) },
+                { key: 'note', label: '备注', type: 'textarea', span: 2, rows: 2, placeholder: '为什么这样勾：争议、待复核、与邻市边界怎么分…' }
+            ],
+            okText: g ? '保存并重跑巡检' : '建立并重跑巡检',
+            onSubmit: function (v) {
+                var res = TMS.network.saveFence({
+                    id: g && g.id, name: v.name, city: o.cityLock ? presetCity : v.city, type: type, refId: v.refId,
+                    radiusM: Math.max(100, Number(v.radiusM) || 0), status: v.status, note: v.note, polygon: points
+                }, o.actor || '系统');
+                if (!res.ok) return res.message;
+                var out = TMS.jobs.run('fenceCoverage').out || {};
+                ui.toast((g ? '已更新围栏' : '已建立围栏') + '，' + res.row.city + ' 越界告警核销 ' + (out.resolved || 0) +
+                    ' 条，仍缺派送围栏的城市 ' + out.gap + ' 座', 'success');
+                TMS.shell.refresh();
+                if (o.onDone) o.onDone(res.row);
+            }
+        });
+    }
+
+    /* 半径单独调只给没勾边界的围栏：已勾画的半径不参与判定，给它一条改半径的入口等于骗人。
+       sub / notice 由页面按自己的口径传：运营端说「罩住几座城市」，网点端只能说「罩住本城没有」 */
+    function fenceResizeModal(id, opts) {
+        var o = opts || {};
+        var g = db.get('geofences', id);
+        if (!g) { ui.toast('未找到围栏 ' + id, 'warn'); return; }
+        if (TMS.network.fenceRing(g)) { ui.toast('这张围栏已勾过边界，半径不再参与判定，请改边界', 'info'); return; }
+        ui.formModal({
+            title: '调整 ' + g.name + ' 的覆盖半径',
+            sub: o.sub || ('当前 ' + fmt.number(g.radiusM) + ' m，按圆判定罩住的作业点会随这里变化'),
+            notice: o.notice || '',
+            values: { radiusM: g.radiusM },
+            fields: [{ key: 'radiusM', label: '覆盖半径', type: 'number', required: true, min: 300, max: 120000, step: 500, unit: '米', span: 2 }],
+            okText: '保存并重跑巡检',
+            onSubmit: function (v) {
+                var res = TMS.network.saveFence({ id: id, radiusM: Math.max(300, Number(v.radiusM) || 0) }, o.actor || '系统');
+                if (!res.ok) return res.message;
+                var out = TMS.jobs.run('fenceCoverage').out || {};
+                ui.toast('已调整半径，仍缺派送围栏的城市 ' + out.gap + ' 座', 'success');
+                TMS.shell.refresh();
+                if (o.onDone) o.onDone(res.row);
+            }
+        });
+    }
+
     var registry = {
         define: define, get: get, all: all, byRole: byRole, unregistered: unregistered,
         orderPageFor: orderPageFor, MENU_FILE: MENU_FILE,
@@ -737,6 +984,11 @@
         orderFeePanel: orderFeePanel, orderCostPanel: orderCostPanel, orderPlanPanel: orderPlanPanel,
         orderWorkPanel: orderWorkPanel, orderDocPanel: orderDocPanel, orderTaskList: orderTaskList,
         orderColumns: orderColumns, orderFields: orderFields, orderFilter: orderFilter,
+        addressDrawer: addressDrawer,
+        /* 电子围栏共用视图与建档（运营端 / 网点端） */
+        fenceRefName: fenceRefName, fenceRefOptions: fenceRefOptions, fenceGeomCell: fenceGeomCell,
+        fenceProbe: fenceProbe, fenceFormModal: fenceFormModal, fenceResizeModal: fenceResizeModal,
+        GF_TEXT: GF_TEXT, GF_STATUS_TEXT: cfg.fence.STATUS,
         openOrder: openOrder, closeOrder: closeOrder, deepLink: deepLink, TABS: TABS, visibleTabs: visibleTabs, LEG_TYPE: LEG_TYPE,
         /* 状态字典与档案反查 */
         statusText: statusText, statusBadge: statusBadge, TRIP_TEXT: TRIP_TEXT, DOC_TEXT: DOC_TEXT, hubName: hubName

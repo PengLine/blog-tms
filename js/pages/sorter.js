@@ -51,8 +51,8 @@
             key = String(fs.code || '').trim();
         }
         if (!key) { ui.toast('请先扫描或输入运单号', 'warn'); return; }
-        var o = db.get('orders', key) || db.findOne('orders', function (x) { return x.waybillNo === key; });
-        if (!o) { ui.toast('查无此单：' + key, 'error'); return; }
+        var o = TMS.order.byCode(key);
+        if (!o) { ui.toast('查无此单：' + key + '（不在作业范围或片段命中多张）', 'error'); return; }
         if (o.status === 'inbound') {
             po.run('分拣落格', TMS.order.sort(o.id, { operator: name(), device: po.device(sess()), chute: chuteOf(o) }));
             return;

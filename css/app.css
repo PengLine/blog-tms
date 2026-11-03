@@ -637,6 +637,20 @@ body.tms-body img { max-width: 100%; }
 .tms-meter { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: var(--tms-bg-2); }
 .tms-meter > i { height: 100%; }
 
+/* ---------- 围栏地图 ---------- */
+
+.tms-map { border: 1px solid var(--tms-line); border-radius: 10px; overflow: hidden; background: #fff; }
+.tms-map-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--tms-bg-2); border-bottom: 1px solid var(--tms-line); }
+.tms-map-mode { font-size: 12.5px; color: var(--tms-ink-3); }
+.tms-map-read { font-size: 12px; color: var(--tms-brand-dark); font-family: var(--tms-mono); }
+.tms-map-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.tms-map-canvas { height: 420px; width: 100%; }
+.tms-map-canvas .leaflet-container { font: inherit; }
+.tms-map-offline { display: grid; place-items: center; height: 260px; background: repeating-linear-gradient(45deg, #f5f7fb, #f5f7fb 10px, #eef1f7 10px, #eef1f7 20px); }
+.tms-map-offline-in { max-width: 560px; padding: 16px 20px; text-align: center; }
+.tms-map-offline-in b { display: block; font-size: 14px; color: var(--tms-ink); margin-bottom: 6px; }
+.tms-map-offline-in div { font-size: 12.5px; color: var(--tms-ink-3); line-height: 1.7; }
+
 /* ---------- 动画 ---------- */
 
 @keyframes tms-fade { from { opacity: 0; } to { opacity: 1; } }

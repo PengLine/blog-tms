@@ -131,7 +131,7 @@
             title: o ? '异常上报 · ' + o.waybillNo : '异常上报',
             sub: '上报后订单挂起为问题件，需运营端闭环才放行',
             fields: [
-                { key: 'orderId', label: '运单号', value: o ? o.id : '', required: !o, placeholder: o ? '' : '输入 HL 开头的订单号' },
+                { key: 'orderId', label: '运单号', value: o ? o.id : '', required: !o, placeholder: o ? '' : 'HL 订单号 / WB 运单号 / 收件人手机后四位' },
                 { key: 'type', label: '异常类型', type: 'select', options: ui.optionsOf(TMS.service.EXCEPTION_TYPES), required: true },
                 { key: 'level', label: '紧急等级', type: 'select', options: ui.optionsOf(TMS.service.LEVELS), value: '三级',
                     tip: '一级 2 小时、二级 6 小时、三级按 SLA 自动升级' },
@@ -141,11 +141,13 @@
             onSubmit: function (v) {
                 var id = o ? o.id : String(v.orderId || '').trim();
                 if (!id) return '请填写运单号';
-                var res = TMS.order.markProblem(id, {
+                var target = o || TMS.order.byCode(id);
+                if (!target) return '运单号「' + esc(id) + '」没有唯一匹配的单：可能不属于本网点/本人的作业范围，或该片段命中多张单';
+                var res = TMS.order.markProblem(target.id, {
                     type: v.type, level: v.level, description: v.description,
                     operator: actor(), actor: actor()
                 });
-                if (!run('异常上报', res)) return '上报失败：' + (res && res.message || '运单不存在');
+                if (!run('异常上报', res)) return '上报失败：' + (res && res.message || '');
             }
         });
     }
@@ -159,14 +161,22 @@
         });
         if (!pool.length) pool = db.col('employees').filter(function (e) { return e.role === 'deliveryman' && e.status === 'active'; });
         var self = s.role === 'deliveryman' && s.personId;
+        /* 图1 右支：编号围栏罩得住收件点就按那位派送员预填，罩不住给最近片区候选。
+           预填的人必须在候选池里，否则下拉框显示的第一项和实际值会不一致 */
+        var plan = TMS.order.dispatchOf(o) || {};
+        var inPool = function (id) { return !!id && pool.some(function (e) { return e.id === id; }); };
+        var pre = self ? s.personId : (inPool(plan.courierId) ? plan.courierId : (inPool(plan.suggestId) ? plan.suggestId : o.courierId || (pool[0] || {}).id));
         ui.formModal({
             title: (s.role === 'deliveryman' ? '领取派送 · ' : '指派派送 · ') + o.waybillNo,
             sub: '到达件指派后进入派送中，承诺时效按签收考核追溯',
+            notice: esc((plan.canDeliver ? '可派送｜' : '需自提｜') + plan.deliverNote + '；' + plan.courierVia +
+                (plan.fenceName ? '（' + plan.fenceName + '）'
+                    : plan.suggest ? '：最近片区 ' + plan.suggest + '（距收件点 ' + plan.suggestKm + ' km）' : '')),
             fields: [
                 {
                     key: 'courierId', label: '派送员', type: 'select', placeholder: false,
                     options: pool.map(function (e) { return { value: e.id, label: e.name + '（' + (e.city || '') + '）' }; }),
-                    value: self ? s.personId : (o.courierId || (pool[0] || {}).id)
+                    value: pre
                 },
                 { key: 'deliveryEta', label: '预约上门时间', type: 'datetime', value: util.iso(util.addHours(util.now(), 6)).slice(0, 16) },
                 { key: 'note', label: '调度备注', type: 'textarea', placeholder: '如客户要求晚间派送' }
@@ -648,7 +658,7 @@
         ui.formModal({
             title: '新建客服工单', sub: '催件/改址/投诉统一进工单池，处理结果回写订单备注',
             fields: [
-                { key: 'orderId', label: '运单号', value: o ? o.id : '', placeholder: '可留空（非订单类工单）' },
+                { key: 'orderId', label: '运单号', value: o ? o.id : '', placeholder: '可留空（非订单类工单）；支持 HL 订单号 / WB 运单号' },
                 { key: 'type', label: '工单类型', type: 'select', options: ui.optionsOf(TMS.service.TICKET_TYPES), required: true },
                 { key: 'priority', label: '优先级', type: 'select', placeholder: false, options: ui.optionsOf(['高', '中', '低']), value: '中' },
                 { key: 'channel', label: '来源渠道', type: 'select', placeholder: false, options: ui.optionsOf(['客户来电', '在线客服', '网点代报', '系统回访']), value: '网点代报' },
@@ -656,9 +666,12 @@
             ],
             okText: '提交',
             onSubmit: function (v) {
+                var key = String(v.orderId || '').trim();
+                var target = o || (key ? TMS.order.byCode(key) : null);
+                if (key && !target) return '运单号「' + esc(key) + '」没有唯一匹配的单，请补全单号或留空按无单工单登记';
                 var res = TMS.service.createTicket({
-                    orderId: v.orderId, type: v.type, priority: v.priority,
-                    channel: v.channel, content: v.content, customer: o ? TMS.order.customerName(o) : '', actor: actor()
+                    orderId: target ? target.id : '', type: v.type, priority: v.priority,
+                    channel: v.channel, content: v.content, customer: target ? TMS.order.customerName(target) : '', actor: actor()
                 });
                 if (!res) return '提交失败';
                 ui.toast('工单已提交：' + (res.id || ''), 'success');

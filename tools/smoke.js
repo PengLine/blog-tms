@@ -65,8 +65,9 @@ const MODULES = [
     'js/core/auth.js', 'js/core/rbac.js', 'js/core/migrations.js',
     'js/data/master.js', 'js/domain/pricing.js', 'js/domain/network.js', 'js/data/seed.js',
     'js/domain/order.js', 'js/domain/operation.js', 'js/domain/finance.js', 'js/domain/service.js',
+    'js/domain/address.js',
     'js/domain/people.js', 'js/domain/stats.js', 'js/domain/audit.js', 'js/domain/jobs.js',
-    'js/ui/kit.js', 'js/ui/charts.js', 'js/ui/shell.js', 'js/pages/registry.js',
+    'js/ui/kit.js', 'js/ui/charts.js', 'js/ui/map.js', 'js/ui/shell.js', 'js/pages/registry.js',
     'js/pages/portal.js', 'js/pages/admin.js', 'js/pages/branch.js', 'js/pages/sorter.js',
     'js/pages/transporter.js', 'js/pages/deliveryman.js', 'js/pages/client.js'
 ];
@@ -167,6 +168,38 @@ const badIds = orders.filter((o) => !/^HL[A-Z]{2}\d{8}\d{8}$/.test(o.id) || o.id
 check('订单号符合 HL+省码+日期+4+4 规范', badIds.length === 0, badIds.slice(0, 2).map((o) => o.id).join(','));
 const badWb = orders.filter((o) => !/^WB\d{14}$/.test(o.waybillNo));
 check('运单号符合 WB+10hash+4随机 规范', badWb.length === 0, badWb.slice(0, 2).map((o) => o.waybillNo).join(','));
+
+/* 单号解析口径：一线输入框统一标「运单号」，操作员手里可能是 HL 订单号、WB 运单号、
+   抄错的片段，甚至只有收件人手机后四位。这些回落曾经每个页面各抄一遍，漏抄的那几处
+   就把本机真实存在的单报成「订单不存在」。口径只认唯一命中，命中多张一律交回调用方去列表里筛 */
+section('单号解析');
+const probe = orders.find((o) => String(o.receiverPhone || '').replace(/\D/g, '').length >= 4) || orders[0];
+const idOf = (r) => (r || {}).id;
+check('订单号可解析', idOf(TMS.order.byCode(probe.id)) === probe.id);
+check('运单号可解析', idOf(TMS.order.byCode(probe.waybillNo)) === probe.id);
+check('运单号大小写不敏感', idOf(TMS.order.byCode(probe.waybillNo.toLowerCase())) === probe.id);
+check('首尾空格不影响解析', idOf(TMS.order.byCode('  ' + probe.waybillNo + ' ')) === probe.id);
+check('唯一片段可解析', (function () {
+    const frag = probe.waybillNo.slice(2, 10);
+    const up = frag.toUpperCase();
+    const peers = orders.filter((o) => String(o.waybillNo).toUpperCase().indexOf(up) > -1 || String(o.id).toUpperCase().indexOf(up) > -1);
+    return peers.length === 1 ? idOf(TMS.order.byCode(frag)) === probe.id : TMS.order.byCode(frag) === null;
+})(), '片段命中多张时应交回列表筛选');
+check('手机后四位可解析', (function () {
+    /* 后四位是抄单现场最常见的输入，但 700 张单里撞号是常态：
+       撞上了必须返回 null 让人去列表里筛，不能随机挑一张挂到异常工单上 */
+    const tailOf = (o) => String(o.receiverPhone || '').replace(/\D/g, '').slice(-4);
+    const tail = tailOf(probe);
+    const peers = orders.filter((o) => tailOf(o) === tail);
+    return peers.length === 1 ? idOf(TMS.order.byCode(tail)) === probe.id : TMS.order.byCode(tail) === null;
+})(), '后四位命中多张时应交回列表筛选');
+check('空输入不报错', TMS.order.byCode('') === null && TMS.order.byCode(null) === null && TMS.order.byCode('   ') === null);
+check('命中多张时不替用户猜单', TMS.order.byCode('HL') === null && TMS.order.byCode('WB') === null);
+check('限定范围才可见', TMS.order.byCode(probe.waybillNo, orders.filter((o) => o.id !== probe.id).slice(0, 5)) === null);
+/* 手抄回落一旦重新出现，就会有一处页面再次报「订单不存在」，所以直接扫源码拦住 */
+const handCopied = MODULES.filter((p) =>
+    /waybillNo\s*===/.test(fs.readFileSync(path.join(ROOT, p), 'utf8')));
+check('页面不再手抄运单号回落查询', handCopied.length === 0, handCopied.join(','));
 
 const noTrace = orders.filter((o) => !scans.some((s) => s.orderId === o.id));
 check('每单均有轨迹扫描', noTrace.length === 0, '缺失 ' + noTrace.length);
@@ -329,6 +362,398 @@ check('运力存在自有/外协混合', ov.trips.self > 0 && ov.trips.ltl > 0,
     `自有 ${ov.trips.self} / 外协 ${ov.trips.ltl}`);
 check('自有车次装载率 >40%', ov.trips.avgLoadRate > 40, ov.trips.avgLoadRate + '%');
 
+section('超时运单台账');
+/* 这页八个数是拿去追责和清款口的，口径一旦在页面里各算一遍就对不上。
+   台账的硬约束：行必须唯一、超时小时数不能为负、率的分母不能是零以外的怪东西 */
+(() => {
+    const ot = TMS.stats.overtimeStats(30);
+    log(`  开单 ${ot.opened} / 超时 ${ot.lateOrders}（${ot.lateRate}%）· 在途超承诺 ${ot.transitLate} + 超时签收 ${ot.signedLate}` +
+        ` · 滞留 ${ot.stranded} · 垫付 ${ot.advance} ¥${ot.advanceAmount}` +
+        ` · 代收 ${ot.cod} ¥${ot.codAmount} · 回件率 ${ot.podRate}%（未回 ${ot.podMissing}）`);
+    check('台账八个指标齐全', ['opened', 'lateOrders', 'lateRate', 'stranded', 'advance', 'cod', 'podRate', 'podMissing']
+        .every((k) => typeof ot[k] === 'number' && isFinite(ot[k])));
+    const dupKey = ot.rows.length - new Set(ot.rows.map((r) => r.key)).size;
+    check('超时行 key 唯一（一单一类只一行）', dupKey === 0, '重复 ' + dupKey);
+    const badKey = ot.rows.filter((r) => r.key !== r.orderId + '#' + r.type);
+    check('超时行 key 由单号与类型拼成', badKey.length === 0, badKey.length + ' 行');
+    check('超时小时数非负', ot.rows.every((r) => r.overHours >= 0),
+        '最大 ' + Math.max(0, ...ot.rows.map((r) => r.overHours)));
+    check('行金额非负', ot.rows.every((r) => r.amount >= 0));
+    const orphan = ot.rows.filter((r) => !db.get('orders', r.orderId));
+    check('超时行均指向现存订单', orphan.length === 0, orphan.length + ' 行');
+    const badType = ot.rows.filter((r) => !TMS.stats.OT_TYPES[r.type]);
+    check('超时类型在字典内', badType.length === 0, badType.map((r) => r.type).slice(0, 2).join(','));
+    check('超时单数 ≤ 开单件数', ot.lateOrders <= ot.opened, `${ot.lateOrders} / ${ot.opened}`);
+    check('超时占比与两数相除一致', ot.lateRate === util.pct(ot.lateOrders, ot.opened),
+        ot.lateRate + '% vs ' + util.pct(ot.lateOrders, ot.opened) + '%');
+    check('履约超时单数 = 去重后的在途超承诺 + 超时签收',
+        ot.lateOrders === new Set(ot.rows.filter((r) => r.type === 'transitLate' || r.type === 'signedLate')
+            .map((r) => r.orderId)).size);
+    check('回件率 = 已回件 / 应回件', ot.podRate === util.pct(ot.podBack, ot.podDue),
+        `${ot.podBack}/${ot.podDue}`);
+    check('未回件数 = 应回件 − 已回件', ot.podMissing === ot.podDue - ot.podBack);
+    check('资金敞口 = 垫付 + 代收', ot.exposure === util.money(ot.advanceAmount + ot.codAmount),
+        `${ot.exposure} vs ${util.money(ot.advanceAmount + ot.codAmount)}`);
+    /* 垫付与代收都是「钱压在网点手里」，前提必须是签收过：未签收就报资金超时是假账。
+       口径用 signedAt 而不是 status==='signed'——签收后又退货的单状态会变成 returned，
+       但代收的货款仍在那个网点手里没上划，这格账该继续追 */
+    const badAdvance = ot.rows.filter((r) => (r.type === 'advance' || r.type === 'cod') && (!r.signedAt || r.status === 'cancelled'));
+    check('垫付/代收超时行均签收过', badAdvance.length === 0,
+        badAdvance.map((r) => r.type + ':' + r.orderId + ':' + (r.status || '无签收时间')).join(','));
+    const badPod = ot.rows.filter((r) => r.type === 'podMissing' && r.status !== 'signed');
+    check('未回件行均已签收', badPod.length === 0, badPod.length + ' 行');
+    /* 滞留追的是「压着不动的那一站」，已完结的单不该再算滞留 */
+    const badStrand = ot.rows.filter((r) => r.type === 'stranded' && TMS.order.isTerminal(db.get('orders', r.orderId)));
+    check('滞留超时行均在非终态', badStrand.length === 0, badStrand.length + ' 行');
+    const typeSum = ot.byType.reduce((n, t) => n + t.count, 0);
+    check('类型分布加总等于台账行数', typeSum === ot.rows.length, `${typeSum} vs ${ot.rows.length}`);
+    const branchSum = ot.byBranch.reduce((n, t) => n + t.count, 0);
+    check('网点归属加总等于台账行数', branchSum === ot.rows.length, `${branchSum} vs ${ot.rows.length}`);
+    check('责任网点榜按超时行数降序', ot.byBranch.every((t, i, a) => i === 0 || a[i - 1].count >= t.count));
+    const trendOpened = ot.trend.reduce((n, t) => n + t.opened, 0);
+    check('走势开单加总等于开单件数', trendOpened === ot.opened, `${trendOpened} vs ${ot.opened}`);
+    check('走势每日超时占比 ≤ 100', ot.trend.every((t) => t.rate <= 100),
+        '峰值 ' + Math.max(0, ...ot.trend.map((t) => t.rate)) + '%');
+    const trendLate = ot.trend.reduce((n, t) => n + t.late, 0);
+    /* 履约超时行全部来自窗口内开单，所以按天去重后加总必须等于顶部的超时单数；
+       对不上就说明走势的分母或去重口径与 KPI 分了家 */
+    check('走势超时单加总等于超时单数', trendLate === ot.lateOrders, `${trendLate} vs ${ot.lateOrders}`);
+    /* 口径一旦改动，页面 KPI 与走势、榜单必须同时跟着变；这里钉住「窗口拉长行数不减」 */
+    const otShort = TMS.stats.overtimeStats(7);
+    check('7 日窗口是 30 日子集', otShort.rows.length <= ot.rows.length, `${otShort.rows.length} ≤ ${ot.rows.length}`);
+    check('overtimeRows 与 overtimeStats 同源',
+        TMS.stats.overtimeRows(30).length === ot.rows.length,
+        TMS.stats.overtimeRows(30).length + ' vs ' + ot.rows.length);
+    /* 台账存在的意义是「有账可追」：全零说明种子或判定线断了，页面会好看得可疑 */
+    check('台账有内容', ot.rows.length > 0 && ot.byBranch.length > 0,
+        `${ot.rows.length} 行 / ${ot.byBranch.length} 个网点`);
+})();
+
+section('派送地址审核闭环');
+(() => {
+    const AD = TMS.address;
+    const rows = db.col('addresses');
+    const revs = db.col('addressReviews');
+    check('地址档案有内容', rows.length > 0, `${rows.length} 条 / 审核记录 ${revs.length} 条`);
+    const badStatus = rows.filter((a) => AD.FLOW.indexOf(a.status) < 0);
+    check('状态全部落在四级流程内', badStatus.length === 0, badStatus.map((a) => a.status).join(','));
+    const missing = AD.FLOW.filter((s) => !rows.some((a) => a.status === s));
+    check('四级状态各有样本', missing.length === 0, missing.length ? '缺 ' + missing.join(',') :
+        AD.FLOW.map((s) => s + ':' + rows.filter((a) => a.status === s).length).join(' '));
+    check('手机号都是 11 位', rows.filter((a) => !/^1\d{10}$/.test(String(a.phone))).length === 0);
+
+    /* 图2 的记录规则是硬口径：打回只留审核记录（地址一个字没动，不该凭空造快照），
+       通过必须同时留审核 + 审查（要知道放行的是哪一版）。写错了追责链就断 */
+    const approved = rows.filter((a) => a.status === 'approved');
+    const apNoReview = approved.filter((a) => !AD.reviewsOf(a.id).some((r) => r.kind === AD.KIND.review));
+    check('通过的地址都有审核结论', apNoReview.length === 0, apNoReview.length + ' 条缺失');
+    const apNoSnap = approved.filter((a) => !AD.reviewsOf(a.id).some((r) => r.kind === AD.KIND.inspect && r.snapshot));
+    check('通过的地址都留了通过版快照', apNoSnap.length === 0, apNoSnap.length + ' 条缺失');
+    check('通过的地址都有审核人与时间',
+        approved.filter((a) => !a.reviewer || !a.approvedAt).length === 0);
+    const reviseRows = rows.filter((a) => a.status === 'revise');
+    check('待修改的地址都写了打回原因', reviseRows.filter((a) => !a.rejectReason).length === 0);
+    const badAfterReject = reviseRows.filter((a) => {
+        const list = AD.reviewsOf(a.id);
+        const last = list[list.length - 1];
+        return !last || last.kind !== AD.KIND.review;
+    });
+    check('打回后停在审核记录，没有多余快照', badAfterReject.length === 0, badAfterReject.map((a) => a.id).join(','));
+    check('按手机号只取到已通过的地址',
+        approved.length === 0 || AD.byPhone(approved[0].phone).every((a) => a.status === 'approved'));
+    const notApproved = rows.filter((a) => a.status !== 'approved')[0];
+    check('未通过的地址不会被 byPhone 放行',
+        !notApproved || !AD.byPhone(notApproved.phone).some((a) => a.id === notApproved.id));
+
+    /* 状态机的三条拒绝线：通过件不能直接改、待修改件不能被审核、打回必须写原因。
+       少一条，页面就能造出图2 里不存在的跳变 */
+    const anyApproved = approved[0];
+    check('已通过的地址禁止直接修改',
+        !anyApproved || AD.maintain(anyApproved.id, { address: anyApproved.detail }).ok === false);
+    check('待修改的地址禁止直接审核',
+        !reviseRows[0] || AD.review(reviseRows[0].id, { action: 'approve' }).ok === false);
+    check('打回不写理由一律拒绝',
+        !AD.review(rows.filter((a) => a.status === 'pending')[0]?.id, { action: 'reject', reason: '' }).ok ||
+        rows.filter((a) => a.status === 'pending').length === 0);
+
+    // 全链跑一遍：新建 → 打回 → 修改 → 通过，落库状态与记录条数都要对得上
+    const probe = AD.create({ phone: '13800001234', receiver: '冒烟', address: '哈尔滨市南岗区长江路 88 号 3 栋 301', actor: '网点' });
+    if (probe.ok) {
+        const pid = probe.row.id;
+        const fresh = probe.row.status;
+        /* 每一步都重新读一次：db.update 是就地改对象，
+           拿创建时那个引用去断言中间态，最后看到的只会是终态 */
+        const r1 = AD.review(pid, { action: 'reject', reason: '门牌号需与房产证一致', actor: '审核员' });
+        const afterReject = AD.get(pid).status;
+        const mid = AD.maintain(pid, { address: '哈尔滨市南岗区长江路 88 号 3 栋 301 室', actor: '网点' });
+        const afterMaintain = AD.get(pid).status;
+        const r2 = AD.review(pid, { action: 'approve', actor: '审核员' });
+        const afterApprove = AD.get(pid).status;
+        const dup = AD.create({ phone: '13800001234', address: '哈尔滨市南岗区长江路 88 号 3 栋 301 室' });
+        check('同手机号同地址不重复建档', dup.ok === false && /已有同一条地址/.test(dup.message || ''), dup.message || '又建了一条');
+        check('新建即待审核', fresh === 'pending', fresh);
+        check('打回落到待修改', r1.ok && afterReject === 'revise', afterReject);
+        check('改完自动进已修改', mid.ok && afterMaintain === 'revised', afterMaintain);
+        check('复审通过', r2.ok && afterApprove === 'approved', afterApprove);
+        const kinds = AD.reviewsOf(pid).map((x) => x.kind);
+        check('一次通过留审核+审查双记录',
+            kinds.filter((k) => k === AD.KIND.review).length === 2 &&
+            kinds.filter((k) => k === AD.KIND.inspect).length >= 3,
+            `${kinds.filter((k) => k === AD.KIND.review).length} 审核 / ${kinds.filter((k) => k === AD.KIND.inspect).length} 审查`);
+        const dec = AD.phoneDecision('13800001234');
+        check('通过后按手机号可派送', dec.canDeliver && dec.via === '维护地址', dec.note);
+        const reop = AD.reopen(pid, '运营');
+        check('通过后可发起复审', reop.ok && AD.get(pid).status === 'pending', AD.get(pid).status);
+        AD.remove(pid);
+        check('删除地址同时清掉审核记录',
+            !AD.get(pid) && AD.reviewsOf(pid).length === 0);
+    } else {
+        check('新建即待审核', false, '建档失败：' + probe.message);
+    }
+
+    const st = AD.stats(30);
+    const sumStatus = AD.FLOW.reduce((t, s) => t + (st.byStatus[s] || 0), 0);
+    /* 队列统计必须覆盖全库：一旦按「近 N 天」过滤，40 天前建的待审核件会从 KPI 上消失，
+       而台账和待办队列里还挂着它——页面就会出现「卡片 3 条、列表 12 条」 */
+    check('stats 分状态加总等于在档总量', sumStatus === st.total && st.total === db.col('addresses').length,
+        `${sumStatus} / ${st.total} / ${db.col('addresses').length}`);
+    check('状态计数与库里逐行一致',
+        st.pending === db.col('addresses').filter((a) => a.status === 'pending').length &&
+        st.approved === db.col('addresses').filter((a) => a.status === 'approved').length,
+        `待审核 ${st.pending} / 通过 ${st.approved}`);
+    check('窗口新建量只统计窗口内的建档', st.recent <= st.total, `${st.recent} / ${st.total}`);
+    check('审核通过率在 0~100', st.passRate >= 0 && st.passRate <= 100, st.passRate + '%');
+    check('一次通过率不高于总通过率 + 容差', st.firstPassRate <= 100, st.firstPassRate + '%');
+    check('超时件都能落到某一类', st.overdue + st.stuck <= st.pending + st.revise,
+        `审核超时 ${st.overdue} / 返工超时 ${st.stuck}`);
+    log(`  建档 ${st.total} · 待审核 ${st.pending} · 待修改 ${st.revise} · 已修改 ${st.revised} · 通过 ${st.approved}` +
+        `（超时 ${st.overdue} / 返工压单 ${st.stuck}）· 近 ${st.days} 天建档 ${st.recent} · 审核 ${st.reviews} 轮` +
+        ` · 通过率 ${st.passRate}% · 一次通过 ${st.firstPassRate}% · 平均 ${st.avgReviewHours}h`);
+
+    /* 图2 的「定时通知」：打回的行要生成指向有维护权限之人的告警，且核销要跟着状态走 */
+    TMS.jobs.sweep();
+    const fixAlerts = db.col('alerts').filter((a) => a.status === 'open' && String(a.key).indexOf('addr:fix:') === 0);
+    check('待修改地址都发出了通知', fixAlerts.length === reviseRows.length,
+        `${fixAlerts.length} 条 / 待修改 ${reviseRows.length} 条`);
+    check('通知写给有维护地址权限的人',
+        !fixAlerts.length || fixAlerts.every((a) => a.owner && a.owner.indexOf('网点') > -1),
+        fixAlerts.length ? fixAlerts[0].owner : '无');
+    const backlogAlerts = db.col('alerts').filter((a) => a.status === 'open' && String(a.key).indexOf('addr:backlog:') === 0);
+    check('待审核超时告警与超时数一致', backlogAlerts.length === st.overdue,
+        `${backlogAlerts.length} / ${st.overdue}`);
+    const beforeResolve = fixAlerts.length;
+    if (reviseRows.length) {
+        const one = reviseRows[0];
+        AD.maintain(one.id, { address: one.city + '市' + one.district + '解放大道 1 号 2 栋 3 室', actor: '网点' });
+        TMS.jobs.run('addressReview');
+        const still = db.col('alerts').filter((a) => a.status === 'open' && a.key === 'addr:fix:' + one.id);
+        check('地址改完通知自动撤销', still.length === 0, `${beforeResolve} → ${fixAlerts.length}`);
+    } else {
+        check('地址改完通知自动撤销', true, '无待修改样本');
+    }
+})();
+
+section('电子围栏勾画与三类围栏');
+/* 围栏要能回答图1 的三个问题：到没到（到货围栏）、送不送（机构派送围栏）、谁去送（派送员编号围栏）。
+   这里只测几何与领域层：种子是不是真多边形、判定打在哪一层、缺口的城市会不会如实落到「不派送」 */
+(() => {
+    const GF = TMS.cfg.fence;
+    const net = TMS.network;
+    const fences = db.col('geofences');
+    /* 面积公式自己得先有基准：拿 1°×1° 方环对拍。
+       鞋带式的 ½ 在累加里多写一次，全站围栏面积就集体少一半，而业务断言看不出来 */
+    const degKm = Math.PI / 180 * 6371;
+    const sq = [{ lat: 0, lng: 0 }, { lat: 0, lng: 1 }, { lat: 1, lng: 1 }, { lat: 1, lng: 0 }];
+    check('面积公式对得上 1°×1° 方环', Math.abs(util.ringAreaKm2(sq) - degKm * degKm) < 3,
+        `${util.ringAreaKm2(sq)} km² / 理论 ${Math.round(degKm * degKm)}`);
+    const sqNorth = sq.map((p) => ({ lat: p.lat + 31, lng: p.lng }));
+    check('纬度收缩按整环均值算', Math.abs(util.ringAreaKm2(sqNorth) - degKm * degKm * Math.cos(31.5 * Math.PI / 180)) < 3,
+        `${util.ringAreaKm2(sqNorth)} km²（同形状挪到 31°N）`);
+    const byType = {};
+    fences.forEach((g) => { byType[g.type] = (byType[g.type] || 0) + 1; });
+    check('三类围栏都有种子', GF.TYPES.every((t) => byType[t] > 0),
+        GF.TYPES.map((t) => `${t} ${byType[t] || 0}`).join(' / '));
+
+    const badRing = fences.filter((g) => !Array.isArray(g.polygon) || g.polygon.length < GF.minPoints || g.polygon.length > GF.maxPoints);
+    check('每张围栏都是 3~40 顶点的勾画环', badRing.length === 0, badRing.length ? badRing[0].id : `${fences.length} 张`);
+    const vtx = fences.map((g) => g.polygon.length);
+    check('顶点数不是整齐划一的矩形', Math.max(...vtx) > Math.min(...vtx), `最少 ${Math.min(...vtx)} / 最多 ${Math.max(...vtx)}`);
+    const noArea = fences.filter((g) => !(Number(g.areaKm2) > 0));
+    check('面积由顶点环反算', noArea.length === 0, noArea.length ? noArea[0].id : `如 ${fences[0].name} ${fences[0].areaKm2} km²`);
+
+    /* 圆心必须真在圈内：判定用射线法，而地图定位、面积、越界建议半径都读这个点。
+       点跑到环外就会出现「地图上看着罩住了、系统说没罩住」 */
+    const offCenter = fences.filter((g) => !util.pointInRing(g.center, g.polygon));
+    check('围栏中心落在自己的边界内', offCenter.length === 0, offCenter.map((g) => g.id + '/' + g.name).join('，') || `${fences.length} 张`);
+
+    // 罩住本市：作业围栏的锚点就是城市中心，勾完还罩不住自己城市等于白勾
+    const missCity = fences.filter((g) => g.type !== 'courier' && g.status === 'active')
+        .filter((g) => !net.pointInFence(TMS.master.cityByName(g.city), g));
+    check('在用作业/到货围栏罩住本市', missCity.length === 0, missCity.map((g) => g.city).join('，') || '全部');
+
+    const badScale = fences.filter((g) => {
+        const expect = Math.PI * Math.pow(g.radiusM / 1000, 2);
+        return g.areaKm2 < expect * 0.35 || g.areaKm2 > expect * 2.2;
+    });
+    check('面积与半径同量级', badScale.length === 0, badScale.length
+        ? badScale.slice(0, 3).map((g) => `${g.name} r=${g.radiusM} A=${g.areaKm2} 倍=${Math.round(g.areaKm2 / (Math.PI * Math.pow(g.radiusM / 1000, 2)) * 100) / 100}`).join(' | ')
+        : '勾画半径没有被写成两个数量级');
+
+    const emp = db.col('employees');
+    const badCourier = fences.filter((g) => g.type === 'courier')
+        .filter((g) => { const e = emp.find((x) => x.id === g.refId); return !e || e.role !== 'deliveryman'; });
+    check('编号围栏绑的都是在册派送员', badCourier.length === 0, badCourier.map((g) => g.refId).join('，') ||
+        `${byType.courier} 张`);
+
+    /* 只填半径的老数据要还能判：勾画是升级，不是把圆判定删掉 */
+    const fake = { id: 'GFTEST', name: '测试圆围栏', type: 'branch', city: '上海', center: { lat: 31.23, lng: 121.47 }, radiusM: 5000, status: 'active' };
+    check('无边界时退回半径判定', net.pointInFence({ lat: 31.24, lng: 121.48 }, fake) && !net.pointInFence({ lat: 31.6, lng: 121.9 }, fake),
+        '5km 内命中 / 40km 外不命中');
+    check('命中围栏按类型问', (() => {
+        const c = TMS.master.cityByName(fences.find((g) => g.type === 'hub' && g.status === 'active').city);
+        const hub = net.fenceAt(c, 'hub'), br = net.fenceAt(c, 'branch');
+        return hub && br && hub.id !== br.id;
+    })(), '同一座城能分别问到到货围栏与派送围栏');
+
+    // 图1 左支：没有维护地址时，派送围栏决定「送 / 自提」
+    const audit = net.fenceAudit(30);
+    const gap = fences.find((g) => g.status === 'disabled');
+    check('留出一座停用围栏的作业城市', !!gap, gap ? gap.city + '（网点 ' + db.col('branches').filter((b) => b.city === gap.city).length + ' 个）' : '无');
+    if (gap) {
+        const covered = net.fenceOfCity(gap.city, 'branch');
+        check('停用后该市判为不可派送', !covered, covered ? covered.name : gap.city + ' 已无在用派送围栏');
+        const dec = TMS.address.phoneDecision('19900001111', gap.city + '市某某区某某路 1 号');
+        check('图1 左支：围栏外走自提', dec.canDeliver === false && dec.blocked === 'fence', dec.note);
+        const other = fences.find((g) => g.type === 'branch' && g.status === 'active');
+        const dec2 = TMS.address.phoneDecision('19900002222', other.city + '市某某区某某路 2 号');
+        check('图1 左支：围栏内可按字面地址派送', dec2.canDeliver === true && dec2.via === '机构派送围栏', dec2.note);
+    }
+    check('覆盖城市数=服务城市数-缺口', audit.coveredCities === audit.cityCount - (gap ? 1 : 0),
+        `${audit.coveredCities}/${audit.cityCount}，在用 ${audit.activeRows} 张`);
+
+    /* 派单这一步读的是图1 整条链：dispatchOf 只算不写，
+       收件城市有没有罩得住的派送围栏、编号围栏罩得住收件点，决定界面默认勾谁、能不能送。
+       收件点取城市质心——判定链与巡检用的同一个口径，演示数据没有区级地理编码 */
+    const cityInCourierFence = (c) => {
+        const p = TMS.master.cityByName(c);
+        return !!p && !!net.fenceAt(p, 'courier');
+    };
+    const courierCities = util.unique(fences.filter((g) => g.type === 'courier' && g.status === 'active').map((g) => g.city));
+    const plans = courierCities.map((c) => TMS.order.dispatchOf({ destination: c, receiverPhone: '19900003333', receiverAddress: c + '市某某区某某路 9 号' }));
+    check('派单判定只在收件点真被片区罩住时才给派送员',
+        plans.every((d) => !d.courierId || d.courierId === (net.fenceAt(TMS.master.cityByName(d.city), 'courier') || {}).refId),
+        `${courierCities.length} 座有片区的城市里 ${plans.filter((d) => d.courierId).length} 座自动绑`);
+    check('罩不住片区时给最近片区候选而不是猜人',
+        plans.filter((d) => !d.courierId).every((d) => d.courierVia === '需手动指定派送编号' && d.suggestId && d.suggestKm > 0),
+        plans.filter((d) => !d.courierId).slice(0, 3).map((d) => d.city + '→' + d.suggest + ' ' + d.suggestKm + 'km').join(' ') || '全部自动绑');
+    const noBindCity = util.unique(fences.filter((g) => g.type === 'branch' && g.status === 'active').map((g) => g.city))
+        .find((c) => !cityInCourierFence(c) && !!net.fenceOfCity(c, 'branch'));
+    if (noBindCity) {
+        const d = TMS.order.dispatchOf({ destination: noBindCity, receiverPhone: '19900004444', receiverAddress: noBindCity + '市某某区某某路 9 号' });
+        check('落不进编号围栏就不绑人', d.canDeliver && !d.courierId && d.courierVia === '需手动指定派送编号',
+            noBindCity + ' → ' + d.courierVia);
+    }
+    if (gap) {
+        const d = TMS.order.dispatchOf({ destination: gap.city, receiverPhone: '19900005555', receiverAddress: gap.city + '市某某区某某路 9 号' });
+        check('派单判定按派送围栏说清自提', d.canDeliver === false && d.blocked === 'fence', gap.city + '：' + d.deliverNote);
+    }
+    /* 单上已有编号时图1 右支直接结束，不再拿围栏去改派——已绑定的派送员不该被后台判定悄悄换掉 */
+    const boundOrder = db.col('orders').find((o) => o.courierId && o.status !== 'cancelled');
+    if (boundOrder) {
+        const d = TMS.order.dispatchOf(boundOrder);
+        check('已派单的订单沿用原编号', d.courierId === boundOrder.courierId && d.courierVia === '已有派送编号',
+            `${boundOrder.id} → ${d.courier}`);
+    }
+
+    /* 缺口表是巡检与围栏页共用的口径：一次算出三类问题各自的城市，
+       页面再各算一遍就会和告警对不上，谁去补勾也说不清 */
+    const gaps = net.fenceGaps(30);
+    check('缺口表按图1 三类问题分列',
+        ['hubGap', 'deliverGap', 'courierGap', 'legacy', 'rows'].every((k) => Array.isArray(gaps[k])),
+        `到货 ${gaps.hubGap.length} / 派送 ${gaps.deliverGap.length} / 编号 ${gaps.courierGap.length} / 待重勾 ${gaps.legacy.length}`);
+    check('派送缺口城市确实没有在用派送围栏',
+        gaps.deliverGap.every((r) => !net.fenceOfCity(r.city, 'branch')),
+        gaps.deliverGap.map((r) => r.city).slice(0, 4).join('，') || '无缺口');
+    check('编号缺口城市有派送员却没有编号围栏',
+        gaps.courierGap.every((r) => r.couriers > 0 && r.courierFences === 0 && !!r.branchFence),
+        gaps.courierGap.map((r) => r.city + '(' + r.couriers + '人)').slice(0, 4).join(' ') || '无缺口');
+    check('停用围栏的作业城市进了派送缺口', !gap || gaps.deliverGap.some((r) => r.city === gap.city), gap ? gap.city : '无停用围栏');
+    const fc = TMS.jobs.run('fenceCoverage').out || {};
+    check('巡检按三类缺口分别出告警',
+        fc.gap === gaps.deliverGap.length && fc.hubGap === gaps.hubGap.length && fc.courierGap === gaps.courierGap.length,
+        `派送 ${fc.gap} / 到货 ${fc.hubGap} / 编号 ${fc.courierGap}`);
+    const fcAlerts = db.col('alerts').filter((a) => a.status === 'open' && String(a.key).indexOf('fence:') === 0);
+    check('围栏告警按问题分型落库',
+        (!gaps.deliverGap.length || fcAlerts.some((a) => a.key.indexOf('fence:gap:') === 0)) &&
+        (!gaps.hubGap.length || fcAlerts.some((a) => a.key.indexOf('fence:hub:') === 0)) &&
+        (!gaps.courierGap.length || fcAlerts.some((a) => a.key.indexOf('fence:courier:') === 0)),
+        fcAlerts.length + ' 条在用告警');
+    /* 围栏改成勾画之后，巡检不能再教人去补半径圆——那是上一版的做法，也是这次要消掉的口径 */
+    check('围栏告警不再建议按半径补圈',
+        fcAlerts.every((a) => !/半径\s*\d+(\.\d+)?\s*km/.test(a.message)),
+        fcAlerts.map((a) => a.title).slice(0, 3).join(' / '));
+
+    // 图1 右支：收件点落进谁的编号围栏就自动绑谁，落不进要人工指定
+    const cf = fences.find((g) => g.type === 'courier' && g.status === 'active');
+    if (cf) {
+        const hit = net.courierFenceAt(cf.center);
+        check('图1 右支：编号围栏内自动绑派送员', !!hit && hit.courier.id === cf.refId,
+            hit ? hit.courier.name + '（' + hit.courier.badge + '）← ' + cf.name : '未命中');
+        check('图1 右支：围栏外不猜派送员', !net.courierFenceAt({ lat: -45, lng: 175 }), '需手动指定派送编号');
+    } else {
+        check('图1 右支：编号围栏内自动绑派送员', false, '种子没有在用编号围栏');
+    }
+
+    /* 勾画落库：saveFence 是唯一的写入口，页面不许自己拼对象写 db。
+       顶点/圆心/面积/所在城市都要在落库前算齐，且留审计流水 */
+    const courierEmp = emp.find((e) => e.role === 'deliveryman' && e.status === 'active');
+    const otherEmp = emp.find((e) => e.role === 'transporter');
+    const ring = [{ lat: 30.1, lng: 120.1 }, { lat: 30.2, lng: 120.3 }, { lat: 30.05, lng: 120.35 }, { lat: 29.98, lng: 120.18 }];
+    const r1 = net.saveFence({ name: '冒烟勾画围栏', type: 'branch', city: '杭州', polygon: ring, radiusM: 0 }, '冒烟');
+    check('勾画围栏可落库', r1.ok && r1.shape === 'polygon' && r1.row.polygon.length === 4 && r1.row.areaKm2 > 0,
+        r1.ok ? `${r1.row.id} ${r1.row.areaKm2} km² / 反查城市 ${r1.row.city}` : r1.message);
+    check('圆心反查所在城市', r1.ok && r1.row.city === '杭州', r1.row && r1.row.city);
+    const auditHit = db.col('auditLogs').some((a) => a.entity === 'geofences' && String(a.refId) === String(r1.row && r1.row.id));
+    check('围栏改动进审计流水', auditHit, auditHit ? '' : '未写入 auditLogs');
+    const r2 = net.saveFence({ name: '坏围栏', type: 'warehouse', city: '杭州', radiusM: 1000 }, '冒烟');
+    check('未知类型被拒', !r2.ok, r2.message);
+    const r3 = net.saveFence({ name: '坏围栏', type: 'branch', city: '杭州', polygon: [{ lat: 1, lng: 1 }, { lat: 2, lng: 2 }] }, '冒烟');
+    check('顶点不足被拒', !r3.ok, r3.message);
+    const r4 = net.saveFence({ name: '坏围栏', type: 'branch', city: '杭州' }, '冒烟');
+    check('没形状也没半径被拒', !r4.ok, r4.message);
+    const r5 = net.saveFence({ name: '错绑围栏', type: 'courier', city: '杭州', radiusM: 800, refId: otherEmp.id }, '冒烟');
+    check('编号围栏不许绑非派送员', !r5.ok, r5.message);
+    const r6 = net.saveFence({ name: '编号围栏', type: 'courier', city: '杭州', radiusM: 800, refId: courierEmp.id }, '冒烟');
+    check('编号围栏可改半径落库', r6.ok && r6.shape === 'circle' && r6.row.refId === courierEmp.id,
+        r6.ok ? `${r6.row.name} 半径 ${r6.row.radiusM}m` : r6.message);
+    const inside = net.fencesOfCourier(courierEmp.id).length;
+    check('按派送员反查在用编号围栏', inside >= 1, `${courierEmp.name} 名下 ${inside} 张`);
+    /* 半径圆没有圆心时按所属城市中心补齐，否则这张圈谁都判不中，界面上却写着「在用」 */
+    check('半径围栏自动补出圆心', r6.ok && !!r6.row.center && net.pointInFence(r6.row.center, r6.row),
+        r6.ok ? `${r6.row.city} · 半径 ${r6.row.radiusM}m` : '未落库');
+    /* 自动绑那一格要有真数据才验得出来：现勾一张罩得住市中心的片区，
+       派单判定就必须把那位派送员交出来——罩不住就不给，前面已经验过 */
+    const bindCityRow = TMS.master.CITIES.find((c) => !net.fenceAt(c, 'courier') && !!net.fenceOfCity(c.name, 'branch'));
+    const bindEmp = emp.find((e) => e.role === 'deliveryman' && e.status === 'active' && e.city === (bindCityRow || {}).name) || courierEmp;
+    const r7 = bindCityRow && net.saveFence({
+        name: '冒烟市中心片区', type: 'courier', city: bindCityRow.name,
+        polygon: util.blobRing(bindCityRow, 3500, () => 0.5), refId: bindEmp.id
+    }, '冒烟');
+    const dBind = r7 && r7.ok && TMS.order.dispatchOf({
+        destination: bindCityRow.name, receiverPhone: '19900006666', receiverAddress: bindCityRow.name + '市某某区某某路 9 号'
+    });
+    check('勾一张罩住收件点的片区后派单自动绑编号',
+        !!dBind && dBind.courierId === bindEmp.id && dBind.courierVia === '编号围栏自动绑定',
+        dBind ? bindCityRow.name + ' → ' + dBind.courier + '（' + dBind.fenceName + '）' : '准备不出可绑片区');
+    const del1 = net.removeFence(r1.row.id, '冒烟'), del2 = net.removeFence(r6.row.id, '冒烟');
+    const del3 = r7 && r7.ok ? net.removeFence(r7.row.id, '冒烟') : { ok: false };
+    check('围栏可删除', del1.ok && del2.ok && del3.ok && !db.get('geofences', r1.row.id) && !db.get('geofences', r7.row.id),
+        `${GF.TYPES.length} 类均可增删改`);
+    check('删不存在的围栏有回话', !net.removeFence('GF9999', '冒烟').ok, net.removeFence('GF9999', '冒烟').message);
+    net.invalidateCache();
+    log(`  围栏分布：${GF.TYPES.map((t) => GF.LABEL[t] + ' ' + (byType[t] || 0) + ' 张').join(' / ')}；停用缺口 ${gap ? gap.city : '无'}`);
+})();
+
 section('存储容量');
 const cfg = TMS.cfg;
 const softKB = cfg.storage.softLimitBytes / 1024;
@@ -355,6 +780,11 @@ section('只读统计 API');
         'stats.customerRanking': () => TMS.stats.customerRanking(10),
         'stats.scanStats': () => TMS.stats.scanStats(7),
         'stats.systemStats': () => TMS.stats.systemStats(),
+        'stats.overtimeStats': () => TMS.stats.overtimeStats(30),
+        'stats.overtimeRows': () => TMS.stats.overtimeRows(14),
+        'address.stats': () => TMS.address.stats(30),
+        'address.parse': () => TMS.address.parse('哈尔滨市南岗区长江路 88 号 3 栋 301'),
+        'address.phoneDecision': () => TMS.address.phoneDecision((db.col('addresses')[0] || {}).phone),
         'finance.financeSummary': () => TMS.finance.financeSummary(7),
         'finance.financeTrend': () => TMS.finance.financeTrend(14),
         'finance.receivableSummary': () => TMS.finance.receivableSummary(),
@@ -416,9 +846,21 @@ section('只读统计 API');
     }).join(' · '));
 })();
 
-section('UI 层与页面注册器');/* UI 模块在无浏览器环境下只做字符串渲染，这里验三件事：
+section('UI 层与页面注册器');
+/* UI 模块在无浏览器环境下只做字符串渲染，这里验三件事：
    能装配、管线正确、渲染结果不泄露内部字段（undefined/NaN/裸 ID 都是字段名抄错的信号） */
 check('外壳与注册器已装配', !!(TMS.ui && TMS.charts && TMS.shell && TMS.pages));
+/* ui.confirm 的按钮监听里先 close() 还是先 finish()，决定「点确定」到底算不算同意：
+   close() 会同步触发 onClose→finish(false)，顺序写反就是全站 confirm 门控的写操作静默失效。
+   Node 桩没有真实事件冒泡，跑不了这条行为测试，只能钉源码顺序（浏览器里已实测过反面） */
+(() => {
+    const kitSrc = fs.readFileSync(path.join(ROOT, 'js/ui/kit.js'), 'utf8');
+    const block = (kitSrc.match(/function confirm\(opts\)[\s\S]*?\n    \}/) || [''])[0];
+    const iYes = block.indexOf('finish(yes)');
+    const iClose = block.indexOf('handle.close()');
+    check('ui.confirm 先定结论再关弹窗', iYes > -1 && iClose > -1 && iYes < iClose,
+        'finish@' + iYes + ' / close@' + iClose);
+})();
 /* bundle 文件写了却没进 boot.js 的 MODULES，浏览器里就是「页面尚未注册」的空白，
    而冒烟脚本自己 import 全量模块，永远测不出来——所以这里直接比对目录与 boot 的清单 */
 (() => {
@@ -627,12 +1069,87 @@ const menuIdsOf = (role) => (role === 'admin'
         { code: 'branch', builtin: true, permissionCodes: v8.slice(0, 6) },
         { code: 'client', builtin: true, permissionCodes: v8.slice() }
     ];
-    TMS.migrations[TMS.cfg.storage.schema]({ data: { roles: roles } }, TMS);
-    check('v9 迁移只补出厂权限、不覆盖手工勾过的组合',
-        roles[0].permissionCodes.indexOf('sorting:operate') > -1 &&
+    /* 从 v9 一路跑到当前版本，而不是只跑最后一步：每加一版权限迁移，上一版写死的
+       fixture 就不再命中判定线（长度不同直接 return），只测末步会假通过成「迁移没跑」 */
+    for (let v = 9; v <= TMS.cfg.storage.schema; v++) TMS.migrations[v]({ data: { roles: roles } }, TMS);
+    const shipped = TMS.rbac.defaultPerms('branch');
+    check('权限迁移只补出厂权限、不覆盖手工勾过的组合',
+        shipped.every((p) => roles[0].permissionCodes.indexOf(p) > -1) &&
         roles[1].permissionCodes.length === 6 && roles[2].permissionCodes.length === v8.length,
         'branch ' + roles[0].permissionCodes.length + ' 项 / 定制 ' + roles[1].permissionCodes.length + ' 项');
     check('网点出厂权限含分拣交接', TMS.rbac.defaultPerms('branch').indexOf('sorting:operate') > -1);
+    check('网点出厂权限含地址维护', TMS.rbac.defaultPerms('branch').indexOf('address:manage') > -1);
+    check('网点出厂权限含本城围栏维护', TMS.rbac.defaultPerms('branch').indexOf('geofence:operate') > -1 &&
+        TMS.rbac.PERMISSIONS.some((p) => p.code === 'geofence:operate'),
+        TMS.rbac.defaultPerms('branch').length + ' 项出厂权限');
+})();
+
+/* v11：围栏从「圆心 + 半径」改成现场勾画的边界，并新增派送员编号围栏。
+   老库里那批自动画的方框、写成 inactive 的停用状态都要跟着改，
+   编号围栏要读员工档案，只能打标记交给 boot.ready 补建档 */
+(() => {
+    const box = (lat, lng) => [
+        { lat: lat + 0.02, lng: lng - 0.026 }, { lat: lat + 0.02, lng: lng + 0.026 },
+        { lat: lat - 0.02, lng: lng + 0.026 }, { lat: lat - 0.02, lng: lng - 0.026 }
+    ];
+    const legacy = {
+        data: {
+            geofences: [
+                { id: 'GF0001', name: '上海分拨中心电子围栏', type: 'hub', city: '上海', center: { lat: 31.2, lng: 121.4 }, radiusM: 2000, polygon: box(31.2, 121.4), status: 'active' },
+                { id: 'GF0002', name: '杭州作业围栏', type: 'branch', city: '杭州', center: { lat: 30.25, lng: 120.16 }, radiusM: 5000, polygon: box(30.25, 120.16), status: 'inactive' },
+                { id: 'GF0003', name: '老半径围栏', type: 'branch', city: '广州', center: { lat: 23.13, lng: 113.26 }, radiusM: 9000, status: 'active' }
+            ],
+            employees: [
+                { id: 'EMP0001', name: '甲', role: 'deliveryman', status: 'active', city: '上海', badge: 'HT0001' },
+                { id: 'EMP0002', name: '乙', role: 'transporter', status: 'active', city: '上海' }
+            ]
+        }
+    };
+    TMS.migrations[11](legacy, TMS);
+    const g = legacy.data.geofences;
+    check('老库停用围栏的状态码统一到 disabled', g[1].status === 'disabled' && !!g[1].note, g[1].status + ' · ' + g[1].note);
+    check('旧版自动画的方框打上重勾标记', !!g[0].legacyBox && g[2].legacyBox === undefined,
+        g[0].name + ' 标为待重勾 / ' + g[2].name + '（半径圆）不误标');
+    check('迁移补齐派生字段：shape / 圆心 / 面积',
+        g[0].shape === 'polygon' && g[2].shape === 'circle' &&
+        g[0].areaKm2 > 0 && g[2].areaKm2 === TMS.util.round(Math.PI * 81, 2) &&
+        g[0].center && TMS.util.pointInRing(g[0].center, g[0].polygon),
+        '勾画 ' + g[0].areaKm2 + ' km² · 半径圆 ' + g[2].areaKm2 + ' km²');
+    check('没有编号围栏的老库打上补建档标记', legacy.pendingCourierFence === 1);
+    /* 补建档走真实领域层：在册派送员才配编号围栏，且必须整格落在宿主派送围栏里。
+       这一段要换掉活库的围栏与员工，跑完必须原样换回去——后面的六端页面渲染吃的就是这份数据。
+       换完必须 touch：get/find 有 idMaps 缓存，不清会让后面的断言读到已被换掉的行 */
+    const raw = TMS.db.load();
+    const keep = { geofences: raw.data.geofences, employees: raw.data.employees };
+    const swap = (name, rows) => { raw.data[name] = rows; TMS.db.touch(name); };
+    let out, made, host;
+    try {
+        swap('geofences', g.map((x) => JSON.parse(JSON.stringify(x))));
+        swap('employees', legacy.data.employees.concat([
+            { id: 'EMP0003', name: '丙', role: 'deliveryman', status: 'active', city: '广州', badge: 'HT0003' }
+        ]));
+        out = TMS.network.backfillCourierFences();
+        made = TMS.db.col('geofences').filter((x) => x.type === 'courier');
+        host = (cid) => TMS.db.col('geofences').filter((x) => x.city === cid && x.type !== 'courier' && x.status === 'active')[0];
+        check('补建档只给在册派送员勾格，且格子在宿主围栏内',
+            made.length > 0 && made.every((x) => {
+                const e = TMS.db.get('employees', x.refId);
+                return e && e.role === 'deliveryman' && TMS.network.fenceRing(x) &&
+                    TMS.network.fenceRing(x).every((p) => TMS.network.pointInFence(p, host(x.city)));
+            }),
+            out.created + ' 张编号围栏 / 跳过 ' + out.skipped + ' · 候选城市 ' + out.cities);
+        check('补出来的编号围栏能回答图1 右支', (() => {
+            const one = made[0];
+            if (!one) return false;
+            const hit = TMS.network.fenceAt(TMS.util.ringCentroid(TMS.network.fenceRing(one)), 'courier');
+            return !!hit && hit.refId === one.refId;
+        })(), made.length ? made[0].name + ' 中心反查回 ' + (TMS.db.get('employees', made[0].refId) || {}).name : '未补出围栏');
+    } finally {
+        swap('geofences', keep.geofences);
+        swap('employees', keep.employees);
+    }
+    check('补建档跑完把库原样换回', TMS.db.col('geofences') === keep.geofences && TMS.db.col('employees') === keep.employees,
+        TMS.db.col('geofences').length + ' 张围栏复原');
 })();
 /* 模板字符串里少写一个引号（如 autocomplete="off>）不会抛错，但浏览器会把后面的整段标签
    当成这个属性的值吞进去，页面结构当场塌掉，肉眼只看到「样式混乱」。
@@ -751,7 +1268,9 @@ const READ_ONLY_ACT = new Set([
    写库次数为零是误会了它。直接读源码：一个动作既没碰存储、没调领域服务、没开抽屉弹窗、
    没翻页、没导出、没复制、没刷新，那它就只是弹了句提示。
    这类断链与主键无关，机器判得准，可以当硬门禁用 */
-const LIVE_RE = /(^|[^.\w])db\.(col|get|find|create|update|remove|removeWhere|touch|commit|batch|persist|rev)|TMS\.(order|operation|finance|service|people|pricing|network|stats|master|jobs|audit|ids|auth|rbac|shell)\.|\w*Modal\s*\(|\bopen[A-Z]\w*\s*\(|ui\.(drawer|modal|formModal|confirm|prompt)|\bgo\s*\(|\bhref\s*=|location\s*=|exportGrid|\bdownload\b|clipboard|window\.open|refresh\s*\(|reload\s*\(|\bstate\s*\(/;
+/* pg.xxxDrawer( 是注册器里的跨页共用抽屉：调用点写的是带点的名字，
+   下面的具名调用扫描只认裸标识符，跟不过去。它确实开了界面，算 live */
+const LIVE_RE = /(^|[^.\w])db\.(col|get|find|create|update|remove|removeWhere|touch|commit|batch|persist|rev)|TMS\.(order|operation|finance|service|people|pricing|network|stats|master|jobs|audit|ids|auth|rbac|shell)\.|pg\.\w*[Dd]rawer\s*\(|\w*Modal\s*\(|\bopen[A-Z]\w*\s*\(|ui\.(drawer|modal|formModal|confirm|prompt)|\bgo\s*\(|\bhref\s*=|location\s*=|exportGrid|\bdownload\b|clipboard|window\.open|refresh\s*\(|reload\s*\(|\bstate\s*\(/;
 const stubHits = [];
 
 /* 动作体常常只是一行 'cust:open': function (id) { customerModal(id); }——
@@ -855,6 +1374,16 @@ const readWrite = () => { const w = writes; writes = {}; return w; };
                         .map((s) => s.replace(/^data-act="/, '').replace(/"$/, '')))];
                     const unhandled = used.filter((a) => need.indexOf(a) === -1);
                     if (unhandled.length) { dirty++; console.error('  ✗ ' + role + '/' + id + ' 按钮动作未注册：' + unhandled.join('、')); }
+                    /* 点行开单是最常用的入口，而 grid 的行键（keyName）同时决定 onRow 带出去的参数：
+                       台账这类「一单多行」的列表把行内唯一键当行键，点行就打不开抽屉，
+                       渲染文本里完全看不出异常——所以逐个把 data-arg 送进 openOrder 用的同一个解析器验一遍 */
+                    const argPairs = html.match(/data-act="order:open" data-arg="([^"]*)"/g) || [];
+                    const badArg = argPairs.map((s) => s.replace(/^.*data-arg="/, '').replace(/"$/, ''))
+                        .filter((a) => a && a !== 'undefined' && !TMS.order.byCode(a));
+                    if (badArg.length) {
+                        dirty++;
+                        console.error('  ✗ ' + role + '/' + id + ' 行键解析不到订单（' + badArg.length + ' 处，如 ' + badArg[0] + '）');
+                    }
                 }
             } catch (err) {
                 dirty++;
@@ -1074,7 +1603,7 @@ if (EMPTY_AUDIT) {
            方向是从已知的往外推：取可达函数的函数体，扫它调了谁，收敛到不动点。
            种子除页面还算核心/视图/种子脚本——它们里写的 TMS.mod.fn 一定跑过 */
         const shellSrc = ['js/data/seed.js', 'js/boot.js', 'js/core/utils.js', 'js/core/db.js', 'js/core/auth.js',
-            'js/core/rbac.js', 'js/core/migrations.js', 'js/ui/kit.js', 'js/ui/charts.js', 'js/ui/shell.js',
+            'js/core/rbac.js', 'js/core/migrations.js', 'js/ui/kit.js', 'js/ui/charts.js', 'js/ui/map.js', 'js/ui/shell.js',
             'js/pages/registry.js']
             .map((rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8')).join('\n');
         const ALLKEY = new Set(apiTotal);

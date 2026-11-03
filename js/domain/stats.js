@@ -340,11 +340,185 @@
         };
     }
 
+    /* ---------- 超时运单台账 ----------
+       网点经营会要的不是「时效均值多少」，而是「这个月哪一类超时在吃我的钱、挂在谁身上」。
+       所以超时拆成六类可追责的行：在途超承诺 / 超时签收 / 节点滞留 / 垫付未回笼 /
+       代收未上划 / 回件未返。一行 = 一张单的一个问题，同一单可以同时占多行；
+       KPI、维度榜、明细表全部从这同一份行里出，页面再 sum 一遍就是两套口径的开始 */
+    var OT_TYPES = {
+        transitLate: { label: '在途超承诺', line: '履约', owner: 'dest', money: 'freight' },
+        signedLate: { label: '超时签收', line: '履约', owner: 'dest', money: 'freight' },
+        stranded: { label: '节点滞留', line: '作业', owner: 'last', money: 'freight' },
+        advance: { label: '垫付未回笼', line: '资金', owner: 'origin', money: 'amount' },
+        cod: { label: '代收未上划', line: '资金', owner: 'dest', money: 'netPayable' },
+        podMissing: { label: '回件未返', line: '单证', owner: 'dest', money: 'freight' }
+    };
+
+    /* 滞留判定与「轨迹超时巡检」同一条线：只看最后一个节点，
+       前序节点的时限已被后续扫描证明达成，重复计会把一单算成两单滞留 */
+    function strandedDue(o, idx) {
+        if (TMS.order.isTerminal(o)) return 0;
+        var list = idx[o.id] || [];
+        var s = list[list.length - 1];
+        if (!s || s.node === 'SIGNED') return 0;
+        return TMS.order.scanDue(s);
+    }
+
+    function overtimeRows(days) {
+        var win = days || 30;
+        var nowMs = util.now().getTime();
+        var cutoff = util.addDays(util.now(), -win + 1).getTime();
+        var list = ordersWithin(win).filter(function (o) { return o.status !== 'cancelled'; });
+        var idx = TMS.order.scanIndex();
+        var rows = [];
+
+        function push(o, type, dueAt, amount) {
+            var t = OT_TYPES[type];
+            /* 责任网点按问题性质给：揽收/回件追目的网点，垫付追始发网点（谁开的单谁垫的钱），
+               节点滞留追最后一次扫描落在哪——那才是压着不动的那一站 */
+            var bid = t.owner === 'origin' ? o.originBranchId : o.destBranchId;
+            if (t.owner === 'last') bid = o.hubFrom || o.originBranchId;
+            var b = (bid && db.get('branches', bid)) || null;
+            var due = dueAt ? util.toDate(dueAt) : null;
+            rows.push({
+                key: o.id + '#' + type, orderId: o.id, type: type, typeLabel: t.label, line: t.line,
+                waybillNo: o.waybillNo, customer: TMS.order.customerName(o),
+                customerLevel: TMS.order.customerLevel(o), service: o.service,
+                origin: o.origin, destination: o.destination, status: o.status,
+                courier: o.courier || '', courierId: o.courierId || '',
+                branchId: b ? b.id : '', branchName: b ? b.name : '', branchCity: b ? b.city : '',
+                createdAt: o.createdAt, signedAt: o.signedAt || '',
+                dueAt: dueAt || '', overHours: due ? util.round(Math.max(0, (nowMs - due.getTime()) / 3600000), 1) : 0,
+                amount: util.money(Number(amount) || 0)
+            });
+        }
+
+        list.forEach(function (o) {
+            if (TMS.order.isLate(o)) push(o, 'transitLate', TMS.order.promiseOf(o), o.freight);
+            if (TMS.order.isSignedLate(o)) push(o, 'signedLate', TMS.order.promiseOf(o), o.freight);
+            var sd = strandedDue(o, idx);
+            if (sd && sd < nowMs) push(o, 'stranded', util.iso(new Date(sd)), o.freight);
+            /* 回件只看 POD 照片：签收人/备注可以是电话口头补录，
+               「有照片才算完整 POD」是签收弹窗里就写明的口径 */
+            if (o.status === 'signed' && !(o.pod && o.pod.podPhoto)) {
+                push(o, 'podMissing', util.iso(util.addHours(util.toDate(o.signedAt), cfg.sla.podReturnHours)), o.freight);
+            }
+        });
+
+        db.col('receivables').forEach(function (r) {
+            if (r.status !== 'pending') return;
+            if (util.toDate(r.dueDate).getTime() >= nowMs) return;
+            var o = db.get('orders', r.orderId);
+            if (!o || util.toDate(o.createdAt).getTime() < cutoff || o.status === 'cancelled') return;
+            if (o.status !== 'signed') return;   // 未签收谈不上回款逾期，那是时效问题，已在履约行里
+            push(o, 'advance', r.dueDate, r.amount);
+        });
+
+        db.col('codRecords').forEach(function (r) {
+            if (r.remitStatus === 'remitted') return;
+            var o = db.get('orders', r.orderId);
+            if (!o || util.toDate(o.createdAt).getTime() < cutoff || o.status === 'cancelled') return;
+            if (util.hoursBetween(r.collectedAt, util.now()) < cfg.sla.codRemitHours) return;
+            push(o, 'cod', util.iso(util.addHours(util.toDate(r.collectedAt), cfg.sla.codRemitHours)), r.netPayable);
+        });
+
+        return util.sortBy(rows, 'overHours', 'desc');
+    }
+
+    function overtimeStats(days) {
+        var rows = overtimeRows(days);
+        var opened = ordersWithin(days || 30).filter(function (o) { return o.status !== 'cancelled'; });
+        var signed = opened.filter(function (o) { return o.status === 'signed'; });
+        var of = function (t) { return rows.filter(function (r) { return r.type === t; }); };
+        var transitLate = of('transitLate'), signedLate = of('signedLate'), stranded = of('stranded');
+        var advance = of('advance'), cod = of('cod'), podMissing = of('podMissing');
+
+        /* 超时单数按「单」而不是按「行」：一单既在途超承诺又滞留，只算一张超时单 */
+        var lateIds = util.unique(transitLate.concat(signedLate).map(function (r) { return r.orderId; }));
+        var byType = Object.keys(OT_TYPES).map(function (k) {
+            var g = rows.filter(function (r) { return r.type === k; });
+            return {
+                key: k, label: OT_TYPES[k].label, line: OT_TYPES[k].line, count: g.length,
+                orders: util.unique(g.map(function (r) { return r.orderId; })).length,
+                amount: util.money(util.sum(g, 'amount')),
+                avgHours: g.length ? util.round(util.sum(g, 'overHours') / g.length, 1) : 0,
+                maxHours: util.round(g.reduce(function (m, r) { return Math.max(m, Number(r.overHours) || 0); }, 0), 1)
+            };
+        });
+        var rollup = function (key, emptyText) {
+            var m = {};
+            rows.forEach(function (r) {
+                var k = r[key] || emptyText;
+                var g = m[k] || (m[k] = { label: k, count: 0, orders: {}, amount: 0, hours: 0,
+                    late: 0, stranded: 0, advance: 0, cod: 0, pod: 0 });
+                g.count++;
+                g.orders[r.orderId] = 1;
+                g.amount += Number(r.amount) || 0;
+                g.hours = Math.max(g.hours, Number(r.overHours) || 0);
+                if (r.type === 'transitLate' || r.type === 'signedLate') g.late++;
+                else if (r.type === 'stranded') g.stranded++;
+                else if (r.type === 'advance') g.advance++;
+                else if (r.type === 'cod') g.cod++;
+                else if (r.type === 'podMissing') g.pod++;
+            });
+            return Object.keys(m).map(function (k) {
+                var g = m[k];
+                return {
+                    label: g.label, count: g.count, orders: Object.keys(g.orders).length,
+                    amount: util.money(g.amount), maxHours: util.round(g.hours, 1),
+                    late: g.late, stranded: g.stranded, advance: g.advance, cod: g.cod, pod: g.pod
+                };
+            }).sort(function (a, b) { return b.count - a.count; });
+        };
+
+        /* 按天趋势：分母用当日开单数，超承诺是「当天开的单里有多少张没守住时效」，
+           拿全窗口单量当分母会把早上的积压摊到晚上，曲线看不出治理有没有生效 */
+        var dayMap = {};
+        opened.forEach(function (o) {
+            var d = util.dateKey(util.toDate(o.createdAt));
+            var g = dayMap[d] || (dayMap[d] = { day: d, opened: 0, late: 0, lateIds: {}, stranded: 0, pod: 0 });
+            g.opened++;
+        });
+        rows.forEach(function (r) {
+            var g = dayMap[util.dateKey(util.toDate(r.createdAt))];
+            if (!g) return;
+            if (r.type === 'transitLate' || r.type === 'signedLate') {
+                /* 与顶部「超时单数」同口径：一单既在途超承诺又超时签收，走势里也只算它一次 */
+                if (!g.lateIds[r.orderId]) { g.lateIds[r.orderId] = 1; g.late++; }
+            }
+            else if (r.type === 'stranded') g.stranded++;
+            else if (r.type === 'podMissing') g.pod++;
+        });
+        var trend = Object.keys(dayMap).sort().map(function (d) {
+            var g = dayMap[d];
+            return { label: d.slice(5), opened: g.opened, late: g.late, stranded: g.stranded, pod: g.pod,
+                rate: util.pct(g.late, g.opened) };
+        });
+
+        return {
+            days: days || 30, rows: rows,
+            opened: opened.length,
+            lateOrders: lateIds.length,
+            lateRate: util.pct(lateIds.length, opened.length),
+            transitLate: transitLate.length, signedLate: signedLate.length,
+            stranded: stranded.length, strandedAmount: util.money(util.sum(stranded, 'amount')),
+            advance: advance.length, advanceAmount: util.money(util.sum(advance, 'amount')),
+            cod: cod.length, codAmount: util.money(util.sum(cod, 'amount')),
+            podDue: signed.length, podBack: signed.length - podMissing.length,
+            podMissing: podMissing.length, podRate: util.pct(signed.length - podMissing.length, signed.length),
+            exposure: util.money(util.sum(advance, 'amount') + util.sum(cod, 'amount')),
+            byType: byType, byBranch: rollup('branchName', '未归属网点'),
+            byCourier: rollup('courier', '未指派'), byCustomer: rollup('customer', '散客'),
+            trend: trend
+        };
+    }
+
     TMS.stats = {
         overview: overview, orderTrend: orderTrend, breakdown: breakdown,
         lifecycleStats: lifecycleStats, timingStats: timingStats, traceStats: traceStats,
         routeStats: routeStats, networkStats: networkStats,
         customerRanking: customerRanking, scanStats: scanStats,
-        systemStats: systemStats, ordersWithin: ordersWithin, orgStats: orgStats
+        systemStats: systemStats, ordersWithin: ordersWithin, orgStats: orgStats,
+        overtimeRows: overtimeRows, overtimeStats: overtimeStats, OT_TYPES: OT_TYPES
     };
 })(window);

@@ -531,60 +531,103 @@
         };
     }
 
-    function buildGeofences() {
+    /* 围栏是「勾」出来的边界，不是「圆心 + 半径」，环的画法统一收在 util.blobRing */
+    function fenceRing(rand, anchor, radiusM) {
+        return util.blobRing(anchor, radiusM, rand);
+    }
+
+    /* center/areaKm2 一律反算自顶点环，不另写一份：
+       圆心与形状各写一套数，就会出现「地图上看它在圈内、判定说它在圈外」 */
+    function makeFence(rand, seq, base, radiusM) {
+        var ring = fenceRing(rand, base.center, radiusM);
+        return {
+            id: 'GF' + util.pad(seq, 4),
+            name: base.name, type: base.type, refId: base.refId, refName: base.refName, city: base.city,
+            shape: 'polygon', polygon: ring, center: util.ringCentroid(ring), areaKm2: util.ringAreaKm2(ring),
+            radiusM: radiusM, status: 'active', alertCount: Math.floor(rand() * base.alertMax),
+            updatedAt: util.iso(util.addDays(util.now(), -Math.floor(rand() * base.backdateDays)))
+        };
+    }
+
+    function buildGeofences(employees) {
         var out = [];
         var r = randFactory(777);
-        HUB_SEEDS.forEach(function (h, i) {
-            var c = cityByName(h.city);
-            out.push({
-                id: 'GF' + util.pad(i + 1, 4),
-                name: h.name + '电子围栏',
-                type: 'hub', refId: h.id, city: h.city,
-                center: { lat: c.lat, lng: c.lng },
-                radiusM: 1200 + Math.floor(r() * 1500),
-                polygon: [
-                    { lat: c.lat + 0.012, lng: c.lng - 0.015 }, { lat: c.lat + 0.012, lng: c.lng + 0.015 },
-                    { lat: c.lat - 0.012, lng: c.lng + 0.015 }, { lat: c.lat - 0.012, lng: c.lng - 0.015 }
-                ],
-                status: 'active', alertCount: Math.floor(r() * 26), updatedAt: util.iso(util.addDays(util.now(), -Math.floor(r() * 40)))
-            });
+        HUB_SEEDS.forEach(function (h) {
+            out.push(makeFence(r, out.length + 1, {
+                name: h.name + '电子围栏', type: 'hub', refId: h.id, refName: h.name, city: h.city,
+                center: cityByName(h.city), alertMax: 26, backdateDays: 40
+            }, 1200 + Math.floor(r() * 1500)));
         });
-        /* 枢纽围栏只罩得住枢纽自己那座城市：网点所在城市没有围栏时，
+        /* 到货围栏只罩得住枢纽自己那片场地：网点所在城市没有派送围栏时，
            客户端「电子围栏覆盖」和网点设置页永远显示暂无，巡检也会把每个作业城市都报成越界。
-           揽收范围按围栏几何判定，那就让每个开点的城市都有一座自己的围栏 */
+           揽收/派送范围按围栏几何判定，那就让每个开点的城市都勾一座自己的派送围栏——
+           枢纽城市也要：图1 左支问的是「送不送」，分拨所在城市当然送，只是它另一件事（到没到）由到货围栏回答 */
         var hubCity = {};
         HUB_SEEDS.forEach(function (h) { hubCity[h.city] = 1; });
         var done = {};
-        var gapIdx = -1, gapBranches = -1;
+        var cityBranchCount = {};
+        BRANCH_CACHE.forEach(function (x) { if (x.city) cityBranchCount[x.city] = (cityBranchCount[x.city] || 0) + 1; });
         BRANCH_CACHE.forEach(function (b) {
-            if (!b.city || hubCity[b.city] || done[b.city]) return;
+            if (!b.city || done[b.city]) return;
             done[b.city] = 1;
-            var c = cityByName(b.city);
-            if (!c) return;
-            var idx = out.length;
-            var cnt = 0;
-            BRANCH_CACHE.forEach(function (x) { if (x.city === b.city) cnt++; });
-            if (cnt > gapBranches) { gapBranches = cnt; gapIdx = idx; }
-            out.push({
-                id: 'GF' + util.pad(idx + 1, 4),
-                name: b.city + '作业围栏',
-                type: 'branch', refId: b.id, city: b.city,
-                center: { lat: c.lat, lng: c.lng },
-                radiusM: 3000 + Math.floor(r() * 4000),
-                polygon: [
-                    { lat: c.lat + 0.02, lng: c.lng - 0.026 }, { lat: c.lat + 0.02, lng: c.lng + 0.026 },
-                    { lat: c.lat - 0.02, lng: c.lng + 0.026 }, { lat: c.lat - 0.02, lng: c.lng - 0.026 }
-                ],
-                status: 'active', alertCount: Math.floor(r() * 9), updatedAt: util.iso(util.addDays(util.now(), -Math.floor(r() * 30)))
-            });
+            out.push(makeFence(r, out.length + 1, {
+                name: b.city + '派送围栏', type: 'branch', refId: b.id, refName: b.city + '网点群', city: b.city,
+                center: cityByName(b.city), alertMax: 9, backdateDays: 30
+            }, hubCity[b.city] ? 6000 + Math.floor(r() * 3000) : 3000 + Math.floor(r() * 4000)));
         });
         /* 全站都覆盖 = 这页两张卡常年空着，看不出围栏在防什么。
-           留一座「半径争议、停用待复核」的城市当缺口样本：选网点最多的那座，
-           它的显式地点扫描最多，越界明细与覆盖缺口告警才都有真数据可指 */
+           留一座「停用待复核」的作业城市当缺口样本：候选按网点数从多到少试，
+           要挑停用之后本市确实再没有任何在用围栏罩住的那一座——
+           相邻城市的围栏边缘伸过来时，随便停用一座并不会产生越界流水 */
+        function coveredByOther(city, exceptIdx) {
+            var c = cityByName(city);
+            if (!c) return false;
+            for (var i = 0; i < out.length; i++) {
+                if (i === exceptIdx || out[i].status !== 'active') continue;
+                if (util.pointInRing(c, out[i].polygon)) return true;
+            }
+            return false;
+        }
+        var gapIdx = -1, gapBranches = -1;
+        out.forEach(function (g, gi) {
+            if (g.type !== 'branch') return;
+            var cnt = cityBranchCount[g.city] || 0;
+            if (cnt > gapBranches && !coveredByOther(g.city, gi)) { gapBranches = cnt; gapIdx = gi; }
+        });
         if (gapIdx > -1) {
-            out[gapIdx].status = 'inactive';
+            out[gapIdx].status = 'disabled';
+            out[gapIdx].note = '边界争议，停用待复核';
             out[gapIdx].updatedAt = util.iso(util.addDays(util.now(), -3));
         }
+
+        /* 第三类：给派送员勾的编号围栏（图1 右支）。
+           一名派送员一格、落在所在城市派送围栏内部偏出去的位置，
+           这样收件点落进谁的格子就自动绑谁，落不进才需要人工指定。
+           每 5 座城故意留空、缺口城市也不给——全绑上就看不出「需手动指定派送编号」那条支线了 */
+        var fencedCity = {};
+        out.forEach(function (g) { if (g.status === 'active' && g.type !== 'courier') fencedCity[g.city] = g; });
+        var couriers = {};
+        (employees || []).forEach(function (e) {
+            if (e.role !== 'deliveryman' || e.status !== 'active' || !fencedCity[e.city]) return;
+            (couriers[e.city] || (couriers[e.city] = [])).push(e);
+        });
+        Object.keys(couriers).sort().forEach(function (city, ci) {
+            if (ci % 5 === 4) return;
+            var host = fencedCity[city];
+            var picked = couriers[city].slice(0, hubCity[city] ? 2 : 1);
+            picked.forEach(function (e, ei) {
+                var shift = host.radiusM * 0.55;
+                var ang = (Math.PI * 2 / picked.length) * ei + r() * 0.6;
+                out.push(makeFence(r, out.length + 1, {
+                    name: e.name + '（' + e.badge + '）责任片区', type: 'courier', refId: e.id, refName: e.name, city: city,
+                    alertMax: 5, backdateDays: 21,
+                    center: {
+                        lat: host.center.lat + shift * Math.sin(ang) / 111320,
+                        lng: host.center.lng + shift * Math.cos(ang) / (111320 * Math.cos(host.center.lat * Math.PI / 180))
+                    }
+                }, 700 + Math.floor(r() * 900)));
+            });
+        });
         return out;
     }
 
@@ -695,7 +738,7 @@
         });
         db.data.materials = materials;
         db.data.devices = buildDevices(rand);
-        db.data.geofences = buildGeofences();
+        db.data.geofences = buildGeofences(db.data.employees);
         db.data.departments = DEPARTMENTS.map(function (d) { return util.clone(d); });
         db.data.roles = Object.keys(TMS.cfg.roles).map(function (k) {
             return {

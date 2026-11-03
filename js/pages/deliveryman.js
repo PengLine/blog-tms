@@ -629,7 +629,9 @@
                 };
             }).sort(function (a, b2) { return b2.signed - a.signed; });
             return {
-                b: b, fence: TMS.network.fenceOfCity(city), districts: districts, mates: mates,
+                b: b, fence: TMS.network.fenceOfCity(city, 'branch'),
+                myFences: TMS.network.fencesOfCourier(pid()),
+                districts: districts, mates: mates,
                 peers: TMS.stats.orgStats(orgId(), 30), hub: db.get('hubs', b.hubId) || {},
                 customers: db.col('customers').filter(function (c) { return c.city === city && c.status === 'active'; })
             };
@@ -638,7 +640,7 @@
         render: function (ctx, d) {
             var f = d.fence;
             return po.wrap(ctx, {
-                sub: '片区来自收件地址的行政区划，围栏用于判定「扫描地点是不是在我的城市」，不是给我划地盘',
+                sub: '机构派送围栏管「扫描地点算不算在这座城市」，编号围栏管「件自动落到哪个派送员手里」，后者才是运营端给我划的片区',
                 body: [
                     ui.card({
                         title: '责任网点与围栏', sub: esc(d.b.name || '—'), flat: true,
@@ -648,7 +650,8 @@
                             { label: '服务范围', value: esc(d.b.city || '') + ' ' + esc(d.b.province || '') + ' · ' + esc(d.b.zone || '') + '区' },
                             { label: '营业时间', value: esc(d.b.openAt || '—') + ' – ' + esc(d.b.closeAt || '—') },
                             { label: '日处理能力', value: fmt.number(d.b.dailyCapacity || 0) + ' 件' },
-                            { label: '电子围栏', value: f ? esc(f.name) + ' · 半径 ' + fmt.number(Math.round((f.radiusM || 0) / 100) / 10) + ' km · 告警 ' + fmt.number(f.alertCount || 0) + ' 次' : '<span class="tms-dim">该城市没有生效围栏</span>' },
+                            { label: '城市派送围栏', value: f ? esc(f.name) + ' · ' + pg.fenceGeomCell(f) + ' · ' + esc(pg.GF_STATUS_TEXT[f.status] || f.status) : '<span class="tone-danger">该市没有在用派送围栏，地址再准也只能到网点自提</span>' },
+                            { label: '我的编号围栏', value: d.myFences.length ? d.myFences.map(function (g) { return esc(g.name) + '（' + pg.fenceGeomCell(g) + '）'; }).join('；') : '<span class="tms-dim">运营端还没给我勾片区围栏，派单时要手动指定派送编号</span>' },
                             { label: '近 30 天经手', value: fmt.number(d.peers.orders) + ' 单 · 及时率 ' + fmt.percent(d.peers.onTimeRate) },
                             { label: '片区同事', value: fmt.number(d.mates.length) + ' 名派送员' }
                         ], { inline: true })

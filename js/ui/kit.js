@@ -492,8 +492,10 @@
                 var t = e.target.closest ? e.target.closest('[data-act]') : null;
                 if (!t) return;
                 var yes = t.getAttribute('data-act') === 'yes';
-                handle.close();
+                /* 必须先定结论再关：close() 会同步回调 onClose→finish(false)，
+                   顺序写反就是「点确定也当取消」，全站 confirm 门控的写操作全部静默失效 */
                 finish(yes);
+                handle.close();
             });
             handle.el.querySelectorAll('.tms-btn').forEach(function (b) { b.style.cursor = 'pointer'; });
         });

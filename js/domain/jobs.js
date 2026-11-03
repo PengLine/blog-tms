@@ -13,7 +13,8 @@
         { key: 'materialStock', name: '物料安全库存', run: materialStock },
         { key: 'purchaseOverdue', name: '采购到货超期', run: purchaseOverdue },
         { key: 'deviceHealth', name: '扫描设备健康', run: deviceHealth },
-        { key: 'fenceCoverage', name: '电子围栏覆盖缺口', run: fenceCoverage },
+        { key: 'fenceCoverage', name: '电子围栏缺口巡检', run: fenceCoverage },
+        { key: 'addressReview', name: '派送地址审核与打回通知', run: addressReview },
         { key: 'tripDeparture', name: '班次未按时发车', run: tripDeparture },
         { key: 'slaBacklog', name: '压单预警', run: slaBacklog },
         { key: 'perfGuard', name: '绩效改进计划跟踪', run: perfGuard },
@@ -210,27 +211,119 @@
         return { faulty: bad.length, resolved: resolveGone('device:', keysOf(bad, 'device:'), '设备已恢复上报') };
     }
 
-    /* 围栏覆盖缺口：作业城市的扫描地点落在任何在用围栏之外就报警，补一张同城围栏即自动核销。
-       围栏不是画图好看——它管的是「这个城市的作业地点有没有被系统认定过」，
-       所以判据取城市粒度：半径只有 1~3 km，而网点坐标本身就是城市中心，逐点算必然全是越界 */
+    /* 围栏缺口巡检按图1 的三个问题分开报，一条告警只回答一个问题：
+       「件到没到」缺场地围栏＝到件扫描没有系统认定的落点；
+       「送不送」缺机构派送围栏＝这城的收件点落在所有边界之外，件只能到网点自提；
+       「谁去送」缺派送员编号围栏＝派单弹不出默认编号，每一票都要人工指派。
+       口径全部取自 TMS.network.fenceGaps，页面与巡检读同一份判定，不各算一遍 */
+    function fenceMaintainers() {
+        var names = (TMS.rbac.roles() || []).filter(function (r) {
+            return r.full || r.perms.indexOf('geofence:manage') > -1 || r.perms.indexOf('geofence:operate') > -1;
+        }).map(function (r) { return r.name; });
+        return names.length ? names.join('、') : '网点管理员';
+    }
+
     function fenceCoverage(days) {
-        var audit = TMS.network.fenceAudit(days || 30);
+        var win = days || 30;
+        var gaps = TMS.network.fenceGaps(win);
+        var owner = fenceMaintainers();
         var active = {};
-        audit.breaches.forEach(function (b) {
-            active['fence:gap:' + b.city] = 1;
+        gaps.hubGap.forEach(function (h) {
+            var key = 'fence:hub:' + h.id;
+            active[key] = 1;
             addAlert({
-                key: 'fence:gap:' + b.city, level: b.count > 40 ? 'danger' : 'warn',
-                title: '作业城市无电子围栏',
-                message: b.city + ' 近 ' + audit.days + ' 天有 ' + b.count + ' 次扫描写在围栏外，' +
-                    '该市 ' + b.branches + ' 个网点归属 ' + (b.hub || '未指派分拨') +
-                    '，建议补一张半径 ' + Math.round(b.radiusM / 1000) + ' km 的城市围栏（最近在用围栏 ' +
-                    (b.nearestName || '无') + '，相距 ' + (b.nearestKm || '—') + ' km）',
-                category: 'system', entity: 'geofences', refId: '', owner: '信息技术部'
+                key: key, level: 'warn', title: '分拨场地未勾到货围栏',
+                message: h.hub + '（' + h.city + '·' + h.zone + '）的落点不在任何在用到货围栏内，' +
+                    '到件扫描无法证明件落在了这块场地上。请在围栏地图按实际围墙与月台勾画边界（至少 ' +
+                    cfg.fence.minPoints + ' 个顶点）',
+                category: 'system', entity: 'geofences', refId: h.id, owner: owner
+            });
+        });
+        gaps.deliverGap.forEach(function (r) {
+            var key = 'fence:gap:' + r.city;
+            active[key] = 1;
+            addAlert({
+                key: key, level: r.scans > 40 ? 'danger' : 'warn', title: '作业城市收件点无派送围栏',
+                message: r.city + ' 近 ' + win + ' 天有 ' + r.scans + ' 次扫描、' + r.branches + ' 个网点，' +
+                    '但收件点没有被任何在用机构派送围栏罩住：按图1 的判定这些件只能到网点自提。' +
+                    '请在地图上沿实际派送边界勾一张派送围栏（半径圆只作临时兜底）',
+                category: 'system', entity: 'geofences', refId: '', owner: owner
+            });
+        });
+        gaps.courierGap.forEach(function (r) {
+            var key = 'fence:courier:' + r.city;
+            active[key] = 1;
+            addAlert({
+                key: key, level: 'warn', title: '派送编号围栏缺口',
+                message: r.city + ' 有 ' + r.couriers + ' 名在册派送员和在用派送围栏，却没勾一张派送员编号围栏：' +
+                    '派单时收件点落不进任何片区，图1 右支只能停在「需手动指定派送编号」。' +
+                    '按派送员分片在地图上勾边界，派单即可自动绑编号',
+                category: 'system', entity: 'geofences', refId: '', owner: owner
+            });
+        });
+        /* v11 之前那张方框是按圆心自动生成的，边界从来没有对应过真实围墙：
+           面积、命中、缺口全都带着这个假形状，不重勾就永远算错 */
+        gaps.legacy.forEach(function (g) {
+            var key = 'fence:legacy:' + g.id;
+            active[key] = 1;
+            addAlert({
+                key: key, level: 'warn', title: '围栏边界待现场重勾',
+                message: g.name + '（' + (cfg.fence.LABEL[g.type] || g.type) + '·' + g.city + '）是旧版按圆心自动生成的方框，' +
+                    '与现场边界对不上，覆盖与命中判定都不可信，请到围栏地图重新勾画',
+                category: 'system', entity: 'geofences', refId: g.id, owner: owner
             });
         });
         return {
-            gap: audit.breaches.length,
-            resolved: resolveGone('fence:gap:', active, '该作业城市已建立在用围栏，越界告警自动核销')
+            gap: gaps.deliverGap.length,
+            hubGap: gaps.hubGap.length, courierGap: gaps.courierGap.length, legacy: gaps.legacy.length,
+            resolved: resolveGone('fence:', active, '围栏已补齐或重勾，缺口告警自动核销')
+        };
+    }
+
+    /* 图2 的「定时通知」落在这里：地址被打回后要催有维护权限的人来改，
+       待审核压太久要催审核人。通知对象按权限查、不写死角色名——
+       谁能维护地址是用户权限页说了算的，写死就等于第二份权限表 */
+    function addressMaintainers() {
+        var names = (TMS.rbac.roles() || []).filter(function (r) {
+            return r.full || r.perms.indexOf('address:manage') > -1;
+        }).map(function (r) { return r.name; });
+        return names.length ? names.join('、') : '网点管理员';
+    }
+
+    function addressReview() {
+        var rows = db.col('addresses');
+        var sla = cfg.sla.addressReviewHours || 24;
+        /* 催的是「停在待审核这一格多久」，不是「建档多久」：复审件按建档算会把几年前的老地址
+           当成新欠账，而审核人昨天刚收到的是另一回事。判定线与页面共用 overdueKind */
+        var backlog = rows.filter(function (a) { return TMS.address.overdueKind(a) === 'review'; });
+        var needFix = rows.filter(function (a) { return a.status === 'revise'; });
+        var who = addressMaintainers();
+        backlog.forEach(function (a) {
+            var held = TMS.address.holdHours(a);
+            addAlert({
+                key: 'addr:backlog:' + a.id, level: held > sla * 3 ? 'danger' : 'warn',
+                title: '派送地址待审核超时',
+                message: a.phone + '（' + (a.branchName || a.city || '城市待定') + '）' + a.detail +
+                    ' 已在待审核停留 ' + Math.round(held) + ' 小时，超过 ' + sla + ' 小时时限',
+                category: 'network', entity: 'addresses', refId: a.id, owner: '运营审核员'
+            });
+        });
+        needFix.forEach(function (a) {
+            addAlert({
+                key: 'addr:fix:' + a.id, level: 'info', title: '派送地址被打回，待修改',
+                message: a.phone + '（' + (a.branchName || a.city || '城市待定') + '）' + a.detail +
+                    ' 打回原因：' + (a.rejectReason || '地址不规范') + '，已通知 ' + who,
+                category: 'network', entity: 'addresses', refId: a.id, owner: who
+            });
+        });
+        var active = {};
+        backlog.concat(needFix).forEach(function (a) {
+            active['addr:backlog:' + a.id] = 1;
+            active['addr:fix:' + a.id] = 1;
+        });
+        return {
+            backlog: backlog.length, needFix: needFix.length, notify: who,
+            resolved: resolveGone('addr:', active, '地址已改完或已通过与网点重新提交，通知自动撤销')
         };
     }
 

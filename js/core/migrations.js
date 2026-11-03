@@ -79,6 +79,79 @@
                 r.updatedAt = TMS.util.iso(TMS.util.now());
                 r.actor = 'v9 桌面端升级';
             });
+        },
+        /* v10：派送地址档案 + 审核记录两张表，以及网点角色的「维护/审核」权限。
+           老库只有结构没有数据，但迁移函数跑在 TMS.db 就绪之前（此刻只能用参数上的原始对象，
+           调不了 create/review 这些领域接口），所以这里只打标记，
+           真正的建档由 boot.ready 在建库后一次性补齐——标记用完即清，用户自己清空地址不会被复活 */
+        10: function (db, TMS) {
+            var V9_BRANCH = ['overview:view', 'order:view', 'order:create', 'order:advance', 'order:change',
+                'tracking:view', 'scan:operate', 'loading:operate', 'sorting:operate', 'exception:create',
+                'service:handle', 'cod:remit', 'customer:manage', 'warehouse:manage', 'report:view', 'evaluation:manage'];
+            (db.data.roles || []).forEach(function (r) {
+                if (!r.builtin || r.code !== 'branch') return;
+                var cur = r.permissionCodes || [];
+                if (cur.length !== V9_BRANCH.length) return;
+                if (!V9_BRANCH.every(function (c) { return cur.indexOf(c) > -1; })) return;
+                r.permissionCodes = TMS.rbac.defaultPerms('branch');
+                r.updatedAt = TMS.util.iso(TMS.util.now());
+                r.actor = 'v10 派送地址';
+            });
+            if (!Array.isArray(db.data.addresses)) db.data.addresses = [];
+            if (!Array.isArray(db.data.addressReviews)) db.data.addressReviews = [];
+            if (!db.data.addresses.length && (db.data.orders || []).length) db.pendingAddressBackfill = 1;
+        },
+        /* v11：围栏改成现场勾画的多边形，并新增「派送员编号围栏」这一类。
+           老库的围栏是代码按圆心 ± 固定经纬度差生成的正方形——四个角严丝合缝拼在一起，
+           一眼就是凑数的，所以这里不偷偷重画，只补齐派生字段并在备注里留话：
+           这类围栏照旧能用（几何判定不认形状认顶点），但界面会提示重新勾边界。
+           编号围栏要读在职派送员、按城市布点，迁移此刻还没有 db.create，
+           所以和 v10 的地址一样只打标记，真正的建档交给 boot.ready */
+        11: function (db, TMS) {
+            var V10_BRANCH = ['overview:view', 'order:view', 'order:create', 'order:advance', 'order:change',
+                'tracking:view', 'scan:operate', 'loading:operate', 'sorting:operate', 'exception:create',
+                'service:handle', 'cod:remit', 'customer:manage', 'warehouse:manage', 'report:view',
+                'evaluation:manage', 'address:manage'];
+            (db.data.roles || []).forEach(function (r) {
+                if (!r.builtin || r.code !== 'branch') return;
+                var cur = r.permissionCodes || [];
+                if (cur.length !== V10_BRANCH.length) return;
+                if (!V10_BRANCH.every(function (c) { return cur.indexOf(c) > -1; })) return;
+                r.permissionCodes = TMS.rbac.defaultPerms('branch');
+                r.updatedAt = TMS.util.iso(TMS.util.now());
+                r.actor = 'v11 围栏勾画';
+            });
+            var util = TMS.util;
+            var rows = db.data.geofences || (db.data.geofences = []);
+            var legacyBox = 0;
+            rows.forEach(function (g) {
+                /* 停用的写法从 inactive 改成 disabled：状态字典只有一份，
+                   留着两套就等于每个页面都要记得「inactive 也算停用」，迟早漏 */
+                if (g.status === 'inactive') { g.status = 'disabled'; g.note = g.note || '边界争议，停用待复核'; }
+                var ring = Array.isArray(g.polygon) ? g.polygon.filter(function (p) { return p && p.lat != null && p.lng != null; }) : [];
+                if (ring.length >= 3) {
+                    g.shape = 'polygon';
+                    g.center = util.ringCentroid(ring);
+                    g.areaKm2 = util.ringAreaKm2(ring);
+                    /* 四个顶点、两个纬度两个经度——那是代码画的方框，不是人勾的边界 */
+                    if (ring.length === 4) {
+                        var lats = util.unique(ring.map(function (p) { return p.lat; }));
+                        var lngs = util.unique(ring.map(function (p) { return p.lng; }));
+                        if (lats.length === 2 && lngs.length === 2) {
+                            g.legacyBox = 1;
+                            g.note = g.note || '旧版按圆心自动生成的方框边界，请到现场重勾';
+                            legacyBox++;
+                        }
+                    }
+                } else {
+                    g.shape = 'circle';
+                    delete g.polygon;
+                    g.areaKm2 = util.round(Math.PI * Math.pow(Number(g.radiusM) || 0, 2) / 1e6, 2);
+                }
+            });
+            var hasCourier = rows.some(function (g) { return g.type === 'courier'; });
+            var couriers = (db.data.employees || []).filter(function (e) { return e.role === 'deliveryman' && e.status === 'active'; });
+            if (!hasCourier && couriers.length) db.pendingCourierFence = 1;
         }
     };
 })(window);

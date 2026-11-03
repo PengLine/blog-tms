@@ -387,10 +387,8 @@
                 /* 直达也要讲口径：网点输入别人网点的一票，不该把它拉到详情抽屉里 */
                 var session = shell.state.session;
                 var inScope = db.col('orders').filter(TMS.pages.orderScope(session));
-                var order = inScope.filter(function (o) {
-                    return o.id === q || o.waybillNo === q || (o.receiverPhone && String(o.receiverPhone).slice(-4) === q);
-                })[0];
-                if (!order) { ui.toast('你的数据范围内没有单号 ' + q, 'warn'); return; }
+                var order = TMS.order.byCode(q, inScope);
+                if (!order) { ui.toast('单号「' + q + '」在你的数据范围内没有唯一匹配，支持订单号 / 运单号 / 收件人手机后四位', 'warn'); return; }
                 go(TMS.pages.orderPageFor(session.role), { orderId: order.id });
             });
         }
