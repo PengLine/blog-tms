@@ -5,167 +5,534 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TMS运输管理系统 - 登录</title>
-
+    <title>登录 - 汇通物流 TMS 运输管理系统</title>
+    <link rel="stylesheet" href="css/app.css?v=20261103b">
     <style>
-        /* 基础样式重置 */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        .tms-login {
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: minmax(420px, 1fr) minmax(400px, 520px);
+            gap: 0;
+            background: var(--tms-bg);
         }
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f7fa;
-            color: #333;
+        /* 左：品牌与数据实况，登录页要说清「登进去能看到什么」 */
+        .tms-login-hero {
+            position: relative;
+            padding: 46px 52px;
+            color: #dbe6f7;
+            background:
+                radial-gradient(1200px 420px at 18% -10%, rgba(78, 205, 196, .22), transparent 60%),
+                linear-gradient(155deg, #103a72 0%, #1668dc 52%, #0f4fa8 100%);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tms-login-hero::after {
+            content: '';
+            position: absolute;
+            right: -130px;
+            bottom: -150px;
+            width: 460px;
+            height: 460px;
+            border-radius: 50%;
+            border: 42px solid rgba(255, 255, 255, .05);
+        }
+
+        .tms-login-mark {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 15px;
+            letter-spacing: .14em;
+            color: rgba(255, 255, 255, .72);
+        }
+
+        .tms-login-mark i {
+            width: 34px;
+            height: 34px;
+            border-radius: 9px;
+            background: rgba(255, 255, 255, .16);
+            display: grid;
+            place-items: center;
+            font-style: normal;
+            font-size: 17px;
+            color: #fff;
+            letter-spacing: 0;
+        }
+
+        .tms-login-hero h1 {
+            margin: 34px 0 0;
+            font-size: 33px;
+            line-height: 1.32;
+            color: #fff;
+            font-weight: 600;
+            max-width: 15em;
+        }
+
+        .tms-login-hero h1 em {
+            font-style: normal;
+            color: #9fe6de;
+        }
+
+        .tms-login-hero p.tms-login-lede {
+            margin: 14px 0 0;
+            max-width: 34em;
+            font-size: 14px;
+            line-height: 1.85;
+            color: rgba(255, 255, 255, .78);
+        }
+
+        .tms-login-metrics {
+            margin-top: 30px;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+
+        .tms-login-metrics div {
+            padding: 13px 14px;
+            border-radius: var(--tms-r);
+            background: rgba(255, 255, 255, .09);
+            border: 1px solid rgba(255, 255, 255, .13);
+        }
+
+        .tms-login-metrics b {
+            display: block;
+            font-family: var(--tms-mono);
+            font-size: 20px;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .tms-login-metrics span {
+            font-size: 12px;
+            color: rgba(255, 255, 255, .66);
+        }
+
+        .tms-login-loops {
+            margin-top: 26px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, .16);
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 9px 22px;
+            font-size: 12.8px;
+            color: rgba(255, 255, 255, .8);
+        }
+
+        .tms-login-loops li {
+            list-style: none;
+            display: flex;
+            gap: 8px;
             line-height: 1.6;
         }
 
-        .hidden {
-            display: none !important;
+        .tms-login-loops li::before {
+            content: '✓';
+            color: #9fe6de;
+            font-weight: 700;
         }
 
-        .container {
+        .tms-login-loops ul {
+            margin: 0;
+            padding: 0;
+        }
+
+        .tms-login-foot {
+            margin-top: auto;
+            padding-top: 24px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, .5);
             display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-
-        /* 登录界面样式 */
-        .login-box {
-            background: white;
-            padding: 2rem;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-            width: 100%;
-            max-width: 700px;
-        }
-
-        .login-box h2 {
-            text-align: center;
-            margin-bottom: 2rem;
-            color: #333;
-        }
-
-        .role-selection {
-            margin-bottom: 2rem;
-        }
-
-        .role-selection h3 {
-            text-align: center;
-            margin-bottom: 1rem;
-            color: #666;
-        }
-
-        .role-buttons {
-            display: flex;
-            gap: 0.5rem;
-            justify-content: center;
+            justify-content: space-between;
+            gap: 12px;
             flex-wrap: wrap;
         }
 
-        .role-btn {
-            padding: 0.75rem 1.5rem;
-            border: 2px solid #e0e0e0;
-            background: white;
-            border-radius: 5px;
+        .tms-login-foot button {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, .62);
+            font-size: 12px;
             cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
+            text-decoration: underline;
+            padding: 0;
+            font-family: inherit;
         }
 
-        .role-btn:hover,
-        .role-btn.active {
-            border-color: #667eea;
-            background-color: #667eea;
-            color: white;
-        }
+        .tms-login-foot button:hover { color: #fff; }
 
-        .login-form {
+        /* 署名沿用全站同一份组件，只按深色底改配色 */
+        .tms-login-foot .tms-copyright { padding: 0; }
+        .tms-login-foot .tms-copyright a { color: rgba(255, 255, 255, .62); border-bottom-color: rgba(255, 255, 255, .28); }
+        .tms-login-foot .tms-copyright a:hover { color: #fff; border-bottom-color: #fff; }
+
+        /* 右：登录卡 */
+        .tms-login-panel {
             display: flex;
             flex-direction: column;
-            gap: 1rem;
+            justify-content: center;
+            padding: 40px 52px;
+            background: #fff;
         }
 
-        .login-form input {
-            padding: 1rem;
-            border: 1px solid #e0e0e0;
-            border-radius: 5px;
-            font-size: 1rem;
+        .tms-login-panel h2 {
+            font-size: 21px;
+            margin: 0 0 4px;
         }
 
-        .login-form button {
-            padding: 1rem;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 5px;
+        .tms-login-panel .tms-login-sub {
+            font-size: 13px;
+            color: var(--tms-ink-3);
+            margin: 0 0 22px;
+            line-height: 1.7;
+        }
+
+        .tms-login-roles {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .tms-login-roles button {
+            padding: 10px 8px 9px;
+            border: 1px solid var(--tms-line);
+            border-radius: var(--tms-r-sm);
+            background: #fff;
             cursor: pointer;
-            font-size: 1rem;
-            transition: background 0.3s ease;
+            font-family: inherit;
+            font-size: 13px;
+            color: var(--tms-ink-2);
+            transition: all .16s;
+            text-align: center;
+            line-height: 1.35;
         }
 
-        .login-form button:hover {
-            background: #5a6fd8;
+        .tms-login-roles button i {
+            display: block;
+            font-style: normal;
+            font-size: 17px;
+            margin-bottom: 3px;
+        }
+
+        .tms-login-roles button small {
+            display: block;
+            font-family: var(--tms-mono);
+            font-size: 10.5px;
+            color: var(--tms-ink-4);
+            margin-top: 2px;
+        }
+
+        .tms-login-roles button:hover { border-color: var(--tms-brand); }
+
+        .tms-login-roles button.on {
+            border-color: var(--tms-brand);
+            background: var(--tms-brand-soft);
+            color: var(--tms-brand-dark);
+            box-shadow: inset 0 0 0 1px var(--tms-brand);
+        }
+
+        .tms-login-roles button.on small { color: var(--tms-brand); }
+
+        .tms-login-field { margin-bottom: 15px; }
+
+        .tms-login-field label {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            font-size: 12.5px;
+            color: var(--tms-ink-3);
+            margin-bottom: 6px;
+        }
+
+        .tms-login-field input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--tms-line);
+            border-radius: var(--tms-r-sm);
+            font-size: 14px;
+            font-family: inherit;
+            color: var(--tms-ink);
+            background: #fff;
+            transition: border-color .16s, box-shadow .16s;
+        }
+
+        .tms-login-field input:focus {
+            outline: none;
+            border-color: var(--tms-brand);
+            box-shadow: 0 0 0 3px var(--tms-brand-soft);
+        }
+
+        .tms-login-idcard {
+            margin: -4px 0 16px;
+            padding: 10px 12px;
+            border-radius: var(--tms-r-sm);
+            background: var(--tms-bg-2);
+            border: 1px solid var(--tms-line);
+            font-size: 12.5px;
+            color: var(--tms-ink-2);
+            line-height: 1.75;
+        }
+
+        .tms-login-idcard b { color: var(--tms-ink); }
+
+        .tms-login-idcard code {
+            background: #fff;
+            border: 1px solid var(--tms-line);
+            border-radius: 4px;
+            padding: 0 4px;
+            color: var(--tms-brand-dark);
+        }
+
+        .tms-login-go {
+            width: 100%;
+            padding: 11px;
+            border: none;
+            border-radius: var(--tms-r-sm);
+            background: var(--tms-brand);
+            color: #fff;
+            font-size: 15px;
+            font-family: inherit;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .16s;
+        }
+
+        .tms-login-go:hover { background: var(--tms-brand-dark); }
+
+        .tms-login-go:disabled { background: var(--tms-ink-4); cursor: progress; }
+
+        .tms-login-err {
+            margin-top: 12px;
+            padding: 9px 11px;
+            border-radius: var(--tms-r-sm);
+            background: var(--tms-danger-soft);
+            color: var(--tms-danger);
+            font-size: 13px;
+            border: 1px solid #f5cfcf;
+        }
+
+        .tms-login-tip {
+            margin-top: 18px;
+            padding-top: 14px;
+            border-top: 1px dashed var(--tms-line);
+            font-size: 12px;
+            color: var(--tms-ink-3);
+            line-height: 1.8;
+        }
+
+        @media (max-width: 1080px) {
+            .tms-login { grid-template-columns: 1fr; }
+            .tms-login-hero { padding: 32px 24px; }
+            .tms-login-hero h1 { font-size: 25px; margin-top: 20px; }
+            .tms-login-metrics { grid-template-columns: repeat(2, 1fr); }
+            .tms-login-loops { grid-template-columns: 1fr; }
+            .tms-login-panel { padding: 28px 24px 40px; }
         }
     </style>
 </head>
 
-<body>
-    <!-- 登录界面 -->
-    <div id="login-container" class="container">
-        <div class="login-box">
-            <h2>TMS 运输管理系统</h2>
-            <div class="role-selection">
-                <h3>选择角色</h3>
-                <div class="role-buttons">
-                    <button class="btn role-btn active" data-role="client">用户</button>
-                    <button class="btn role-btn" data-role="branch">网点</button>
-                    <button class="btn role-btn" data-role="sorter">分拣员</button>
-                    <button class="btn role-btn" data-role="transporter">运输员</button>
-                    <button class="btn role-btn" data-role="deliveryman">派送员</button>
-                    <button class="btn role-btn" data-role="admin">管理员</button>
-                </div>
+<body class="tms-body">
+    <div class="tms-login" id="tms-root">
+        <section class="tms-login-hero">
+            <div class="tms-login-mark"><i>汇</i> HUITONG TMS · 运输管理系统</div>
+            <h1>一张运单，从下单到<em>对账收款</em>走完全程</h1>
+            <p class="tms-login-lede">
+                纯前端演示环境：全部业务数据落在浏览器 localStorage，六个角色共用同一套订单、
+                车次、账务与人员档案。这里没有假数字——看板上的每个指标都由单据实时算出，
+                改一张单，相关页面的数字当场跟着变。
+            </p>
+            <div class="tms-login-metrics" id="login-metrics"></div>
+            <div class="tms-login-loops">
+                <ul>
+                    <li>揽收→分拣→干线→派送→签收，节点逐环推进并留扫描流水</li>
+                    <li>运价卡计费，收入进应收、成本进应付，月末核销出利润</li>
+                    <li>异常上报自动挂理赔与扣款，处理完告警当场核销</li>
+                </ul>
+                <ul>
+                    <li>代收货款回笼后上划，未对账的差额留在待处理池</li>
+                    <li>安全库存不足自动生成采购在途与供应商应付，到货冲平</li>
+                    <li>作业城市缺电子围栏即告警，补围栏后自动消警</li>
+                </ul>
             </div>
-            <div class="login-form">
-                <input type="text" id="username" placeholder="用户名" value="admin" required>
-                <input type="password" id="password" placeholder="密码" value="123456" required>
-                <button id="login-btn" class="btn btn-primary">登录</button>
+            <div class="tms-login-foot">
+                <span id="login-capacity">演示库准备中…</span>
+                <div id="login-copy"></div>
+                <button type="button" id="login-rebuild">重建演示库</button>
             </div>
-            <div style="text-align: center; margin-top: 1.5rem;">
-                <a href="tms-architecture.html"
-                    style="color: #667eea; text-decoration: none; font-size: 0.9rem;">系统架构介绍</a>
+        </section>
+
+        <section class="tms-login-panel">
+            <h2>登录系统</h2>
+            <p class="tms-login-sub">选择角色后账号自动带出。演示账号已绑定真实员工与客户档案，
+                登录后看到的人员、网点、单据都是这套数据里长出来的。</p>
+
+            <div class="tms-login-roles" id="login-roles"></div>
+
+            <div class="tms-login-idcard" id="login-idcard"></div>
+
+            <div class="tms-login-field">
+                <label>用户名 <span id="login-role-name">运营管理员</span></label>
+                <input type="text" id="login-user" autocomplete="username" spellcheck="false">
             </div>
-        </div>
+            <div class="tms-login-field">
+                <label>密码 <span>演示口令 123456</span></label>
+                <input type="password" id="login-pass" autocomplete="current-password">
+            </div>
+
+            <button class="tms-login-go" id="login-go" type="button">进入系统</button>
+            <div class="tms-login-err" id="login-err" hidden></div>
+
+            <div class="tms-login-tip">
+                口令以哈希形式存在用户表里，登录时逐条比对；也可以直接用「用户权限」页新建的账号登录。
+                数据仅存于本机浏览器，清理站点数据即恢复初始状态。
+            </div>
+        </section>
     </div>
 
-    <script src="common.js"></script>
+    <script src="js/boot.js?v=20261103b"></script>
     <script>
-        // 登录系统逻辑
-        document.addEventListener('DOMContentLoaded', () => {
-            // 角色选择事件
-            document.querySelectorAll('.role-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
-                    e.target.classList.add('active');
+        /* 登录页只用运行时内核，不装外壳：先建库，再把演示账号从 users 表读出来。
+           账号的身份、组织、绑定人员一律取种子结果，配置里的 demoAccounts 只提供口令与角色，
+           这样「登录页看到的名字」和「用户权限页第一行」必然一致 */
+        (function () {
+            'use strict';
+            var TMS = window.TMS, util = TMS.util, fmt = util.fmt;
+
+            var ROLE_ICON = {
+                admin: '▦', branch: '⌂', sorter: '⇄', transporter: '⛴', deliveryman: '⛶', client: '☗'
+            };
+            var LOOP_ORDER = ['admin', 'branch', 'sorter', 'transporter', 'deliveryman', 'client'];
+
+            function el(id) { return document.getElementById(id); }
+            function esc(s) { return util.esc(String(s == null ? '' : s)); }
+
+            if (TMS.auth.current()) { location.replace(TMS.auth.current().portal || 'index.html'); return; }
+
+            var seeded = TMS.db.isSeeded();
+            if (!TMS.boot.ready()) { el('login-capacity').textContent = '运行时模块缺失，请检查 js/boot.js'; return; }
+
+            /* 署名与六端页脚同源：由 ui.copyright() 按 cfg.brand 渲染，登录页不另写一份 */
+            el('login-copy').innerHTML = TMS.ui.copyright();
+
+            var accounts = LOOP_ORDER.map(function (role) {
+                var demo = TMS.cfg.demoAccounts.filter(function (a) { return a.role === role; })[0];
+                if (!demo) return null;
+                var row = TMS.db.findOne('users', function (u) { return u.username === demo.username; }) || {};
+                return {
+                    role: role, roleName: TMS.cfg.roles[role].name, portal: TMS.cfg.roles[role].portal,
+                    username: demo.username,
+                    name: row.name || demo.name,
+                    orgName: row.orgName || TMS.auth.orgName(row.orgId, role),
+                    personId: row.personId || '', customerId: row.customerId || '',
+                    userId: row.id || ''
+                };
+            }).filter(Boolean);
+
+            var active = accounts[0];
+
+            function metrics() {
+                var info = TMS.db.info(), rows = info.rows || {};
+                var cards = [
+                    { n: rows.orders || 0, t: '在库运单' },
+                    { n: rows.scans || 0, t: '轨迹扫描' },
+                    { n: rows.transports || 0, t: '干线路班次' },
+                    { n: rows.branches || 0, t: '营业网点' }
+                ];
+                el('login-metrics').innerHTML = cards.map(function (c) {
+                    return '<div><b>' + esc(fmt.number(c.n)) + '</b><span>' + esc(c.t) + '</span></div>';
+                }).join('');
+                el('login-capacity').textContent = '演示库 ' + (info.bytes / 1048576).toFixed(2) +
+                    ' MB · ' + Object.keys(rows).length + ' 张数据表 · 浏览器 localStorage';
+            }
+
+            function renderRoles() {
+                el('login-roles').innerHTML = accounts.map(function (a) {
+                    return '<button type="button" data-role="' + esc(a.role) + '"' +
+                        (a.role === active.role ? ' class="on"' : '') + '>' +
+                        '<i>' + esc(ROLE_ICON[a.role] || '◎') + '</i>' + esc(a.roleName) +
+                        '<small>' + esc(a.username) + '</small></button>';
+                }).join('');
+                Array.prototype.forEach.call(el('login-roles').querySelectorAll('button'), function (b) {
+                    b.addEventListener('click', function () {
+                        active = accounts.filter(function (a) { return a.role === b.getAttribute('data-role'); })[0];
+                        renderRoles();
+                        fill();
+                    });
                 });
-            });
+            }
 
-            // 登录事件
-            document.getElementById('login-btn').addEventListener('click', () => {
-                login();
-            });
-
-            // 回车键登录
-            document.getElementById('password').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    login();
+            function renderIdCard() {
+                var extra = '';
+                if (active.role === 'client') {
+                    var c = TMS.db.get('customers', active.customerId) || {};
+                    extra = '客户编号 <code>' + esc(active.customerId) + '</code> · ' +
+                        esc(c.level || '散客') + '级 · 月结额度 ' + esc(fmt.money(c.creditLimit || 0)) + ' 元';
+                } else if (active.personId) {
+                    var e = TMS.db.get('employees', active.personId) || {};
+                    extra = '员工档案 <code>' + esc(active.personId) + '</code> · ' +
+                        esc(e.position || '岗位未登记') + ' · ' + esc(e.phone || '');
+                } else {
+                    extra = '账号 <code>' + esc(active.userId) + '</code> · 归属 ' + esc(active.orgName);
                 }
+                el('login-idcard').innerHTML = '当前身份：<b>' + esc(active.name) + '</b>（' + esc(active.roleName) + '）' +
+                    '<br>所属组织：<b>' + esc(active.orgName) + '</b>' +
+                    '<br>' + extra;
+            }
+
+            function fill() {
+                el('login-role-name').textContent = active.roleName;
+                el('login-user').value = active.username;
+                el('login-pass').value = '123456';
+                renderRoles();
+                renderIdCard();
+                hideErr();
+            }
+
+            function showErr(msg) { var e = el('login-err'); e.textContent = msg; e.hidden = false; }
+            function hideErr() { el('login-err').hidden = true; }
+
+            function submit() {
+                var btn = el('login-go');
+                btn.disabled = true;
+                btn.textContent = '正在建立会话…';
+                /* 登录走 auth.login：校验口令、装配权限、写会话，再按角色跳到对应门户 */
+                setTimeout(function () {
+                    var res = TMS.auth.login(el('login-user').value, el('login-pass').value);
+                    if (!res.ok) {
+                        btn.disabled = false;
+                        btn.textContent = '进入系统';
+                        showErr(res.message || '登录失败');
+                        return;
+                    }
+                    location.href = res.redirect;
+                }, 60);
+            }
+
+            el('login-go').addEventListener('click', submit);
+            el('login-pass').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') submit(); });
+            el('login-user').addEventListener('keydown', function (ev) { if (ev.key === 'Enter') submit(); });
+            el('login-rebuild').addEventListener('click', function () {
+                var btn = el('login-rebuild');
+                btn.textContent = '重建中…';
+                btn.disabled = true;
+                setTimeout(function () {
+                    TMS.db.reset();
+                    TMS.db.reseed();
+                    btn.textContent = '重建演示库';
+                    btn.disabled = false;
+                    location.reload();
+                }, 30);
             });
-        });
+
+            metrics();
+            fill();
+            /* 首屏无感延迟：种子库刚建完时同步渲染会白一下，让用户先看到结构 */
+            if (!seeded) metrics();
+        })();
     </script>
 </body>
 
