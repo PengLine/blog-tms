@@ -477,7 +477,7 @@
                             rows: ordersOn((d.wait[0] || {}).id || ''), keyName: 'id',
                             title: d.wait.length ? ('车厢清单 · ' + esc(d.wait[0].code)) : '车厢清单',
                             sub: '装载明细由 orders.tripId 反查，与车次重量、装载率同一个口径',
-                            columns: pg.orderColumns({ hide: ['profit', 'stuck', 'courier'] }).concat([
+                            columns: pg.orderColumns({ hide: ['profit', 'stuck', 'courier', 'scope'] }).concat([
                                 { key: 'act', label: '操作', sortable: false, render: function (o) { return ui.btn('看单', { size: 'sm', act: 't:open', arg: o.id }); } }
                             ]),
                             search: function (o) { return [o.id, o.waybillNo, o.customer, o.goods].join(' '); },
@@ -573,9 +573,16 @@
         load: function () {
             var mine = myRaw(120);
             var byLine = {};
+            /* 跨度桶：司机看到的「这条线跨到哪一层」按趟次计，与按线路计是两个数——
+               一条长线跑一趟和跑十趟对网络的压力不同，绩效台账认的是趟次 */
+            var spans = { same: 0, prov: 0, cross: 0, unknown: 0 };
             mine.forEach(function (t) {
-                var key = tripLine(t);
-                var g = byLine[key] || (byLine[key] = { line: key, trips: 0, km: 0, weight: 0, orders: 0, load: [], onTime: 0, cost: 0, mode: t.mode, code: t.code });
+                var fromName = pg.hubName(t.fromHub);
+                var toName = t.toHub ? pg.hubName(t.toHub) : (t.toCity || '支线');
+                var key = fromName + ' → ' + toName;
+                var span = TMS.network.segmentScope({ from: fromName, to: toName });
+                spans[span.code] = (spans[span.code] || 0) + 1;
+                var g = byLine[key] || (byLine[key] = { line: key, trips: 0, km: 0, weight: 0, orders: 0, load: [], onTime: 0, cost: 0, mode: t.mode, code: t.code, span: span.code, spanName: span.name });
                 g.trips++;
                 g.km += op.distanceOf(t);
                 g.weight += Number(t.weight) || 0;
@@ -607,7 +614,7 @@
                 });
             });
             deviants.sort(function (a, b) { return String(b.scan.opTime).localeCompare(String(a.scan.opTime)); });
-            return { lines: lines, mine: mine, planRows: Object.keys(plans).map(function (k) { return plans[k]; }).slice(0, 20), deviants: deviants.slice(0, 20), vehicles: myVehicles() };
+            return { lines: lines, spans: spans, mine: mine, planRows: Object.keys(plans).map(function (k) { return plans[k]; }).slice(0, 20), deviants: deviants.slice(0, 20), vehicles: myVehicles() };
         },
         drawerFooter: function (id) { return po.footerFor(ROLE, id); },
         render: function (ctx, d) {
@@ -617,6 +624,7 @@
                 body: [
                     ui.kpis([
                         { label: '跑过的线路', value: d.lines.length, unit: '条', tone: 'brand', sub: '近 120 天口径' },
+                        { label: '跨省趟次', value: d.spans.cross, unit: '趟', tone: d.spans.cross ? 'info' : 'muted', sub: '市内 ' + d.spans.same + ' 趟 / 省内跨市 ' + d.spans.prov + ' 趟' },
                         { label: '累计里程', value: totalKm, unit: 'km', tone: 'info', sub: fmt.number(d.mine.length) + ' 趟' },
                         { label: '单公里成本', value: util.round(totalKm ? util.sum(d.lines, 'cost') / totalKm : 0, 2), unit: '元/km', tone: 'muted' },
                         { label: '超时限扫描', value: d.deviants.length, unit: '条', tone: d.deviants.length ? 'danger' : 'success', sub: '需复盘环节耗时' }
@@ -634,6 +642,7 @@
                                 rows: d.lines, keyName: 'line',
                                 columns: [
                                     { key: 'line', label: '线路', render: function (l) { return '<b>' + esc(l.line) + '</b> <span class="tms-dim">' + esc(l.mode) + '</span>'; } },
+                                    { key: 'spanName', label: '跨度', render: function (l) { return ui.badge(esc(l.spanName), TMS.network.SEG_SCOPE[l.span].tone); } },
                                     { key: 'trips', label: '我执行', align: 'right', render: function (l) { return fmt.number(l.trips) + ' 趟'; } },
                                     { key: 'km', label: '累计里程', align: 'right', render: function (l) { return fmt.km(l.km); } },
                                     { key: 'orders', label: '运单', align: 'right', render: function (l) { return fmt.number(l.orders) + ' 单'; } },
@@ -642,7 +651,7 @@
                                     { key: 'onTimeRate', label: '准点率', render: function (l) { return po.rateBar(l.onTimeRate, 95); } },
                                     { key: 'costPerKg', label: '元/kg', align: 'right', render: function (l) { return fmt.money(l.costPerKg); } }
                                 ],
-                                search: function (l) { return l.line + ' ' + l.mode; },
+                                search: function (l) { return l.line + ' ' + l.mode + ' ' + l.spanName; },
                                 valueOf: function (l, k) { return k === 'km' ? l.km : l[k]; },
                                 pageSize: 8, dense: true, emptyText: '近 120 天没有执行记录'
                             })

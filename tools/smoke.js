@@ -429,6 +429,101 @@ section('超时运单台账');
         `${ot.rows.length} 行 / ${ot.byBranch.length} 个网点`);
 })();
 
+section('行政区划三级与路由范围分级');
+(function () {
+    const M = TMS.master, N = TMS.network;
+    /* 区名必须是这座城市真的有的，且同一座城里不能重复：
+       重复或通用名会让同城两单被判进同一个区，分级表那一格永远空着 */
+    const noDist = M.CITIES.filter((c) => (M.CITY_DISTRICTS[c.name] || []).length < 4).map((c) => c.name);
+    check('每座城市都有真实区/镇名', noDist.length === 0, noDist.join('、') || M.CITIES.length + ' 座在册');
+    const dup = M.CITIES.filter((c) => {
+        const list = M.CITY_DISTRICTS[c.name] || [];
+        return new Set(list).size !== list.length;
+    }).map((c) => c.name);
+    check('同城区名不重复', dup.length === 0, dup.join('、') || '无');
+
+    const sz = M.districtsOf('上海');
+    check('区级带派生坐标且同名恒得同坐标',
+        sz.length > 0 && JSON.stringify(M.districtsOf('上海')) === JSON.stringify(sz) &&
+        sz.every((d) => Math.abs(d.lat - M.cityByName('上海').lat) < 0.35),
+        sz.length + ' 个区·' + (sz[0] || {}).name);
+    check('区名可反查坐标', M.districtPoint('上海', sz[1].name).name === sz[1].name);
+    check('从地址文本认出所在区，跨城同名不盲认',
+        (M.matchDistrict('上海', '上海市' + sz[2].name + '世纪大道 100 号') || {}).name === sz[2].name &&
+        M.matchDistrict('上海', '杭州市西湖区龙井路 1 号') === null);
+
+    const provs = M.PROVINCES;
+    const missProv = M.CITIES.filter((c) => !M.provinceOf(c.name)).map((c) => c.name);
+    check('省表由市表反推且覆盖全部城市',
+        missProv.length === 0 && provs.every((x) => x.cities.length >= 1 && x.name),
+        provs.length + ' 个省级单元 / ' + M.CITIES.length + ' 座城市');
+    const singles = provs.filter((x) => x.singleCity).map((x) => x.name);
+    check('直辖市与单城省标出 singleCity（省内没有跨市这一档）',
+        M.provinceOf('上海').singleCity === true && M.provinceOf('杭州').singleCity === false,
+        singles.join('、'));
+
+    /* 分级六个分支逐个钉死：区内 / 市内跨区（含缺区级）/ 省内跨市 /
+       同大区跨省 / 跨大区跨省 / 范围待定。只验其中一个等于没验 */
+    const L = (city, dist) => N.endLevels(city, city + '市' + dist + '某某路 1 号');
+    const cases = [
+        ['区内直送', L('上海', '浦东新区'), L('上海', '浦东新区'), 'intra'],
+        ['市内跨区', L('上海', '浦东新区'), L('上海', '闵行区'), 'city'],
+        ['省内跨市', L('杭州', '西湖区'), L('宁波', '海曙区'), 'prov'],
+        ['同大区跨省', L('南京', '玄武区'), L('合肥', '蜀山区'), 'cross'],
+        ['跨大区跨省', L('上海', '闵行区'), L('广州', '天河区'), 'cross'],
+        ['范围待定', { city: '不存在', known: false }, L('上海', '闵行区'), 'unknown']
+    ];
+    cases.forEach((c) => {
+        const sc = N.scopeOf(c[1], c[2]);
+        check('分级判定：' + c[0], sc.code === c[3], c[3] + ' → ' + sc.name + (sc.sub ? ' / ' + sc.sub : ''));
+    });
+    const subCross = [N.scopeOf(L('南京', '玄武区'), L('合肥', '蜀山区')).sub,
+        N.scopeOf(L('上海', '闵行区'), L('广州', '天河区')).sub];
+    check('跨省再分同大区/跨大区', subCross[0] === '同大区跨省' && subCross[1] === '跨大区跨省', subCross.join(' / '));
+    const blank = { city: '上海', province: '上海市', zone: '华东', district: '', known: true };
+    const scBlank = N.scopeOf(blank, blank);
+    check('同城但认不出区时标出缺数据', scBlank.code === 'city' && scBlank.needDistrict === true, scBlank.sub);
+
+    /* 区内直送合并段次只改「怎么走」的展示，不改承诺：
+       总时长、总里程、stdHours、slaHours 四个数必须一字不变 */
+    const base = N.planRoute('上海', '上海', '标准', { noCache: true });
+    const intra = N.planRoute('上海', '上海', '标准', {
+        noCache: true, levels: { from: L('上海', '浦东新区'), to: L('上海', '浦东新区') }
+    });
+    check('区内直送合并为一段直送',
+        !!base && !!intra && base.segments.length > 1 && intra.segments.length === 1 &&
+        intra.segments[0].legType === 'direct',
+        base.segments.length + ' 段 → ' + intra.segments.length + ' 段');
+    check('合并后总时长与总里程不变（时效口径不动）',
+        intra.totalStdHours === base.totalStdHours && intra.distanceKm === base.distanceKm &&
+        intra.stdHours === base.stdHours && intra.slaHours === base.slaHours,
+        intra.totalStdHours + 'h / ' + intra.distanceKm + 'km / 承诺 ' + intra.slaHours + 'h');
+    check('跨城路由不被合并（干线段保留）',
+        (() => {
+            const x = N.planRoute('上海', '广州', '标准', { noCache: true });
+            return !!x && x.segments.some((g) => g.legType === 'trunk') && x.scope.code !== 'intra';
+        })());
+
+    const st = N.scopeStats(orders);
+    check('分级统计可汇总且分桶之和等于总量',
+        st.total === orders.length && st.items.reduce((a, x) => a + x.count, 0) === st.total,
+        st.total + ' 单');
+    const seen = st.items.filter((x) => x.count > 0).map((x) => x.name + ' ' + x.count);
+    check('四档分级在演示库里铺满（区内/市内/省内/跨省都有件）',
+        ['intra', 'city', 'prov', 'cross'].every((k) => st.by[k] > 0), seen.join('·'));
+    check('区内直送单的路由确实只有一段',
+        orders.filter((o) => N.scopeOfOrder(o).code === 'intra')
+            .every((o) => (N.planOf(o).segments || []).length === 1));
+    check('段跨度与整单分级分开算',
+        (() => {
+            const x = N.planRoute('上海', '广州', '标准', { noCache: true });
+            const codes = (x.segments || []).map((g) => N.segmentScope(g).code);
+            /* 两端支线跑在同一座城里，干线才跨省：
+               把它们算成同一个取值，「跨省单」就永远看不出干线背了多少量 */
+            return x.scope.code === 'cross' && codes[0] === 'same' && codes.indexOf('cross') > -1;
+        })());
+})();
+
 section('派送地址审核闭环');
 (() => {
     const AD = TMS.address;
@@ -509,6 +604,42 @@ section('派送地址审核闭环');
             !AD.get(pid) && AD.reviewsOf(pid).length === 0);
     } else {
         check('新建即待审核', false, '建档失败：' + probe.message);
+    }
+
+    /* 维护边界（图2 的派送员支线）：只动自己采集的那条，别人建档的读得到、改不了；
+       网点与运营端整城在册，不受这条限制。通过后改内容一律退回待审核 */
+    const courierAdr = rows.filter((a) => a.source === '派送员采集' && a.owner && a.owner !== '派送员');
+    check('建档把派送员采集的行落到真实派送员名下', courierAdr.length > 0, courierAdr.length + ' 条');
+    const demoCourierName = (TMS.cfg.demoAccounts.filter((a) => a.role === 'deliveryman')[0] || {}).name;
+    check('演示派送员端有自己采集的地址可维护',
+        rows.some((a) => a.owner === demoCourierName),
+        demoCourierName + ' 名下 ' + rows.filter((a) => a.owner === demoCourierName).length + ' 条 / 采集在档 ' + courierAdr.length + ' 条');
+    const branchAdr = rows.filter((a) => a.source === '网点维护')[0];
+    check('派送员改不动网点建档的地址',
+        !branchAdr || AD.maintainScope(branchAdr, '冒牌采集人', 'deliveryman').ok === false);
+    check('网点端不受采集人限制',
+        !courierAdr[0] || AD.maintainScope(courierAdr[0], '网点管理员', 'branch').ok);
+    const ownProbe = AD.create({
+        phone: '13900002222', receiver: '冒烟复审', address: '上海市浦东新区世纪大道 100 号 1 栋 101',
+        actor: '张三', role: 'deliveryman', source: '派送员采集'
+    });
+    if (ownProbe.ok) {
+        const aid = ownProbe.row.id;
+        AD.review(aid, { action: 'approve', actor: '审核员' });
+        const edited = AD.maintain(aid, { address: '上海市浦东新区世纪大道 100 号 1 栋 102', actor: '张三', role: 'deliveryman', force: true });
+        check('通过后改内容退回待审核', edited.ok && AD.get(aid).status === 'pending', AD.get(aid).status);
+        check('退回待审核时上一轮结论一并清空', !AD.get(aid).reviewer && !AD.get(aid).reviewedAt);
+        AD.review(aid, { action: 'approve', actor: '审核员' });
+        const byBranch = AD.maintain(aid, { address: '上海市浦东新区世纪大道 100 号 1 栋 103', actor: '网点管理员', role: 'branch', force: true });
+        check('采集人与最后维护人分开留痕',
+            byBranch.ok && AD.get(aid).owner === '张三' && AD.get(aid).maintainer === '网点管理员',
+            AD.get(aid).owner + ' / ' + AD.get(aid).maintainer);
+        check('网点替改之后派送员仍改得回去', AD.maintainScope(AD.get(aid), '张三', 'deliveryman').ok);
+        const other = AD.maintain(aid, { address: '上海市浦东新区世纪大道 100 号 1 栋 104', actor: '李四', role: 'deliveryman' });
+        check('别的派送员改不动这条', other.ok === false && /只能改自己上门采集/.test(other.message || ''), other.message || '居然改动了');
+        AD.remove(aid);
+    } else {
+        check('通过后改内容退回待审核', false, '建档失败：' + ownProbe.message);
     }
 
     const st = AD.stats(30);
@@ -1064,10 +1195,14 @@ const menuIdsOf = (role) => (role === 'admin'
     const v8 = ['overview:view', 'order:view', 'order:create', 'order:advance', 'order:change', 'tracking:view',
         'scan:operate', 'loading:operate', 'exception:create', 'service:handle', 'cod:remit',
         'customer:manage', 'warehouse:manage', 'report:view', 'evaluation:manage'];
+    const v11Courier = ['overview:view', 'order:view', 'order:create', 'tracking:view', 'scan:operate',
+        'delivery:operate', 'delivery:pod', 'cod:remit', 'exception:create', 'report:view'];
     const roles = [
         { code: 'branch', builtin: true, permissionCodes: v8.slice() },
         { code: 'branch', builtin: true, permissionCodes: v8.slice(0, 6) },
-        { code: 'client', builtin: true, permissionCodes: v8.slice() }
+        { code: 'client', builtin: true, permissionCodes: v8.slice() },
+        { code: 'deliveryman', builtin: true, permissionCodes: v11Courier.slice() },
+        { code: 'deliveryman', builtin: true, permissionCodes: ['overview:view', 'report:view'] }
     ];
     /* 从 v9 一路跑到当前版本，而不是只跑最后一步：每加一版权限迁移，上一版写死的
        fixture 就不再命中判定线（长度不同直接 return），只测末步会假通过成「迁移没跑」 */
@@ -1075,8 +1210,19 @@ const menuIdsOf = (role) => (role === 'admin'
     const shipped = TMS.rbac.defaultPerms('branch');
     check('权限迁移只补出厂权限、不覆盖手工勾过的组合',
         shipped.every((p) => roles[0].permissionCodes.indexOf(p) > -1) &&
-        roles[1].permissionCodes.length === 6 && roles[2].permissionCodes.length === v8.length,
+        roles[1].permissionCodes.length === 6 && roles[2].permissionCodes.length === v8.length &&
+        roles[4].permissionCodes.length === 2,
         'branch ' + roles[0].permissionCodes.length + ' 项 / 定制 ' + roles[1].permissionCodes.length + ' 项');
+    check('派送员老库升到 v12 拿到地址维护权',
+        roles[3].permissionCodes.indexOf('address:manage') > -1 &&
+        roles[3].permissionCodes.length === TMS.rbac.defaultPerms('deliveryman').length,
+        '派送员 ' + roles[3].permissionCodes.length + ' 项');
+    check('派送员出厂权限含地址维护、不含地址审核',
+        TMS.rbac.defaultPerms('deliveryman').indexOf('address:manage') > -1 &&
+        TMS.rbac.defaultPerms('deliveryman').indexOf('address:review') === -1);
+    check('派送员端菜单挂了派送地址页',
+        TMS.rbac.PORTAL_MENU.deliveryman.some((i) => i.id === 'd-address' && i.perm === 'address:manage') &&
+        !!TMS.pages.get('d-address'), TMS.pages.get('d-address') ? TMS.pages.get('d-address').file : '未注册');
     check('网点出厂权限含分拣交接', TMS.rbac.defaultPerms('branch').indexOf('sorting:operate') > -1);
     check('网点出厂权限含地址维护', TMS.rbac.defaultPerms('branch').indexOf('address:manage') > -1);
     check('网点出厂权限含本城围栏维护', TMS.rbac.defaultPerms('branch').indexOf('geofence:operate') > -1 &&

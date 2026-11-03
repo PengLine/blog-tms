@@ -29,12 +29,136 @@
 
     function trips() { return TMS.db.col('trips'); }
 
+
     var routeCache = {};
+
+    /* ---------- 路由范围分级：省 / 市 / 区 ----------
+       分级只回答「这一单跨到哪一层」，一碰时效与运价口径都不碰：
+       stdHours 仍由班次图算、slaHours 仍由距离与产品推、成本仍读 segments 的干线公里。
+       区内直送那档会把同城两段并成一段，但合并只做「相加」，总时长与总里程一分不变。 */
+    var SCOPE = {
+        intra: { code: 'intra', name: '区内直送', level: 4, tone: 'success', chain: '同一区/镇', hint: '揽收点与收件点落在同一行政区，直取直送不回分拨' },
+        city: { code: 'city', name: '市内跨区', level: 3, tone: 'brand', chain: '同城跨区', hint: '同城不同区，取件后回本城分拨再发派送' },
+        prov: { code: 'prov', name: '省内跨市', level: 2, tone: 'warn', chain: '同省跨市', hint: '同省不同城，走省域内的干线班次' },
+        cross: { code: 'cross', name: '跨省', level: 1, tone: 'danger', chain: '跨省干线', hint: '跨省的件必经干线班线，可能二次中转' },
+        unknown: { code: 'unknown', name: '范围待定', level: 0, tone: 'muted', chain: '认不出起止', hint: '起止端有一头不在网络城市里，需人工核对' }
+    };
+    var SCOPE_ORDER = ['intra', 'city', 'prov', 'cross', 'unknown'];
+
+    /* 段跨度：一段线路自己跨到哪一层，与整单分级不是一回事
+       （跨省单的两端支线仍是「市内」段，把它们混成一列就看不出干线到底背了多少量） */
+    var SEG_SCOPE = {
+        same: { code: 'same', name: '市内', tone: 'success' },
+        prov: { code: 'prov', name: '省内跨市', tone: 'warn' },
+        cross: { code: 'cross', name: '跨省', tone: 'danger' },
+        unknown: { code: 'unknown', name: '待定', tone: 'muted' }
+    };
+
+    function scopeWrap(code, sub, needDistrict) {
+        var s = SCOPE[code];
+        return {
+            code: s.code, name: s.name, level: s.level, tone: s.tone, chain: s.chain, hint: s.hint,
+            sub: sub || '', needDistrict: !!needDistrict
+        };
+    }
+
+    /* 一端的三级归属：城市取自路由起止，区取自地址文本。
+       区认不出就留空而不是猜一个——猜中会把同城两单误判成区内直送，
+       那种单子实际还要跨片区回分拨，界面却说「直送」，等于给了条假近路 */
+    function endLevels(city, text) {
+        var name = master.cityByName(city) ? String(city) : cityOfText(text);
+        var c = master.cityByName(name);
+        if (!c) return { city: name || '', province: '', zone: '', district: '', known: false };
+        var d = master.matchDistrict(c.name, text || '');
+        return { city: c.name, province: c.prov, zone: c.zone, district: d ? d.name : '', known: true };
+    }
+
+    function scopeOf(od, dd) {
+        if (!od || !dd || !od.known || !dd.known) return scopeWrap('unknown');
+        if (od.city === dd.city) {
+            if (od.district && od.district === dd.district) return scopeWrap('intra', od.district);
+            /* 同城但认不出区：只能报到「市内跨区」这一档，同时把缺数据标出来——
+               缺区级不代表它不是区内直送，代表这条单的地址该补全 */
+            return scopeWrap('city', od.district && dd.district ? od.district + ' → ' + dd.district : '区级未填',
+                !(od.district && dd.district));
+        }
+        if (od.province === dd.province) return scopeWrap('prov', od.province);
+        /* 跨省再分一刀同大区/跨大区：华东→华南与华东→华东的干线成本根本不是一个量级，
+           只看「跨省」这一格会把两种件混在同一个 KPI 里 */
+        return scopeWrap('cross', od.zone === dd.zone ? '同大区跨省' : '跨大区跨省');
+    }
+
+    function orderLevels(order) {
+        var o = order || {};
+        return { from: endLevels(o.origin, o.senderAddress), to: endLevels(o.destination, o.receiverAddress) };
+    }
+
+    function scopeOfOrder(order) {
+        var l = orderLevels(order);
+        return scopeOf(l.from, l.to);
+    }
+
+    /* 三级链路文本：「上海市 浦东新区」，缺区级就只报到市，留白让页面自己标「缺区级」 */
+    function chainOf(lv) {
+        if (!lv || !lv.known) return lv && lv.city ? lv.city + '（不在网络）' : '—';
+        return lv.province + ' ' + lv.city + (lv.district ? ' · ' + lv.district : '');
+    }
+
+    function cityOfPlace(name) { return cityOfText(name); }
+
+    function segmentScope(seg) {
+        var a = cityOfPlace(seg.from), b = cityOfPlace(seg.to);
+        if (!a || !b) return SEG_SCOPE.unknown;
+        if (a === b) return SEG_SCOPE.same;
+        var ca = master.cityByName(a), cb = master.cityByName(b);
+        if (!ca || !cb) return SEG_SCOPE.unknown;
+        return ca.prov === cb.prov ? SEG_SCOPE.prov : SEG_SCOPE.cross;
+    }
+
+    /* 分级统计：管理端看板与「哪些单判不出范围」的巡检共用这一个口径。
+       两处各算一遍迟早会出现「看板 12 单、列表筛出 15 单」 */
+    function scopeStats(rows) {
+        var counts = {};
+        SCOPE_ORDER.forEach(function (k) { counts[k] = 0; });
+        (rows || []).forEach(function (o) { counts[scopeOfOrder(o).code]++; });
+        var total = (rows || []).length;
+        return {
+            total: total,
+            items: SCOPE_ORDER.map(function (k) {
+                return {
+                    code: k, name: SCOPE[k].name, tone: SCOPE[k].tone, level: SCOPE[k].level,
+                    hint: SCOPE[k].hint, count: counts[k], pct: total ? util.round(counts[k] / total * 100, 1) : 0
+                };
+            }),
+            by: counts,
+            /* 落到干线上的量 = 跨城的两档；单看跨省会低估网络压力 */
+            crossCity: counts.prov + counts.cross,
+            known: total - counts.unknown,
+            unresolved: counts.unknown
+        };
+    }
+
+    /* 区内直送合并：同城同区的件不先送分拨再倒回来，揽收车直取直送。
+       这里不问分拨在哪座城：本网络里不少城市的最近分拨落在邻城（乌鲁木齐的货拉到西安分拨再回来），
+       区内件照这条线画出来就是「取件后出市再回本城」，那是跨城件的走法，不是区内件的。
+       合并只做相加，总时长与总里程原样保留，承诺时效与成本口径一分不动 */
+    function collapseIntra(plan) {
+        var segs = plan.segments || [];
+        if (segs.length < 2) return;
+        plan.segments = [{
+            seq: 1, from: segs[0].from, to: segs[segs.length - 1].to, mode: '陆运',
+            stdHours: util.sum(segs, 'stdHours'), km: util.sum(segs, 'km'), legType: 'direct'
+        }];
+    }
 
     /* 规划路由：命中已维护路由则复用（保证路由页可统计偏差），否则按班次图临时规划 */
     function planRoute(origin, destination, service, options) {
         var opts = options || {};
-        var key = origin + '>' + destination + '>' + (service || '标准');
+        var levels = opts.levels || { from: endLevels(origin, ''), to: endLevels(destination, '') };
+        /* 缓存键带上区级归属：区内直送与市内跨区的段结构不同，
+           只按城市对缓存会让先算的那一条决定后来所有同城单长什么样 */
+        var key = origin + '>' + destination + '>' + (service || '标准') +
+            '>' + (levels.from.district || '') + '~' + (levels.to.district || '');
         if (!opts.noCache && routeCache[key]) return routeCache[key];
 
         var stored = TMS.db.findOne('routes', function (r) {
@@ -69,7 +193,27 @@
         plan.slaHours = Math.max(plan.stdHours + 6, svc.slaHours * (1 + Math.round(plan.distanceKm / 1200) * 0.35));
         plan.slaHours = Math.round(plan.slaHours);
         plan.serviceName = svc.name;
+        attachScope(plan, levels);
         if (!opts.noCache) routeCache[key] = plan;
+        return plan;
+    }
+
+    /* 分级结论挂在读出来的 plan 上，不落库：改地址不用重刷历史单，
+       口径也只有一个——planOf 什么时候算都是这一套 */
+    function attachScope(plan, levels) {
+        plan.levels = levels;
+        plan.scope = scopeOf(levels.from, levels.to);
+        plan.chain = { from: chainOf(levels.from), to: chainOf(levels.to) };
+        if (plan.scope.code === 'intra') collapseIntra(plan);
+        (plan.segments || []).forEach(function (s) {
+            var sc = segmentScope(s);
+            s.scopeCode = sc.code;
+            s.scopeName = sc.name;
+            s.scopeTone = sc.tone;
+        });
+        plan.scopeSegmentCount = (plan.segments || []).filter(function (s) {
+            return s.scopeCode === 'cross' || s.scopeCode === 'prov';
+        }).length;
         return plan;
     }
 
@@ -80,13 +224,14 @@
     /* 订单路由读取：路由段不落在订单行上，按路由主数据即时派生（缓存命中，改线后自然跟随） */
     function planOf(order) {
         if (!order) return null;
-        var plan = planRoute(order.origin, order.destination, order.service);
+        var plan = planRoute(order.origin, order.destination, order.service, { levels: orderLevels(order) });
         if (plan) return plan;
-        return {
+        var fallback = {
             routeId: order.routeId || '', mode: '陆运', segments: [], source: 'order',
             distanceKm: Number(order.distanceKm) || 0, stdHours: Number(order.stdHours) || 24,
             totalStdHours: Number(order.stdHours) || 24, slaHours: Number(order.slaHours) || 72
         };
+        return attachScope(fallback, orderLevels(order));
     }
 
     /* 干线班次匹配：给车次调度用（同段取最早发车的活动班次） */
@@ -542,6 +687,10 @@
         branchesOf: branchesOf, branch: branch, collectBranch: collectBranch, deliverBranch: deliverBranch,
         planRoute: planRoute, planOf: planOf, tripFor: tripFor, pickVehicle: pickVehicle, loadPlan: loadPlan,
         promiseAt: promiseAt, deviates: deviates, invalidateCache: invalidateCache,
+        /* 范围分级：省市区三级归属与「这一单跨到哪一层」的唯一口径 */
+        SCOPE: SCOPE, SCOPE_ORDER: SCOPE_ORDER, SEG_SCOPE: SEG_SCOPE,
+        endLevels: endLevels, scopeOf: scopeOf, scopeOfOrder: scopeOfOrder,
+        scopeStats: scopeStats, segmentScope: segmentScope,
         zones: master.ZONES, cities: master.CITIES
     };
 })(window);

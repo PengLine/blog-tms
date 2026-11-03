@@ -188,7 +188,7 @@
             hubFrom: ob ? ob.hubId : '', hubTo: dbb ? dbb.hubId : '',
             senderAddress: d.senderAddress || (customer ? customer.senderAddress : '') || (origin + '市工业园区 1 号'),
             receiverName: d.receiverName || d.contact || '收件人',
-            receiverAddress: d.receiverAddress || (destination + '市' + util.pick(TMS.master.DISTRICTS) + util.randomDigits(3) + '号'),
+            receiverAddress: d.receiverAddress || (destination + '市' + TMS.master.districtName(destination) + util.randomDigits(3) + '号'),
             receiverPhone: d.receiverPhone || d.phone || '',
             status: 'created',
             // 环节时间统一由扫描流水派生，订单行只留创建/更新/签收三个时间点；

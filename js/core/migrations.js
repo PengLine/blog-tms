@@ -152,6 +152,21 @@
             var hasCourier = rows.some(function (g) { return g.type === 'courier'; });
             var couriers = (db.data.employees || []).filter(function (e) { return e.role === 'deliveryman' && e.status === 'active'; });
             if (!hasCourier && couriers.length) db.pendingCourierFence = 1;
+        },
+        /* v12：派送员拿到「派送地址维护」。老库里没改过出厂权限的角色直接换成新默认，
+           改过的人尊重他的选择不动——和 v10/v11 同一个套路：只升级「还是出厂值」的那一份 */
+        12: function (db, TMS) {
+            var V11_COURIER = ['overview:view', 'order:view', 'order:create', 'tracking:view', 'scan:operate',
+                'delivery:operate', 'delivery:pod', 'cod:remit', 'exception:create', 'report:view'];
+            (db.data.roles || []).forEach(function (r) {
+                if (!r.builtin || r.code !== 'deliveryman') return;
+                var cur = r.permissionCodes || [];
+                if (cur.length !== V11_COURIER.length) return;
+                if (!V11_COURIER.every(function (c) { return cur.indexOf(c) > -1; })) return;
+                r.permissionCodes = TMS.rbac.defaultPerms('deliveryman');
+                r.updatedAt = TMS.util.iso(TMS.util.now());
+                r.actor = 'v12 派送员维护地址';
+            });
         }
     };
 })(window);

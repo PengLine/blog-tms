@@ -67,7 +67,139 @@
         { id: 'HB0007', name: '沈阳分拨中心', city: '沈阳', zone: '东北', role: '区域枢纽', area: 20000, capacity: 70000 }
     ];
 
-    var DISTRICTS = ['浦东新区', '闵行区', '徐泾镇', '开发区', '高新片区', '城西片区', '临港片区', '空港片区', '保税区', '老城片区'];
+    /* ---------- 行政区划三级：省 → 市 → 区 ----------
+       区名必须是这座城市真的有的，不能是「高新片区」这种放到哪座城都成立的通用词：
+       路由要按「区内直送 / 市内跨区 / 省内跨市 / 跨省」分级，靠的就是区名对得上。
+       名字一虚构或跨城重复，同城两单就会被判进同一个区，分级表上那一格永远是空的。
+
+       区级坐标是按固定黄金角从城市中心派生偏移出来的（半径约 6~33 公里，同名恒得同坐标），
+       只用于标位置与算市内相对远近；电子围栏与地址可派送判定都不读它，那两层认的是勾画边界和文字地址。 */
+    var CITY_DISTRICTS = {
+        '上海': ['浦东新区', '闵行区', '嘉定区', '松江区', '宝山区', '青浦区', '杨浦区'],
+        '杭州': ['西湖区', '拱墅区', '滨江区', '萧山区', '余杭区', '临平区', '钱塘区'],
+        '宁波': ['海曙区', '江北区', '鄞州区', '镇海区', '北仑区', '奉化区', '余姚市'],
+        '南京': ['玄武区', '秦淮区', '建邺区', '鼓楼区', '栖霞区', '江宁区', '浦口区'],
+        '苏州': ['姑苏区', '吴中区', '相城区', '昆山市', '太仓市', '吴江区', '工业园区'],
+        '无锡': ['梁溪区', '滨湖区', '新吴区', '锡山区', '惠山区', '江阴市', '宜兴市'],
+        '合肥': ['蜀山区', '庐阳区', '包河区', '瑶海区', '肥西县', '长丰县', '巢湖市'],
+        '青岛': ['市南区', '市北区', '崂山区', '黄岛区', '城阳区', '李沧区', '即墨区'],
+        '济南': ['历下区', '市中区', '槐荫区', '天桥区', '历城区', '章丘区', '高新区'],
+        '福州': ['鼓楼区', '台江区', '仓山区', '晋安区', '马尾区', '闽侯县', '长乐区'],
+        '厦门': ['思明区', '湖里区', '集美区', '海沧区', '同安区', '翔安区'],
+        '广州': ['天河区', '越秀区', '白云区', '番禺区', '黄埔区', '花都区', '增城区'],
+        '深圳': ['南山区', '福田区', '罗湖区', '宝安区', '龙岗区', '龙华区', '坪山区'],
+        /* 东莞、中山这类「直筒子市」下面不设区，只管镇和街道——
+           写成区反而露怯，派送分片按镇走才是珠三角的真实做法 */
+        '东莞': ['南城街道', '东城街道', '长安镇', '虎门镇', '塘厦镇', '凤岗镇', '万江街道'],
+        '佛山': ['禅城区', '南海区', '顺德区', '三水区', '高明区'],
+        '南宁': ['青秀区', '西乡塘区', '兴宁区', '江南区', '邕宁区', '良庆区'],
+        '海口': ['秀英区', '龙华区', '琼山区', '美兰区'],
+        '北京': ['朝阳区', '海淀区', '丰台区', '通州区', '大兴区', '昌平区', '顺义区'],
+        '天津': ['和平区', '南开区', '河西区', '滨海新区', '河东区', '西青区', '北辰区'],
+        '石家庄': ['长安区', '桥西区', '裕华区', '新华区', '藁城区', '鹿泉区'],
+        '太原': ['小店区', '迎泽区', '杏花岭区', '尖草坪区', '万柏林区', '晋源区'],
+        '呼和浩特': ['新城区', '回民区', '玉泉区', '赛罕区', '土默特左旗'],
+        '武汉': ['武昌区', '洪山区', '江汉区', '汉阳区', '江岸区', '硚口区', '东湖高新区'],
+        '郑州': ['金水区', '二七区', '中原区', '管城区', '惠济区', '郑东新区', '高新区'],
+        '长沙': ['岳麓区', '芙蓉区', '天心区', '开福区', '雨花区', '望城区'],
+        '南昌': ['东湖区', '西湖区', '青山湖区', '红谷滩区', '青云谱区', '新建区'],
+        '成都': ['锦江区', '青羊区', '武侯区', '高新区', '金牛区', '成华区', '双流区'],
+        '重庆': ['渝中区', '江北区', '南岸区', '渝北区', '沙坪坝区', '九龙坡区', '巴南区'],
+        '昆明': ['五华区', '盘龙区', '官渡区', '西山区', '呈贡区', '晋宁区'],
+        '贵阳': ['南明区', '云岩区', '观山湖区', '花溪区', '乌当区', '白云区'],
+        '西安': ['雁塔区', '碑林区', '莲湖区', '未央区', '高新区', '灞桥区', '长安区'],
+        '兰州': ['城关区', '七里河区', '安宁区', '西固区', '红古区'],
+        '乌鲁木齐': ['天山区', '沙依巴克区', '新市区', '水磨沟区', '米东区'],
+        '沈阳': ['和平区', '沈河区', '铁西区', '皇姑区', '浑南区', '大东区', '于洪区'],
+        '大连': ['中山区', '西岗区', '沙河口区', '甘井子区', '高新区', '金州区'],
+        '长春': ['朝阳区', '南关区', '宽城区', '二道区', '绿园区', '高新区'],
+        '哈尔滨': ['南岗区', '道里区', '香坊区', '道外区', '松北区', '平房区']
+    };
+
+    /* 上一版凭空造的片区名。老库里的网点名与收件地址还带着它们，
+       认区的那条线要能继续认出来，否则升级一次浏览器，历史地址全部判成「缺区级」 */
+    var LEGACY_DISTRICTS = ['徐泾镇', '开发区', '高新片区', '城西片区', '临港片区', '空港片区', '保税区', '老城片区'];
+
+    var DISTRICTS = (function () {
+        var out = LEGACY_DISTRICTS.slice();
+        Object.keys(CITY_DISTRICTS).forEach(function (c) {
+            CITY_DISTRICTS[c].forEach(function (n) { if (out.indexOf(n) < 0) out.push(n); });
+        });
+        return out;
+    })();
+
+    var DISTRICT_CACHE = {};
+
+    function districtsOf(city) {
+        var c = cityByName(city);
+        if (!c) return [];
+        if (!DISTRICT_CACHE[c.name]) {
+            var names = CITY_DISTRICTS[c.name] || [];
+            /* 黄金角 137.5° 铺开、半径按序号递增：同一个区每次重建拿到同一个坐标，
+               不会出现「浦东新区」今天在城市东边、明天跑到西边 */
+            DISTRICT_CACHE[c.name] = names.map(function (n, i) {
+                var ang = i * 2.3999632;
+                var rad = 0.05 + 0.22 * (names.length > 1 ? i / (names.length - 1) : 0.5);
+                return {
+                    name: n, city: c.name, province: c.prov, code: c.code, zone: c.zone, tier: c.tier,
+                    lat: Math.round((c.lat + rad * Math.sin(ang)) * 10000) / 10000,
+                    lng: Math.round((c.lng + rad * Math.cos(ang) / Math.cos(c.lat * Math.PI / 180)) * 10000) / 10000
+                };
+            });
+        }
+        return DISTRICT_CACHE[c.name];
+    }
+
+    /* 给一段文字找它所在的区：先在已认出的城市里找，避免「西湖区」在杭州与南昌之间摇摆；
+       这座城没有真区名时返回 null，交给调用方决定（老地址的通用片区名由 parse 的兜底循环认领） */
+    function matchDistrict(city, text) {
+        if (!city) return null;
+        var raw = String(text || '').replace(/\s+/g, '');
+        if (!raw) return null;
+        var hit = null;
+        districtsOf(city).forEach(function (d) {
+            if (!hit && raw.indexOf(d.name) > -1) hit = d;
+        });
+        return hit;
+    }
+
+    function districtName(city, rand) {
+        var list = districtsOf(city);
+        return list.length ? util.pick(list, rand).name : util.pick(LEGACY_DISTRICTS, rand);
+    }
+
+    function districtPoint(city, name) {
+        var hit = null;
+        districtsOf(city).forEach(function (d) { if (!hit && d.name === name) hit = d; });
+        return hit;
+    }
+
+    /* 省表由市表反推，不另写一份：多写一份就会出现「上海市列表里有、省表里没有」这种对不上的角落 */
+    var PROVINCES = (function () {
+        var byName = {};
+        CITIES.forEach(function (c) {
+            var p = byName[c.prov] || (byName[c.prov] = { name: c.prov, code: c.code, zones: {}, cities: [] });
+            p.cities.push(c.name);
+            p.zones[c.zone] = (p.zones[c.zone] || 0) + 1;
+        });
+        return Object.keys(byName).map(function (k) {
+            var p = byName[k];
+            p.zone = Object.keys(p.zones).sort(function (a, b) { return p.zones[b] - p.zones[a]; })[0];
+            p.zones = undefined;
+            /* 一省一城（四个直辖市 + 海南 + 内蒙古）：省内没有「跨市」这一档，
+               分级时要直接落到跨省，否则会出现一条永远没有件的「省内跨市」路由 */
+            p.singleCity = p.cities.length === 1;
+            return p;
+        }).sort(function (a, b) { return a.name.localeCompare(b.name, 'zh-CN'); });
+    })();
+
+    function provinceOf(city) {
+        var c = cityByName(city);
+        if (!c) return null;
+        var hit = null;
+        PROVINCES.forEach(function (p) { if (!hit && p.name === c.prov) hit = p; });
+        return hit;
+    }
 
     var GOODS = [
         { name: '电子产品', density: 220, fragility: 0.18, value: 1800 },
@@ -192,12 +324,12 @@
                 var hub = hubOfCity(c);
                 out.push({
                     id: 'BR' + util.pad(seq, 4),
-                    name: c.name + util.pick(DISTRICTS, rand) + '营业部',
+                    name: c.name + districtName(c.name, rand) + '营业部',
                     city: c.name, province: c.prov, zone: c.zone, code: c.code,
                     lat: c.lat, lng: c.lng, hubId: hub.id, hubName: hub.name,
                     type: i === 0 ? '直营枢纽网点' : '直营网点',
                     manager: personName(rand, used), phone: phone(rand),
-                    address: c.name + '市' + util.pick(DISTRICTS, rand) + util.pick(['物流大道', '货运路', '振兴街', '环城快速'], rand) + util.randomDigits(3) + '号',
+                    address: c.name + '市' + districtName(c.name, rand) + util.pick(['物流大道', '货运路', '振兴街', '环城快速'], rand) + util.randomDigits(3) + '号',
                     area: util.round(200 + rand() * 800, 0),
                     staffCount: 3 + Math.floor(rand() * 12),
                     status: rand() > 0.06 ? 'active' : 'inactive',
@@ -233,7 +365,7 @@
                 contractTo: util.dateKey(util.addDays(util.now(), 30 + Math.floor(rand() * 400))),
                 status: rand() > 0.08 ? 'active' : 'suspended',
                 registerAt: util.dateKey(util.addDays(util.now(), -Math.floor(200 + rand() * 1200))),
-                senderAddress: city.name + '市' + util.pick(DISTRICTS, rand) + '工业园' + util.randomDigits(2) + '号',
+                senderAddress: city.name + '市' + districtName(city.name, rand) + '工业园' + util.randomDigits(2) + '号',
                 balance: 0
             });
         }
@@ -693,7 +825,7 @@
             var c = cityByName(h.city);
             return {
                 id: h.id, name: h.name, city: h.city, zone: h.zone, role: h.role,
-                address: h.city + '市' + util.pick(DISTRICTS, rand) + '物流大道 1 号',
+                address: h.city + '市' + districtName(h.city, rand) + '物流大道 1 号',
                 lat: c.lat, lng: c.lng, areaM2: h.area, capacityPieces: h.capacity,
                 usedPieces: Math.floor(h.capacity * (0.28 + rand() * 0.5)),
                 manager: h.name.replace('分拨中心', '') + '主管', phone: phone(rand),
@@ -962,6 +1094,10 @@
         CITIES: CITIES, ZONES: ZONES, REMOTE: REMOTE, HUBS: HUB_SEEDS,
         GOODS: GOODS, SERVICES: SERVICES, VEHICLE_TYPES: VEHICLE_TYPES,
         DEPARTMENTS: DEPARTMENTS, MATERIALS: MATERIALS, DISTRICTS: DISTRICTS,
+        /* 行政区划三级：省表由市表反推，区表带派生坐标（只用于展示与算市内远近） */
+        PROVINCES: PROVINCES, CITY_DISTRICTS: CITY_DISTRICTS,
+        districtsOf: districtsOf, districtName: districtName, matchDistrict: matchDistrict,
+        districtPoint: districtPoint, provinceOf: provinceOf,
         SURNAMES: SURNAMES, GIVEN: GIVEN,
         cityByName: cityByName, hubOfCity: hubOfCity, nearestHub: nearestHub,
         hubByNameOrId: hubByNameOrId, vehicleType: vehicleType,

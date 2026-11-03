@@ -145,9 +145,27 @@
         return saved;
     }
 
-    function actorRole(actor) {
+    function actorRole(actor, role) {
+        if (role) return role;
         var s = TMS.auth.current ? TMS.auth.current() : null;
         return (s && s.role) || (actor === '系统' ? 'system' : '') || '';
+    }
+
+    /* 维护权的边界：派送员只动自己上门采集的那一条。
+       网点建档的收件点是网点跟客户谈定的，骑手一改，出了纠纷就说不清是谁动的手；
+       网点与运营端整城在册，不受这条限制。
+       写在这里而不是写在页面按钮上：审核结论只能由运营端（address:review）下，
+       维护能改到哪一条也得有领域层的一条线，否则换个入口就绕过了 */
+    function maintainScope(row, actor, role) {
+        if (!row) return { ok: false, reason: '地址记录不存在' };
+        if (role !== 'deliveryman') return { ok: true, reason: '' };
+        if (String(row.owner || '') !== String(actor || '')) {
+            return {
+                ok: false,
+                reason: '这条由「' + (row.source || '他人') + (row.owner ? ' · ' + row.owner : '') + '」建档，派送员只能改自己上门采集的记录；需要改动请转给网点'
+            };
+        }
+        return { ok: true, reason: '' };
     }
 
     /* 新建即待审核：地址没有「存着不审就直接能派送」这条路，
@@ -171,7 +189,7 @@
         });
         pushReview(row, {
             kind: KIND.inspect, action: '提交维护', to: 'pending', actor: d.actor || '网点',
-            actorRole: actorRole(d.actor), rounds: 1,
+            actorRole: actorRole(d.actor, d.role), rounds: 1,
             snapshot: { phone: phone, city: row.city, district: row.district, detail: row.detail },
             note: '新建派送地址，等待审核'
         });
@@ -187,6 +205,8 @@
         var row = db.get('addresses', id);
         if (!row) return { ok: false, message: '地址记录不存在' };
         var d = data || {};
+        var scope = maintainScope(row, d.actor, d.role);
+        if (!scope.ok) return { ok: false, message: scope.reason };
         if (row.status === 'approved' && !d.force) {
             return { ok: false, message: '已通过的地址不能直接改：改了就不是当初通过的那版。请先「发起复审」' };
         }
@@ -195,21 +215,29 @@
         var phone = String(d.phone || row.phone).replace(/\D/g, '');
         var before = { phone: row.phone, city: row.city, district: row.district, detail: row.detail };
         var from = row.status;
-        var to = from === 'revise' ? 'revised' : from;
+        /* 已通过的地址被改动态（force 那条路）时结论要作废退回待审核：
+           页面写的是「改完退回待审核」，库里却还挂着「通过」，一线照样按这版没人核过的地址派送 */
+        var to = from === 'approved' ? 'pending' : from === 'revise' ? 'revised' : from;
         db.update('addresses', id, {
             phone: phone, receiver: d.receiver || row.receiver, custCode: d.custCode || row.custCode,
             city: p.city, district: p.district, detail: p.detail,
             branchId: p.branch ? p.branch.id : row.branchId,
             branchName: p.branch ? p.branch.name : row.branchName,
             status: to, rejectReason: row.status === 'revise' ? '' : row.rejectReason,
+            /* 退回待审核时把上一轮结论一并清空：留着 reviewer/reviewedAt，
+               列表里就会同时出现「待审核」和「某审核员 3 天前通过」这种自相矛盾的行 */
+            reviewer: from === 'approved' ? '' : row.reviewer,
+            reviewedAt: from === 'approved' ? '' : row.reviewedAt,
             issues: issuesOf(p, phone), suggest: p.city ? suggestOf(p) : '',
             maintainCount: (row.maintainCount || 1) + 1,
-            owner: d.actor || row.owner
+            /* owner 记「谁采集的」，maintainer 记「最后一次动内容的人」：
+               两者混成一列的话，网点替派送员补一次地址，派送员就再也改不回这条了 */
+            maintainer: d.actor || row.maintainer || row.owner
         });
         var after = { phone: phone, city: p.city, district: p.district, detail: p.detail };
         pushReview(row, {
-            kind: KIND.inspect, action: to === 'revised' ? '打回后修改' : '补充修改',
-            from: from, to: to, actor: d.actor || '网点', actorRole: actorRole(d.actor),
+            kind: KIND.inspect, action: from === 'approved' ? '通过后改内容' : to === 'revised' ? '打回后修改' : '补充修改',
+            from: from, to: to, actor: d.actor || '网点', actorRole: actorRole(d.actor, d.role),
             rounds: row.maintainCount || 1, snapshot: after,
             note: changed(before, after)
         });
@@ -414,6 +442,7 @@
                 cell.receiver = o.receiverName || '';
                 cell.address = o.receiverAddress;
                 cell.custCode = (db.get('customers', o.customerId) || {}).code || '';
+                cell.courierId = o.courierId || cell.courierId || '';
             }
         });
         /* 按城市轮流取，而不是「取最近 limit 个手机号」：后者会整批落在最近下单的那几座城市，
@@ -425,7 +454,22 @@
             (groups[city] || (groups[city] = [])).push(cell);
         });
         var cities = Object.keys(groups).sort();
-        cities.forEach(function (c) { groups[c] = util.sortBy(groups[c], 'at', 'desc'); });
+        /* 演示派送员跑过的那几户排到本城最前，并占住一条「待修改」：
+           这一端若只翻得到别人的档案，「我上门采集 → 被打回 → 我补一版」这条支线在演示里就演示不动 */
+        var demoCourierId = (function () {
+            var acc = (cfg.demoAccounts || []).filter(function (a) { return a.role === 'deliveryman'; })[0];
+            var u = acc ? db.findOne('users', function (x) { return x.username === acc.username; }) : null;
+            return u ? (u.personId || '') : '';
+        })();
+        Object.keys(byPhone).forEach(function (k) {
+            byPhone[k].demo = demoCourierId && byPhone[k].courierId === demoCourierId ? 1 : 0;
+        });
+        var demoPlanned = 0;
+        cities.forEach(function (c) {
+            groups[c] = groups[c].sort(function (a, b) {
+                return (b.demo - a.demo) || String(b.at).localeCompare(String(a.at));
+            });
+        });
         /* rank = 这是该城市被取到的第几轮：第一轮铺「已通过」，让每城都有一个能直接派送的地址；
            第二轮起铺在途状态，保证每个网点翻开自己这页都有活可干，而不是只有一堆历史档案 */
         var pool = [];
@@ -444,26 +488,40 @@
            历史才不会出现「上周的单子半年前就建了地址」这种倒挂 */
         pool = util.sortBy(pool, 'at', 'asc');
         var created = 0;
-        var plan = pool.map(function (item, i) {
+        /* 采集人按「这一单实际是谁送的」来记，不按建行序号摊派：
+           序号决定来源的话，「派送员采集」就跟现场没关系了，派送员端翻到的会是别人跑过的户 */
+        function courierOf(item) {
+            var e = item.courierId ? db.get('employees', item.courierId) : null;
+            return (e && e.role === 'deliveryman' && e.status === 'active') ? e : null;
+        }
+        /* 在途三态在「派送员采集」与「网点维护」两类里各自轮着铺：
+           只用一个全局序号，来源一偏就会让某一端整批停在同一种状态——
+           网点端或派送员端出现「有档案、没活可干」，图2 的打回分支在其中一端成了死代码 */
+        var seq = { courier: 0, branch: 0 };
+        var plan = pool.map(function (item) {
+            /* 演示派送员的第一条直接落「待修改」：后面的序号会跟着整池重排，
+               不钉死这一格的话，端上很可能只剩几条已通过的老档案可看 */
+            if (item.demo && !demoPlanned) { demoPlanned = 1; return 'revise'; }
             if (!item.rank) return 'approved';
-            /* 在途三态轮着铺：待审核占多数（网点提交后没人审是最常见的现场），
-               待修改与已修改各留样本，图2 的打回与复审分支才不是死代码 */
-            var q = i % 3;
+            var q = (seq[courierOf(item) ? 'courier' : 'branch']++) % 3;
             return q === 0 ? 'pending' : (q === 1 ? 'revise' : 'revised');
         });
         var daysSpan = Math.max(1, d.days || 26);
         pool.forEach(function (item, i) {
             var base = clock.getTime() - (daysSpan - (i * daysSpan / pool.length)) * 86400000;
+            var target = plan[i];
             util.setNow(new Date(base));
+            var who = courierOf(item);
             var res = create({
                 phone: item.phone, receiver: item.receiver, address: item.address,
-                custCode: item.custCode, source: i % 3 === 0 ? '派送员采集' : '网点维护',
-                actor: i % 3 === 0 ? '派送员' : '网点'
+                custCode: item.custCode,
+                source: who ? '派送员采集' : '网点维护',
+                actor: who ? who.name : '网点',
+                role: who ? 'deliveryman' : 'branch'
             });
             if (!res.ok) return;
             created++;
             var id = res.row.id;
-            var target = plan[i];
             util.setNow(new Date(base + 3600000 * (2 + rand() * 20)));
             if (target === 'pending') return;
             if (target === 'approved') { review(id, { action: 'approve', actor: '运营审核员' }); return; }
@@ -479,7 +537,8 @@
                     util.pick(['人民路', '建设大道', '解放大道', '中山大街', '花园街'], rand) +
                     (100 + Math.floor(rand() * 800)) + '号' +
                     (1 + Math.floor(rand() * 9)) + '栋' + (100 + Math.floor(rand() * 800)) + '室',
-                actor: '网点'
+                actor: who ? who.name : '网点',
+                role: who ? 'deliveryman' : 'branch'
             });
         });
         util.setNow(clock);
@@ -492,6 +551,7 @@
         labelOf: labelOf, parse: parse, issuesOf: issuesOf, suggestOf: suggestOf,
         get: get, byPhone: byPhone, allOfPhone: allOfPhone, reviewsOf: reviewsOf, rowView: rowView,
         holdHours: holdHours, overdueKind: overdueKind, isOverdue: isOverdue,
+        maintainScope: maintainScope,
         create: create, maintain: maintain, review: review, reopen: reopen, remove: remove,
         backfill: backfill,
         phoneDecision: phoneDecision, stats: stats

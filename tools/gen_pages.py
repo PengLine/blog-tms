@@ -23,7 +23,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RBAC = os.path.join(ROOT, "js", "core", "rbac.js")
-DEFAULT_TOKEN = "v=20261103d"
+DEFAULT_TOKEN = "v=20261103m"
 
 ENTRY_RE = re.compile(r"\{\s*id:\s*'([^']+)'\s*,\s*file:\s*'([^']+)'\s*,\s*label:\s*'([^']+)'")
 TOKEN_RE = re.compile(r"\?v=[0-9a-zA-Z]+")

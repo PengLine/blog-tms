@@ -211,8 +211,11 @@
 
             var customer = util.weighted(custWeights, rand);
             var origin = rand() < 0.78 ? customer.city : util.pick(TMS.master.CITIES, rand).name;
-            var destination = pickDest(origin);
-            if (destination === origin) destination = util.pick(TMS.master.CITIES, rand).name;
+            /* 同城件占 6%：这类件不进干线台账，却是派送端量最大的一档。
+               seed 一条同城件都不给，范围分级表上「市内」两格永远是空的 */
+            var sameCity = rand() < 0.06;
+            var destination = sameCity ? origin : pickDest(origin);
+            if (!sameCity && destination === origin) destination = util.pick(TMS.master.CITIES, rand).name;
             var goods = util.pick(TMS.master.GOODS, rand).name;
             var service = goods === '生鲜冷链' ? '冷链' : util.weighted([['标准', 56], ['经济', 16], ['加急', 20], ['冷链', 8]], rand);
             /* 单量结构：约九成零担小件、5% 大票、2% 厂家整车直发。
@@ -231,6 +234,11 @@
             var payment = customer.settleCycle === '月结' && rand() < 0.86 ? '月结' : util.weighted([['现付', 70], ['到付', 24], ['月结', 6]], rand);
             var codAmount = payment === '到付' ? util.round((declared || 300) * (0.6 + rand() * 1.8), 0) : 0;
             var sender = staffOf(branchStaff, null, '客户经理');
+            /* 同城件一半落回寄件地址同一个区：区内直送与市内跨区得能对照着看，
+               两端都随机抽区的话每座城市凑不出几单区内件，分级表那一格常年空着 */
+            var senderDist = sameCity ? TMS.master.matchDistrict(origin, customer.senderAddress || '') : null;
+            var receiverDist = sameCity && senderDist && rand() < 0.5
+                ? senderDist.name : TMS.master.districtName(destination, rand);
 
             var res = TMS.order.create({
                 origin: origin, destination: destination, service: service,
@@ -243,7 +251,7 @@
                 senderAddress: customer.senderAddress || (origin + '市工业园区 8 号'),
                 receiverName: util.pick(NAMES_SUR, rand) + util.pick(NAMES_GIV, rand),
                 receiverPhone: PHONE(rand),
-                receiverAddress: destination + '市' + util.pick(TMS.master.DISTRICTS, rand) + util.randomDigits(3) + '号',
+                receiverAddress: destination + '市' + receiverDist + util.randomDigits(3) + '号',
                 remark: rand() < 0.12 ? util.pick(['易碎品，请轻放', '需上门收货，货已备好', '收件人白天不在，请傍晚派送', '需签回单', '木箱包装']) : '',
                 createdAt: util.iso(createdAt), actor: sender.name
             });

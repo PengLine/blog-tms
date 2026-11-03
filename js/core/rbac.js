@@ -66,7 +66,11 @@
         transporter: ['overview:view', 'order:view', 'tracking:view', 'scan:operate', 'loading:operate',
             'transport:view', 'exception:create', 'report:view'],
         deliveryman: ['overview:view', 'order:view', 'order:create', 'tracking:view', 'scan:operate',
-            'delivery:operate', 'delivery:pod', 'cod:remit', 'exception:create', 'report:view'],
+            'delivery:operate', 'delivery:pod', 'cod:remit', 'exception:create', 'report:view',
+            /* 派送员也能维护地址：门牌对不对只有上门的人知道，等网点次日转述一遍就晚了。
+               但他改的只有自己上门采集的那条（见 address.maintainScope），
+               审核结论照旧只在运营端——维护权扩到一线，不能把「自己审自己」带进来 */
+            'address:manage'],
         client: ['order:view', 'order:create', 'tracking:view']
     };
 
@@ -165,6 +169,7 @@
             { id: 'd-clock', file: 'deliveryman/clock.html', label: '打卡', icon: '⏱', tab: true },
             { id: 'd-performance', file: 'deliveryman/performance.html', label: '绩效', icon: '★', perm: 'report:view' },
             { id: 'd-areas', file: 'deliveryman/areas.html', label: '责任区域', icon: '⬡' },
+            { id: 'd-address', file: 'deliveryman/address.html', label: '派送地址', icon: '⌖', perm: 'address:manage' },
             { id: 'd-contacts', file: 'deliveryman/contacts.html', label: '客户通讯录', icon: '☏' }
         ],
         client: [

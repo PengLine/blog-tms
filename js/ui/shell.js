@@ -321,6 +321,12 @@
             a.classList.toggle('active', on);
             if (a.classList.contains('tms-chip')) a.classList.toggle('on', on);
         });
+        /* 只在当前节点变了的时候滚动：同页动作重渲染时若每次都居中，
+           使用者刚手动翻开的侧栏会被拽回去 */
+        if (s.revealedFor !== activeId) {
+            s.revealedFor = activeId;
+            revealActive(chrome);
+        }
         var foot = chrome.querySelector('#tms-side-foot');
         if (foot) {
             var info = db.info();
@@ -333,6 +339,22 @@
     }
 
     function qsa(root, sel) { return Array.prototype.slice.call(root.querySelectorAll(sel)); }
+
+    /* 把当前节点滚到可视区中间：侧栏和中部页签都是自己的滚动容器，
+       用 scrollIntoView 会连文档一起滚，正好顶掉 render 里「切页回顶部」的位置 */
+    function revealActive(chrome) {
+        scrollToActive(chrome.querySelector('.tms-side-nav'), '.tms-nav-item.active', 'y');
+        scrollToActive(chrome.querySelector('.tms-tabs-mid'), '.tms-chip.on', 'x');
+    }
+
+    function scrollToActive(box, childSel, axis) {
+        if (!box) return;
+        var item = box.querySelector(childSel);
+        if (!item) return;
+        var b = box.getBoundingClientRect(), r = item.getBoundingClientRect();
+        if (axis === 'x') box.scrollLeft += (r.left - b.left) - (box.clientWidth - r.width) / 2;
+        else box.scrollTop += (r.top - b.top) - (box.clientHeight - r.height) / 2;
+    }
 
     function defaultPage(session) {
         var conf = cfg.roles[session.role];

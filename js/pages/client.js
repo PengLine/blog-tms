@@ -164,6 +164,17 @@
         };
     }
 
+    /* 路由卡片的副标题：先说这一单跨到哪一层，再说怎么走。
+       试算表单只收城市，收不到区级，所以这里不提示「缺区级」——
+       客户填不了的东西不该当成他的地址有问题 */
+    function routeScopeSub(plan, p) {
+        if (!plan) return '路由由线路主数据即时给出，下单后不会另起一条线';
+        var sc = plan.scope || TMS.network.scopeOfOrder(p);
+        var ch = plan.chain || {};
+        return esc(ch.from || p.origin) + ' → ' + esc(ch.to || p.destination) + ' · ' +
+            ui.badge(esc(sc.name), sc.tone);
+    }
+
     function quoteOf(p) {
         if (!p.destination) return null;
         if (!TMS.master.cityByName(p.origin) || !TMS.master.cityByName(p.destination)) return null;
@@ -821,12 +832,14 @@
                         }) : ui.empty('先填目的城市', '填好后这里列出四种服务的报价与时效')
                     }),
                     ui.card({
-                        title: '这票货怎么走', sub: '路由由线路主数据即时给出，下单后不会另起一条线', flat: true,
+                        title: '这票货怎么走', sub: routeScopeSub(plan, p), flat: true,
                         body: plan ? ui.timeline(plan.segments.map(function (s) {
+                            var sc = TMS.network.segmentScope(s);
                             return {
                                 title: esc(String(s.from)) + ' → ' + esc(String(s.to)),
                                 time: pg.LEG_TYPE[s.legType] || s.legType || '中转',
-                                body: fmt.km(s.km) + ' · 标准 ' + fmt.duration(s.stdHours) + ' · ' + esc(s.mode || '陆运'),
+                                body: fmt.km(s.km) + ' · 标准 ' + fmt.duration(s.stdHours) + ' · ' + esc(s.mode || '陆运') +
+                                    ' · <span class="tms-dim">跨度 ' + esc(sc.name) + '</span>',
                                 tone: 'ok'
                             };
                         })) : ui.empty('等待目的城市', '路由段、中转分拨与标准时长都会在这里列出')

@@ -390,6 +390,8 @@
         return ui.stack([
             ui.desc([
                 { label: '路由', value: ui.idCell(plan.routeId || '', '') + ' · ' + esc(plan.serviceName || order.service) },
+                { label: '范围分级', value: scopeCell(plan) },
+                { label: '三级链路', value: chainCell(plan) },
                 { label: '运输方式', value: ui.badge(esc(plan.mode || '陆运'), plan.mode === '陆运' ? 'info' : 'brand') },
                 { label: '总里程 / 标准时长', value: fmt.km(plan.distanceKm) + ' · ' + fmt.duration(plan.stdHours) },
                 { label: '承诺时效', value: fmt.duration(plan.slaHours) + '（含分拣与派送冗余）' }
@@ -399,6 +401,7 @@
                 columns: [
                     { key: 'seq', label: '段次', width: '58px', render: function (s) { return ui.rank(s.seq); } },
                     { key: 'legType', label: '环节', render: function (s) { return ui.badge(LEG_TYPE[s.legType] || s.legType, s.legType === 'trunk' ? 'brand' : 'muted'); } },
+                    { key: 'scopeName', label: '跨度', render: function (s) { return ui.badge(s.scopeName || '—', s.scopeTone || 'muted'); } },
                     { key: 'from', label: '起点' },
                     { key: 'to', label: '终点' },
                     { key: 'mode', label: '方式' },
@@ -410,7 +413,24 @@
         ]);
     }
 
-    var LEG_TYPE = { collect: '揽收支线', trunk: '干线', deliver: '派送支线', feeder: '区域支线' };
+    /* 分级徽标 + 一句为什么：只写「区内直送」的话，使用者看不出它和「市内跨区」差在哪，
+       差的那一格恰恰是件要不要回分拨 */
+    function scopeCell(plan) {
+        var sc = (plan && plan.scope) || TMS.network.SCOPE.unknown;
+        var sub = sc.sub ? '<span class="tms-dim"> ' + esc(sc.sub) + '</span>' : '';
+        return ui.badge(esc(sc.name), sc.tone, { dot: true }) + sub +
+            '<div class="tms-dim">' + esc(sc.hint) + '</div>';
+    }
+
+    function chainCell(plan) {
+        var ch = plan && plan.chain;
+        if (!ch) return '<span class="tms-dim">—</span>';
+        return '<span class="tms-mono">' + esc(ch.from) + '</span> → <span class="tms-mono">' + esc(ch.to) + '</span>' +
+            (plan.scope && plan.scope.needDistrict
+                ? '<div class="tone-warn">地址里认不出区/镇一级，分级只能报到市</div>' : '');
+    }
+
+    var LEG_TYPE = { collect: '揽收支线', trunk: '干线', deliver: '派送支线', feeder: '区域支线', direct: '区内直送' };
 
     function orderWorkPanel(detail) {
         return ui.stack([
@@ -682,7 +702,16 @@
             { key: 'id', label: '订单号', render: function (r) { return ui.idCell(r.id, openAct); } },
             { key: 'status', label: '状态', width: '92px', render: function (r) { return ui.statusBadge(r.status); } },
             { key: 'customer', label: '客户', render: function (r) { return esc(r.customer) + (r.customerLevel ? ' ' + ui.badge(r.customerLevel, 'info') : ''); } },
-            { key: 'origin', label: '线路', render: function (r) { return esc(r.origin) + ' → ' + esc(r.destination); } },
+            {
+                key: 'origin', label: '线路', render: function (r) {
+                    /* 省在市下面另起一行：规划时先看的是「这单出不出省」，
+                       只看城市名得先背下各省辖市才能判断 */
+                    var a = TMS.network.endLevels(r.origin, r.senderAddress), b = TMS.network.endLevels(r.destination, r.receiverAddress);
+                    return '<div class="tms-nowrap">' + esc(r.origin) + ' → ' + esc(r.destination) + '</div>' +
+                        '<div class="tms-dim">' + esc(a.province || '?') + ' → ' + esc(b.province || '?') + '</div>';
+                }
+            },
+            { key: 'scope', label: '范围分级', width: '132px', sortable: false, render: orderScopeCell },
             { key: 'service', label: '服务', width: '76px', render: function (r) { return ui.badge(esc(r.service), r.service === '加急' ? 'warn' : r.service === '冷链' ? 'brand' : 'muted'); } },
             { key: 'goods', label: '货物', render: function (r) { return esc(r.goods) + ' · ' + fmt.number(r.pieces) + ' 件'; } },
             { key: 'chargeableWeight', label: '计费重', align: 'right', render: function (r) { return fmt.kg(r.chargeableWeight); } },
@@ -702,6 +731,27 @@
         return cols.filter(function (c) { return hide.indexOf(c.key) < 0; });
     }
 
+    /* 分级徽标：区认得出就写区名，认不出写「至少一端缺区级」——
+       把缺数据的路由默认算进「市内跨区」是骗自己，列表里要能一眼挑出这类单 */
+    /* 三级归属一行：省由市表反推、区级坐标按城市中心确定性派生。
+       坐标只用来示意——围栏与「可派送」判定认的是勾画边界和文字地址，
+       拿「大约在城市东边 12 公里」这种演示精度去决定送不送，就是把猜当依据 */
+    function regionCell(city, district) {
+        if (!city) return '<span class="tone-danger">认不出城市，无法归属</span>';
+        var p = TMS.master.provinceOf(city);
+        var d = district ? TMS.master.districtPoint(city, district) : null;
+        return '<span class="tms-mono">' + esc((p ? p.name : '—') + ' / ' + city + ' / ' + (district || '区级未填')) + '</span>' +
+            (d ? ' <span class="tms-dim">' + d.lat + ', ' + d.lng + '（演示坐标，仅示意）</span>' : '') +
+            (district && !d ? ' <span class="tone-warn">该区名不在本市在册区/镇里，无法派生坐标</span>' : '');
+    }
+
+    function orderScopeCell(r) {
+        var sc = TMS.network.scopeOfOrder(r);
+        var out = ui.badge(esc(sc.name), sc.tone);
+        if (sc.sub) out += '<div class="' + (sc.needDistrict ? 'tone-warn' : 'tms-dim') + '">' + esc(sc.sub) + '</div>';
+        return out;
+    }
+
     /* 订单常用筛选栏：搜索 + 状态 + 服务 + 支付方式 + 优先级 */
     function orderFields(opts) {
         var o = opts || {};
@@ -711,6 +761,14 @@
         if (!o.hideStatus) fields.push({ key: 'status', label: '状态', options: [{ value: '', label: '全部状态' }].concat(ui.statusOptions()) });
         if (!o.hideService) fields.push({ key: 'service', label: '服务', options: [{ value: '', label: '全部服务' }].concat(ui.optionsOf(cfg.serviceLevels)) });
         if (!o.hidePayment) fields.push({ key: 'payment', label: '付款', options: [{ value: '', label: '全部方式' }].concat(ui.optionsOf(cfg.paymentMethods)) });
+        if (!o.hideScope) {
+            fields.push({
+                key: 'scope', label: '范围分级',
+                options: [{ value: '', label: '全部分级' }].concat(TMS.network.SCOPE_ORDER.map(function (k) {
+                    return { value: k, label: TMS.network.SCOPE[k].name };
+                }))
+            });
+        }
         if (o.customerFilter) {
             fields.push({ key: 'customerId', label: '客户', options: [{ value: '', label: '全部客户' }].concat(ui.optionsOf(db.col('customers'), 'id', 'name')) });
         }
@@ -724,6 +782,7 @@
         if (fs.payment && r.paymentMethod !== fs.payment) return false;
         if (fs.customerId && r.customerId !== fs.customerId) return false;
         if (fs.zone && r.originZone !== fs.zone) return false;
+        if (fs.scope && TMS.network.scopeOfOrder(r).code !== fs.scope) return false;
         return true;
     }
 
@@ -771,6 +830,7 @@
             { label: '状态', value: ui.badge(TMS.address.labelOf(a.status), ADR_TONE[a.status], { dot: true }) + (over ? ' ' + ui.badge('超时限', 'danger') : '') },
             { label: '手机号', value: '<span class="tms-mono">' + esc(a.phone) + '</span>　' + esc(a.receiver || '未填收件人') },
             { label: '地址', value: esc(full) },
+            { label: '行政归属', value: regionCell(a.city, a.district) },
             { label: '归属网点', value: a.branchName ? esc(a.branchName) : '<span class="tone-danger">认不出服务城市，无法归属</span>' },
             { label: '规范化体检', value: issues.length ? issues.map(function (x) { return ui.badge(esc(x), 'danger'); }).join(' ') : ui.badge('要素齐全，可派送', 'success') },
             { label: '建议写法', value: a.suggest ? '<span class="tms-dim">' + esc(a.suggest) + '</span>' : '<span class="tms-dim">—</span>' },
@@ -983,7 +1043,7 @@
         statusSteps: statusSteps, traceTimeline: traceTimeline, orderInfo: orderInfo,
         orderFeePanel: orderFeePanel, orderCostPanel: orderCostPanel, orderPlanPanel: orderPlanPanel,
         orderWorkPanel: orderWorkPanel, orderDocPanel: orderDocPanel, orderTaskList: orderTaskList,
-        orderColumns: orderColumns, orderFields: orderFields, orderFilter: orderFilter,
+        orderColumns: orderColumns, orderFields: orderFields, orderFilter: orderFilter, orderScopeCell: orderScopeCell, regionCell: regionCell,
         addressDrawer: addressDrawer,
         /* 电子围栏共用视图与建档（运营端 / 网点端） */
         fenceRefName: fenceRefName, fenceRefOptions: fenceRefOptions, fenceGeomCell: fenceGeomCell,

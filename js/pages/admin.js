@@ -1719,6 +1719,7 @@
                         { label: '客户', key: 'customer' }, { label: '等级', key: 'customerLevel' },
                         { label: '状态', value: function (r) { return cfg.orderLabels[r.status]; } },
                         { label: '始发', key: 'origin' }, { label: '目的', key: 'destination' },
+                        { label: '范围分级', value: function (r) { var sc = TMS.network.scopeOfOrder(r); return sc.name + (sc.sub ? '（' + sc.sub + '）' : ''); } },
                         { label: '服务', key: 'service' }, { label: '件数', key: 'pieces' },
                         { label: '实重', key: 'weight' }, { label: '计费重', key: 'chargeableWeight' },
                         { label: '运费', key: 'freight' }, { label: '成本', value: function (r) { return TMS.pricing.costTotalOf(r); } },
@@ -1735,6 +1736,18 @@
 
     /* ---------- 六、路由管理 ---------- */
 
+    /* 路由的三级归属只问城市：routes 行没有地址文本，区级留给单票
+       （按 route 行判「区内直送」是假命题——同城路由根本不进路由表） */
+    function routeScope(r) {
+        return TMS.network.scopeOf(TMS.network.endLevels(r.origin, ''), TMS.network.endLevels(r.destination, ''));
+    }
+
+    function routeChain(r) {
+        var a = TMS.network.endLevels(r.origin, ''), b = TMS.network.endLevels(r.destination, '');
+        var pr = a.province === b.province ? a.province : a.province + ' → ' + b.province;
+        return '<div>' + esc(pr) + '</div><div class="tms-dim tms-mono">' + esc(r.origin) + ' → ' + esc(r.destination) + '</div>';
+    }
+
     /* 段次表：routes.segments 与订单路由计划面板同构，列定义只写一次 */
     function segmentTable(segs) {
         return ui.table({
@@ -1742,6 +1755,7 @@
             columns: [
                 { key: 'seq', label: '段次', width: '58px', sortable: false, render: function (s) { return ui.rank(s.seq); } },
                 { key: 'legType', label: '环节', width: '92px', render: function (s) { return ui.badge(pg.LEG_TYPE[s.legType] || s.legType, s.legType === 'trunk' ? 'brand' : 'muted'); } },
+                { key: 'scopeName', label: '跨度', width: '86px', sortable: false, render: function (s) { var sc = TMS.network.segmentScope(s); return ui.badge(sc.name, sc.tone); } },
                 { key: 'from', label: '起点' },
                 { key: 'to', label: '终点' },
                 { key: 'mode', label: '方式', width: '70px' },
@@ -1767,6 +1781,7 @@
         var trips = tripsOfRoute(r);
         var trunk = segs.filter(function (s) { return s.legType === 'trunk'; });
         var byHub = util.round(util.sum(trunk, 'stdHours'), 1);
+        var sc = routeScope(r);
         ui.modal({
             title: esc(r.origin) + ' → ' + esc(r.destination),
             size: 'wide',
@@ -1774,6 +1789,8 @@
                 esc(r.mode) + ' · ' + (r.isFallback ? '全国兜底路由' : '由班次表推导'),
             body: ui.stack([
                 ui.desc([
+                    { label: '范围分级', value: ui.badge(esc(sc.name), sc.tone, { dot: true }) + (sc.sub ? ' <span class="tms-dim">' + esc(sc.sub) + '</span>' : '') + '<div class="tms-dim">' + esc(sc.hint) + '</div>' },
+                    { label: '三级链路', value: routeChain(r) },
                     { label: '标准时长', value: fmt.duration(r.totalStdHours) },
                     { label: '总里程', value: fmt.km(r.distanceKm) },
                     { label: '段数', value: segs.length + ' 段（干线 ' + trunk.length + ' 段）' },
@@ -1845,7 +1862,18 @@
             var rs = TMS.stats.routeStats();
             var rows = db.col('routes');
             return {
-                rs: rs, rows: rows,
+                rs: rs, rows: rows, scopes: TMS.network.scopeStats(rows),
+                provs: (function () {
+                    var m = {};
+                    rows.forEach(function (r) {
+                        var p = TMS.network.endLevels(r.origin, '').province || '未知';
+                        var sc = routeScope(r);
+                        var cell = m[p] || (m[p] = { label: p, value: 0, cross: 0 });
+                        cell.value++;
+                        if (sc.code === 'cross') cell.cross++;
+                    });
+                    return util.sortBy(Object.keys(m).map(function (k) { return m[k]; }), 'value', 'desc');
+                })(),
                 dist: (function () {
                     var buckets = [{ label: '≤24h', value: 0 }, { label: '24-48h', value: 0 }, { label: '48-72h', value: 0 }, { label: '>72h', value: 0 }];
                     rows.forEach(function (r) {
@@ -1860,6 +1888,7 @@
         render: function (ctx, d) {
             var kpi = ui.kpis([
                 { label: '路由总数', value: d.rs.total, unit: '条', tone: 'brand', icon: '⇄', sub: '生效 ' + d.rs.active + ' 条' },
+                { label: '跨省路由', value: d.scopes.by.cross, unit: '条', tone: 'danger', icon: '⤨', sub: '占 ' + fmt.percent(d.scopes.total ? util.round(d.scopes.by.cross / d.scopes.total * 100, 1) : 0) + ' · 内含跨大区' },
                 { label: '平均标准时长', value: util.round(d.rs.avgStdHours, 1), unit: '小时', icon: '◷', sub: '含揽收与派送支线' },
                 { label: '平均里程', value: fmt.number(d.rs.avgDistance), unit: 'km', icon: '⤳', sub: '全网路由均值' },
                 { label: '偏离轨迹', value: d.rs.deviationTraces, unit: '条', tone: d.rs.deviationTraces ? 'warn' : 'muted', icon: '⚠', sub: '涉及 ' + d.rs.deviationOrders + ' 单' }
@@ -1872,6 +1901,32 @@
                 title: '标准时长分布', sub: '时长桶反映网络覆盖度，>72h 多为西部/东北长线', flat: true,
                 body: ch.bars({ data: d.dist, height: 230, fmt: function (v) { return v + ' 条'; } })
             });
+            /* 分级结构按「跨到哪一层」看，不是按距离看：
+               同为 800km，同省跨市走省域支线、跨省要占干线班次舱位，成本与舱位压力不是一回事 */
+            var scopeCard = ui.card({
+                title: '路由范围分级', sub: '省内跨市与跨省（含同大区/跨大区）分别看', flat: true,
+                body: ui.stack([
+                    ch.hbars({
+                        data: d.scopes.items.filter(function (x) { return x.count; }).map(function (x) {
+                            return { label: x.name, value: x.count };
+                        }),
+                        rowH: 30, labelWidth: 110, valueWidth: 128,
+                        fmt: function (v) { return v + ' 条 · ' + fmt.percent(util.round(v / (d.scopes.total || 1) * 100, 1)); }
+                    }),
+                    ui.notice(d.scopes.total
+                        ? '跨省 ' + d.scopes.by.cross + ' 条 / 同省跨市 ' + d.scopes.by.prov + ' 条：跨省的件才进干线舱位台账，同省的多由省域支线消化'
+                        : '路由表为空', 'info')
+                ])
+            });
+            var provCard = ui.card({
+                title: '始发省份路由量', sub: d.provs.length + ' 个省级单元在册', flat: true,
+                body: ch.hbars({
+                    data: d.provs.slice(0, 10).map(function (p) {
+                        return { label: p.label, value: p.value, sub: p.cross ? '跨省 ' + p.cross : '' };
+                    }),
+                    rowH: 24, labelWidth: 96, valueWidth: 130, fmt: function (v) { return v + ' 条'; }
+                })
+            });
             var devCard = ui.card({
                 title: '偏离最多的路由', sub: '偏离 = 扫描到的实际分拨与计划不符，通常是班次变更未重算', flat: true,
                 body: ch.hbars({
@@ -1881,16 +1936,27 @@
             });
             return wrap(ctx, {
                 actions: ui.btn('导出路由', { size: 'sm', act: 'rt:export', icon: '⤓' }),
-                body: [kpi, ui.split('2', [modeCard, distCard]), devCard, grid(ctx, {
+                body: [kpi, ui.split('2', [modeCard, distCard]), ui.split('2', [scopeCard, provCard]), devCard, grid(ctx, {
                     rows: d.rows, keyName: 'id', onRow: 'rt:open', searchKey: 'q',
-                    search: function (r) { return [r.id, r.origin, r.destination, r.originZone, r.destinationZone, r.mode].join(' '); },
+                    search: function (r) {
+                        /* 省份也进搜索串：按「浙江省」筛路由是规划时的第一反应，
+                           只搜城市名就得先背下省里有哪些城 */
+                        var a = TMS.network.endLevels(r.origin, ''), b = TMS.network.endLevels(r.destination, '');
+                        return [r.id, r.origin, r.destination, r.originZone, r.destinationZone, r.mode,
+                            a.province, b.province, routeScope(r).name].join(' ');
+                    },
                     fields: [
-                        { key: 'q', type: 'search', label: '城市 / 路由号', placeholder: '上海 / RT0001' },
+                        { key: 'q', type: 'search', label: '城市 / 省份 / 路由号', placeholder: '上海 / 浙江省 / RT0001' },
+                        { key: 'scope', label: '范围分级', options: [{ value: '', label: '全部分级' }].concat(ui.optionsOf(TMS.network.SCOPE_ORDER.map(function (k) { return TMS.network.SCOPE[k].name; }))) },
+                        { key: 'prov', label: '始发省份', options: [{ value: '', label: '全部省份' }].concat(ui.optionsOf(TMS.master.PROVINCES.map(function (p) { return p.name; }))) },
                         { key: 'zone', label: '始发大区', options: [{ value: '', label: '全部大区' }].concat(ui.optionsOf(TMS.master.ZONES)) },
                         { key: 'mode', label: '方式', options: [{ value: '', label: '全部方式' }].concat(ui.optionsOf(colUnique('routes', 'mode'))) },
                         { key: 'dev', label: '偏离', options: [{ value: '', label: '全部' }, { value: '1', label: '有偏离' }] }
                     ],
                     filter: function (r, fs) {
+                        var sc = routeScope(r);
+                        if (fs.scope && sc.name !== fs.scope) return false;
+                        if (fs.prov && TMS.network.endLevels(r.origin, '').province !== fs.prov) return false;
                         if (fs.zone && r.originZone !== fs.zone) return false;
                         if (fs.mode && r.mode !== fs.mode) return false;
                         if (fs.dev === '1' && !(r.deviationCount || 0)) return false;
@@ -1899,6 +1965,8 @@
                     columns: [
                         { key: 'id', label: '路由号', width: '92px', render: function (r) { return idLink(r.id, 'rt:open'); } },
                         { key: 'origin', label: '起讫', render: function (r) { return esc(r.origin) + ' → ' + esc(r.destination); } },
+                        { key: 'prov', label: '省级链路', width: '150px', sortable: false, render: routeChain },
+                        { key: 'scope', label: '分级', width: '104px', sortable: false, render: function (r) { var sc = routeScope(r); return ui.badge(esc(sc.name), sc.tone) + (sc.sub ? ' <span class="tms-dim">' + esc(sc.sub) + '</span>' : ''); } },
                         { key: 'originZone', label: '大区', width: '110px', render: function (r) { return esc(r.originZone) + ' → ' + esc(r.destinationZone); } },
                         { key: 'mode', label: '方式', width: '70px', render: function (r) { return ui.badge(esc(r.mode), r.mode === '空运' ? 'brand' : 'muted'); } },
                         { key: 'segments', label: '段数', align: 'right', width: '68px', render: function (r) { return (r.segments || []).length; } },
@@ -1920,6 +1988,9 @@
                     search: function (r) { return [r.id, r.origin, r.destination, r.originZone, r.mode].join(' '); },
                     cols: [
                         { label: '路由号', key: 'id' }, { label: '始发', key: 'origin' }, { label: '目的', key: 'destination' },
+                        { label: '始发省', value: function (r) { return TMS.network.endLevels(r.origin, '').province; } },
+                        { label: '目的省', value: function (r) { return TMS.network.endLevels(r.destination, '').province; } },
+                        { label: '范围分级', value: function (r) { var sc = routeScope(r); return sc.name + (sc.sub ? '（' + sc.sub + '）' : ''); } },
                         { label: '始发大区', key: 'originZone' }, { label: '目的大区', key: 'destinationZone' },
                         { label: '方式', key: 'mode' }, { label: '优先级', key: 'priority' },
                         { label: '段数', value: function (r) { return (r.segments || []).length; } },
