@@ -22,12 +22,14 @@
         'js/domain/operation.js',
         'js/domain/finance.js',
         'js/domain/service.js',
+        'js/domain/address.js',
         'js/domain/people.js',
         'js/domain/stats.js',
         'js/domain/audit.js',
         'js/domain/jobs.js',
         'js/ui/kit.js',
         'js/ui/charts.js',
+        'js/ui/map.js',
         'js/ui/shell.js',
         'js/pages/registry.js',
         'js/pages/portal.js',
@@ -79,7 +81,36 @@
         }
         TMS.db.load();
         if (!TMS.db.isSeeded()) TMS.db.reseed();
+        else { backfillAddresses(); backfillFences(); }
         return true;
+    }
+
+    /* v11 之前的库没有派送员编号围栏：图1 右支缺中间那一格，派单永远停在「需人工指定」。
+       补建档要读员工档案、走 saveFence 的校验与审计，只能在库就绪后做，标记用完即清 */
+    function backfillFences() {
+        var raw = TMS.db.load();
+        if (!raw.pendingCourierFence) return;
+        raw.pendingCourierFence = 0;
+        try {
+            TMS.network.backfillCourierFences();
+            TMS.db.persist('geofence:migrate');
+        } catch (err) {
+            if (global.console) console.warn('[TMS] 编号围栏补建档失败', err);
+        }
+    }
+
+    /* 迁移过来的老库地址档案是空的，但建档要读订单、写审核记录，只能在库就绪后补。
+       标记由 v10 迁移打上、这里用完即清——不清的话用户主动删空的地址簿会在下次进页面凭空复活 */
+    function backfillAddresses() {
+        var raw = TMS.db.load();
+        if (!raw.pendingAddressBackfill) return;
+        raw.pendingAddressBackfill = 0;
+        try {
+            TMS.address.backfill({ limit: 74, days: 26 });
+            TMS.db.persist('address:migrate');
+        } catch (err) {
+            if (global.console) console.warn('[TMS] 派送地址建档失败', err);
+        }
     }
 
     function start(portal, pageId, rootSelector) {

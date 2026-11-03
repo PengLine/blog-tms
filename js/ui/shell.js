@@ -321,6 +321,12 @@
             a.classList.toggle('active', on);
             if (a.classList.contains('tms-chip')) a.classList.toggle('on', on);
         });
+        /* 只在当前节点变了的时候滚动：同页动作重渲染时若每次都居中，
+           使用者刚手动翻开的侧栏会被拽回去 */
+        if (s.revealedFor !== activeId) {
+            s.revealedFor = activeId;
+            revealActive(chrome);
+        }
         var foot = chrome.querySelector('#tms-side-foot');
         if (foot) {
             var info = db.info();
@@ -333,6 +339,22 @@
     }
 
     function qsa(root, sel) { return Array.prototype.slice.call(root.querySelectorAll(sel)); }
+
+    /* 把当前节点滚到可视区中间：侧栏和中部页签都是自己的滚动容器，
+       用 scrollIntoView 会连文档一起滚，正好顶掉 render 里「切页回顶部」的位置 */
+    function revealActive(chrome) {
+        scrollToActive(chrome.querySelector('.tms-side-nav'), '.tms-nav-item.active', 'y');
+        scrollToActive(chrome.querySelector('.tms-tabs-mid'), '.tms-chip.on', 'x');
+    }
+
+    function scrollToActive(box, childSel, axis) {
+        if (!box) return;
+        var item = box.querySelector(childSel);
+        if (!item) return;
+        var b = box.getBoundingClientRect(), r = item.getBoundingClientRect();
+        if (axis === 'x') box.scrollLeft += (r.left - b.left) - (box.clientWidth - r.width) / 2;
+        else box.scrollTop += (r.top - b.top) - (box.clientHeight - r.height) / 2;
+    }
 
     function defaultPage(session) {
         var conf = cfg.roles[session.role];
@@ -387,10 +409,8 @@
                 /* 直达也要讲口径：网点输入别人网点的一票，不该把它拉到详情抽屉里 */
                 var session = shell.state.session;
                 var inScope = db.col('orders').filter(TMS.pages.orderScope(session));
-                var order = inScope.filter(function (o) {
-                    return o.id === q || o.waybillNo === q || (o.receiverPhone && String(o.receiverPhone).slice(-4) === q);
-                })[0];
-                if (!order) { ui.toast('你的数据范围内没有单号 ' + q, 'warn'); return; }
+                var order = TMS.order.byCode(q, inScope);
+                if (!order) { ui.toast('单号「' + q + '」在你的数据范围内没有唯一匹配，支持订单号 / 运单号 / 收件人手机后四位', 'warn'); return; }
                 go(TMS.pages.orderPageFor(session.role), { orderId: order.id });
             });
         }

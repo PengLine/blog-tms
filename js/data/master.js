@@ -67,7 +67,139 @@
         { id: 'HB0007', name: '沈阳分拨中心', city: '沈阳', zone: '东北', role: '区域枢纽', area: 20000, capacity: 70000 }
     ];
 
-    var DISTRICTS = ['浦东新区', '闵行区', '徐泾镇', '开发区', '高新片区', '城西片区', '临港片区', '空港片区', '保税区', '老城片区'];
+    /* ---------- 行政区划三级：省 → 市 → 区 ----------
+       区名必须是这座城市真的有的，不能是「高新片区」这种放到哪座城都成立的通用词：
+       路由要按「区内直送 / 市内跨区 / 省内跨市 / 跨省」分级，靠的就是区名对得上。
+       名字一虚构或跨城重复，同城两单就会被判进同一个区，分级表上那一格永远是空的。
+
+       区级坐标是按固定黄金角从城市中心派生偏移出来的（半径约 6~33 公里，同名恒得同坐标），
+       只用于标位置与算市内相对远近；电子围栏与地址可派送判定都不读它，那两层认的是勾画边界和文字地址。 */
+    var CITY_DISTRICTS = {
+        '上海': ['浦东新区', '闵行区', '嘉定区', '松江区', '宝山区', '青浦区', '杨浦区'],
+        '杭州': ['西湖区', '拱墅区', '滨江区', '萧山区', '余杭区', '临平区', '钱塘区'],
+        '宁波': ['海曙区', '江北区', '鄞州区', '镇海区', '北仑区', '奉化区', '余姚市'],
+        '南京': ['玄武区', '秦淮区', '建邺区', '鼓楼区', '栖霞区', '江宁区', '浦口区'],
+        '苏州': ['姑苏区', '吴中区', '相城区', '昆山市', '太仓市', '吴江区', '工业园区'],
+        '无锡': ['梁溪区', '滨湖区', '新吴区', '锡山区', '惠山区', '江阴市', '宜兴市'],
+        '合肥': ['蜀山区', '庐阳区', '包河区', '瑶海区', '肥西县', '长丰县', '巢湖市'],
+        '青岛': ['市南区', '市北区', '崂山区', '黄岛区', '城阳区', '李沧区', '即墨区'],
+        '济南': ['历下区', '市中区', '槐荫区', '天桥区', '历城区', '章丘区', '高新区'],
+        '福州': ['鼓楼区', '台江区', '仓山区', '晋安区', '马尾区', '闽侯县', '长乐区'],
+        '厦门': ['思明区', '湖里区', '集美区', '海沧区', '同安区', '翔安区'],
+        '广州': ['天河区', '越秀区', '白云区', '番禺区', '黄埔区', '花都区', '增城区'],
+        '深圳': ['南山区', '福田区', '罗湖区', '宝安区', '龙岗区', '龙华区', '坪山区'],
+        /* 东莞、中山这类「直筒子市」下面不设区，只管镇和街道——
+           写成区反而露怯，派送分片按镇走才是珠三角的真实做法 */
+        '东莞': ['南城街道', '东城街道', '长安镇', '虎门镇', '塘厦镇', '凤岗镇', '万江街道'],
+        '佛山': ['禅城区', '南海区', '顺德区', '三水区', '高明区'],
+        '南宁': ['青秀区', '西乡塘区', '兴宁区', '江南区', '邕宁区', '良庆区'],
+        '海口': ['秀英区', '龙华区', '琼山区', '美兰区'],
+        '北京': ['朝阳区', '海淀区', '丰台区', '通州区', '大兴区', '昌平区', '顺义区'],
+        '天津': ['和平区', '南开区', '河西区', '滨海新区', '河东区', '西青区', '北辰区'],
+        '石家庄': ['长安区', '桥西区', '裕华区', '新华区', '藁城区', '鹿泉区'],
+        '太原': ['小店区', '迎泽区', '杏花岭区', '尖草坪区', '万柏林区', '晋源区'],
+        '呼和浩特': ['新城区', '回民区', '玉泉区', '赛罕区', '土默特左旗'],
+        '武汉': ['武昌区', '洪山区', '江汉区', '汉阳区', '江岸区', '硚口区', '东湖高新区'],
+        '郑州': ['金水区', '二七区', '中原区', '管城区', '惠济区', '郑东新区', '高新区'],
+        '长沙': ['岳麓区', '芙蓉区', '天心区', '开福区', '雨花区', '望城区'],
+        '南昌': ['东湖区', '西湖区', '青山湖区', '红谷滩区', '青云谱区', '新建区'],
+        '成都': ['锦江区', '青羊区', '武侯区', '高新区', '金牛区', '成华区', '双流区'],
+        '重庆': ['渝中区', '江北区', '南岸区', '渝北区', '沙坪坝区', '九龙坡区', '巴南区'],
+        '昆明': ['五华区', '盘龙区', '官渡区', '西山区', '呈贡区', '晋宁区'],
+        '贵阳': ['南明区', '云岩区', '观山湖区', '花溪区', '乌当区', '白云区'],
+        '西安': ['雁塔区', '碑林区', '莲湖区', '未央区', '高新区', '灞桥区', '长安区'],
+        '兰州': ['城关区', '七里河区', '安宁区', '西固区', '红古区'],
+        '乌鲁木齐': ['天山区', '沙依巴克区', '新市区', '水磨沟区', '米东区'],
+        '沈阳': ['和平区', '沈河区', '铁西区', '皇姑区', '浑南区', '大东区', '于洪区'],
+        '大连': ['中山区', '西岗区', '沙河口区', '甘井子区', '高新区', '金州区'],
+        '长春': ['朝阳区', '南关区', '宽城区', '二道区', '绿园区', '高新区'],
+        '哈尔滨': ['南岗区', '道里区', '香坊区', '道外区', '松北区', '平房区']
+    };
+
+    /* 上一版凭空造的片区名。老库里的网点名与收件地址还带着它们，
+       认区的那条线要能继续认出来，否则升级一次浏览器，历史地址全部判成「缺区级」 */
+    var LEGACY_DISTRICTS = ['徐泾镇', '开发区', '高新片区', '城西片区', '临港片区', '空港片区', '保税区', '老城片区'];
+
+    var DISTRICTS = (function () {
+        var out = LEGACY_DISTRICTS.slice();
+        Object.keys(CITY_DISTRICTS).forEach(function (c) {
+            CITY_DISTRICTS[c].forEach(function (n) { if (out.indexOf(n) < 0) out.push(n); });
+        });
+        return out;
+    })();
+
+    var DISTRICT_CACHE = {};
+
+    function districtsOf(city) {
+        var c = cityByName(city);
+        if (!c) return [];
+        if (!DISTRICT_CACHE[c.name]) {
+            var names = CITY_DISTRICTS[c.name] || [];
+            /* 黄金角 137.5° 铺开、半径按序号递增：同一个区每次重建拿到同一个坐标，
+               不会出现「浦东新区」今天在城市东边、明天跑到西边 */
+            DISTRICT_CACHE[c.name] = names.map(function (n, i) {
+                var ang = i * 2.3999632;
+                var rad = 0.05 + 0.22 * (names.length > 1 ? i / (names.length - 1) : 0.5);
+                return {
+                    name: n, city: c.name, province: c.prov, code: c.code, zone: c.zone, tier: c.tier,
+                    lat: Math.round((c.lat + rad * Math.sin(ang)) * 10000) / 10000,
+                    lng: Math.round((c.lng + rad * Math.cos(ang) / Math.cos(c.lat * Math.PI / 180)) * 10000) / 10000
+                };
+            });
+        }
+        return DISTRICT_CACHE[c.name];
+    }
+
+    /* 给一段文字找它所在的区：先在已认出的城市里找，避免「西湖区」在杭州与南昌之间摇摆；
+       这座城没有真区名时返回 null，交给调用方决定（老地址的通用片区名由 parse 的兜底循环认领） */
+    function matchDistrict(city, text) {
+        if (!city) return null;
+        var raw = String(text || '').replace(/\s+/g, '');
+        if (!raw) return null;
+        var hit = null;
+        districtsOf(city).forEach(function (d) {
+            if (!hit && raw.indexOf(d.name) > -1) hit = d;
+        });
+        return hit;
+    }
+
+    function districtName(city, rand) {
+        var list = districtsOf(city);
+        return list.length ? util.pick(list, rand).name : util.pick(LEGACY_DISTRICTS, rand);
+    }
+
+    function districtPoint(city, name) {
+        var hit = null;
+        districtsOf(city).forEach(function (d) { if (!hit && d.name === name) hit = d; });
+        return hit;
+    }
+
+    /* 省表由市表反推，不另写一份：多写一份就会出现「上海市列表里有、省表里没有」这种对不上的角落 */
+    var PROVINCES = (function () {
+        var byName = {};
+        CITIES.forEach(function (c) {
+            var p = byName[c.prov] || (byName[c.prov] = { name: c.prov, code: c.code, zones: {}, cities: [] });
+            p.cities.push(c.name);
+            p.zones[c.zone] = (p.zones[c.zone] || 0) + 1;
+        });
+        return Object.keys(byName).map(function (k) {
+            var p = byName[k];
+            p.zone = Object.keys(p.zones).sort(function (a, b) { return p.zones[b] - p.zones[a]; })[0];
+            p.zones = undefined;
+            /* 一省一城（四个直辖市 + 海南 + 内蒙古）：省内没有「跨市」这一档，
+               分级时要直接落到跨省，否则会出现一条永远没有件的「省内跨市」路由 */
+            p.singleCity = p.cities.length === 1;
+            return p;
+        }).sort(function (a, b) { return a.name.localeCompare(b.name, 'zh-CN'); });
+    })();
+
+    function provinceOf(city) {
+        var c = cityByName(city);
+        if (!c) return null;
+        var hit = null;
+        PROVINCES.forEach(function (p) { if (!hit && p.name === c.prov) hit = p; });
+        return hit;
+    }
 
     var GOODS = [
         { name: '电子产品', density: 220, fragility: 0.18, value: 1800 },
@@ -192,12 +324,12 @@
                 var hub = hubOfCity(c);
                 out.push({
                     id: 'BR' + util.pad(seq, 4),
-                    name: c.name + util.pick(DISTRICTS, rand) + '营业部',
+                    name: c.name + districtName(c.name, rand) + '营业部',
                     city: c.name, province: c.prov, zone: c.zone, code: c.code,
                     lat: c.lat, lng: c.lng, hubId: hub.id, hubName: hub.name,
                     type: i === 0 ? '直营枢纽网点' : '直营网点',
                     manager: personName(rand, used), phone: phone(rand),
-                    address: c.name + '市' + util.pick(DISTRICTS, rand) + util.pick(['物流大道', '货运路', '振兴街', '环城快速'], rand) + util.randomDigits(3) + '号',
+                    address: c.name + '市' + districtName(c.name, rand) + util.pick(['物流大道', '货运路', '振兴街', '环城快速'], rand) + util.randomDigits(3) + '号',
                     area: util.round(200 + rand() * 800, 0),
                     staffCount: 3 + Math.floor(rand() * 12),
                     status: rand() > 0.06 ? 'active' : 'inactive',
@@ -233,7 +365,7 @@
                 contractTo: util.dateKey(util.addDays(util.now(), 30 + Math.floor(rand() * 400))),
                 status: rand() > 0.08 ? 'active' : 'suspended',
                 registerAt: util.dateKey(util.addDays(util.now(), -Math.floor(200 + rand() * 1200))),
-                senderAddress: city.name + '市' + util.pick(DISTRICTS, rand) + '工业园' + util.randomDigits(2) + '号',
+                senderAddress: city.name + '市' + districtName(city.name, rand) + '工业园' + util.randomDigits(2) + '号',
                 balance: 0
             });
         }
@@ -531,60 +663,103 @@
         };
     }
 
-    function buildGeofences() {
+    /* 围栏是「勾」出来的边界，不是「圆心 + 半径」，环的画法统一收在 util.blobRing */
+    function fenceRing(rand, anchor, radiusM) {
+        return util.blobRing(anchor, radiusM, rand);
+    }
+
+    /* center/areaKm2 一律反算自顶点环，不另写一份：
+       圆心与形状各写一套数，就会出现「地图上看它在圈内、判定说它在圈外」 */
+    function makeFence(rand, seq, base, radiusM) {
+        var ring = fenceRing(rand, base.center, radiusM);
+        return {
+            id: 'GF' + util.pad(seq, 4),
+            name: base.name, type: base.type, refId: base.refId, refName: base.refName, city: base.city,
+            shape: 'polygon', polygon: ring, center: util.ringCentroid(ring), areaKm2: util.ringAreaKm2(ring),
+            radiusM: radiusM, status: 'active', alertCount: Math.floor(rand() * base.alertMax),
+            updatedAt: util.iso(util.addDays(util.now(), -Math.floor(rand() * base.backdateDays)))
+        };
+    }
+
+    function buildGeofences(employees) {
         var out = [];
         var r = randFactory(777);
-        HUB_SEEDS.forEach(function (h, i) {
-            var c = cityByName(h.city);
-            out.push({
-                id: 'GF' + util.pad(i + 1, 4),
-                name: h.name + '电子围栏',
-                type: 'hub', refId: h.id, city: h.city,
-                center: { lat: c.lat, lng: c.lng },
-                radiusM: 1200 + Math.floor(r() * 1500),
-                polygon: [
-                    { lat: c.lat + 0.012, lng: c.lng - 0.015 }, { lat: c.lat + 0.012, lng: c.lng + 0.015 },
-                    { lat: c.lat - 0.012, lng: c.lng + 0.015 }, { lat: c.lat - 0.012, lng: c.lng - 0.015 }
-                ],
-                status: 'active', alertCount: Math.floor(r() * 26), updatedAt: util.iso(util.addDays(util.now(), -Math.floor(r() * 40)))
-            });
+        HUB_SEEDS.forEach(function (h) {
+            out.push(makeFence(r, out.length + 1, {
+                name: h.name + '电子围栏', type: 'hub', refId: h.id, refName: h.name, city: h.city,
+                center: cityByName(h.city), alertMax: 26, backdateDays: 40
+            }, 1200 + Math.floor(r() * 1500)));
         });
-        /* 枢纽围栏只罩得住枢纽自己那座城市：网点所在城市没有围栏时，
+        /* 到货围栏只罩得住枢纽自己那片场地：网点所在城市没有派送围栏时，
            客户端「电子围栏覆盖」和网点设置页永远显示暂无，巡检也会把每个作业城市都报成越界。
-           揽收范围按围栏几何判定，那就让每个开点的城市都有一座自己的围栏 */
+           揽收/派送范围按围栏几何判定，那就让每个开点的城市都勾一座自己的派送围栏——
+           枢纽城市也要：图1 左支问的是「送不送」，分拨所在城市当然送，只是它另一件事（到没到）由到货围栏回答 */
         var hubCity = {};
         HUB_SEEDS.forEach(function (h) { hubCity[h.city] = 1; });
         var done = {};
-        var gapIdx = -1, gapBranches = -1;
+        var cityBranchCount = {};
+        BRANCH_CACHE.forEach(function (x) { if (x.city) cityBranchCount[x.city] = (cityBranchCount[x.city] || 0) + 1; });
         BRANCH_CACHE.forEach(function (b) {
-            if (!b.city || hubCity[b.city] || done[b.city]) return;
+            if (!b.city || done[b.city]) return;
             done[b.city] = 1;
-            var c = cityByName(b.city);
-            if (!c) return;
-            var idx = out.length;
-            var cnt = 0;
-            BRANCH_CACHE.forEach(function (x) { if (x.city === b.city) cnt++; });
-            if (cnt > gapBranches) { gapBranches = cnt; gapIdx = idx; }
-            out.push({
-                id: 'GF' + util.pad(idx + 1, 4),
-                name: b.city + '作业围栏',
-                type: 'branch', refId: b.id, city: b.city,
-                center: { lat: c.lat, lng: c.lng },
-                radiusM: 3000 + Math.floor(r() * 4000),
-                polygon: [
-                    { lat: c.lat + 0.02, lng: c.lng - 0.026 }, { lat: c.lat + 0.02, lng: c.lng + 0.026 },
-                    { lat: c.lat - 0.02, lng: c.lng + 0.026 }, { lat: c.lat - 0.02, lng: c.lng - 0.026 }
-                ],
-                status: 'active', alertCount: Math.floor(r() * 9), updatedAt: util.iso(util.addDays(util.now(), -Math.floor(r() * 30)))
-            });
+            out.push(makeFence(r, out.length + 1, {
+                name: b.city + '派送围栏', type: 'branch', refId: b.id, refName: b.city + '网点群', city: b.city,
+                center: cityByName(b.city), alertMax: 9, backdateDays: 30
+            }, hubCity[b.city] ? 6000 + Math.floor(r() * 3000) : 3000 + Math.floor(r() * 4000)));
         });
         /* 全站都覆盖 = 这页两张卡常年空着，看不出围栏在防什么。
-           留一座「半径争议、停用待复核」的城市当缺口样本：选网点最多的那座，
-           它的显式地点扫描最多，越界明细与覆盖缺口告警才都有真数据可指 */
+           留一座「停用待复核」的作业城市当缺口样本：候选按网点数从多到少试，
+           要挑停用之后本市确实再没有任何在用围栏罩住的那一座——
+           相邻城市的围栏边缘伸过来时，随便停用一座并不会产生越界流水 */
+        function coveredByOther(city, exceptIdx) {
+            var c = cityByName(city);
+            if (!c) return false;
+            for (var i = 0; i < out.length; i++) {
+                if (i === exceptIdx || out[i].status !== 'active') continue;
+                if (util.pointInRing(c, out[i].polygon)) return true;
+            }
+            return false;
+        }
+        var gapIdx = -1, gapBranches = -1;
+        out.forEach(function (g, gi) {
+            if (g.type !== 'branch') return;
+            var cnt = cityBranchCount[g.city] || 0;
+            if (cnt > gapBranches && !coveredByOther(g.city, gi)) { gapBranches = cnt; gapIdx = gi; }
+        });
         if (gapIdx > -1) {
-            out[gapIdx].status = 'inactive';
+            out[gapIdx].status = 'disabled';
+            out[gapIdx].note = '边界争议，停用待复核';
             out[gapIdx].updatedAt = util.iso(util.addDays(util.now(), -3));
         }
+
+        /* 第三类：给派送员勾的编号围栏（图1 右支）。
+           一名派送员一格、落在所在城市派送围栏内部偏出去的位置，
+           这样收件点落进谁的格子就自动绑谁，落不进才需要人工指定。
+           每 5 座城故意留空、缺口城市也不给——全绑上就看不出「需手动指定派送编号」那条支线了 */
+        var fencedCity = {};
+        out.forEach(function (g) { if (g.status === 'active' && g.type !== 'courier') fencedCity[g.city] = g; });
+        var couriers = {};
+        (employees || []).forEach(function (e) {
+            if (e.role !== 'deliveryman' || e.status !== 'active' || !fencedCity[e.city]) return;
+            (couriers[e.city] || (couriers[e.city] = [])).push(e);
+        });
+        Object.keys(couriers).sort().forEach(function (city, ci) {
+            if (ci % 5 === 4) return;
+            var host = fencedCity[city];
+            var picked = couriers[city].slice(0, hubCity[city] ? 2 : 1);
+            picked.forEach(function (e, ei) {
+                var shift = host.radiusM * 0.55;
+                var ang = (Math.PI * 2 / picked.length) * ei + r() * 0.6;
+                out.push(makeFence(r, out.length + 1, {
+                    name: e.name + '（' + e.badge + '）责任片区', type: 'courier', refId: e.id, refName: e.name, city: city,
+                    alertMax: 5, backdateDays: 21,
+                    center: {
+                        lat: host.center.lat + shift * Math.sin(ang) / 111320,
+                        lng: host.center.lng + shift * Math.cos(ang) / (111320 * Math.cos(host.center.lat * Math.PI / 180))
+                    }
+                }, 700 + Math.floor(r() * 900)));
+            });
+        });
         return out;
     }
 
@@ -650,7 +825,7 @@
             var c = cityByName(h.city);
             return {
                 id: h.id, name: h.name, city: h.city, zone: h.zone, role: h.role,
-                address: h.city + '市' + util.pick(DISTRICTS, rand) + '物流大道 1 号',
+                address: h.city + '市' + districtName(h.city, rand) + '物流大道 1 号',
                 lat: c.lat, lng: c.lng, areaM2: h.area, capacityPieces: h.capacity,
                 usedPieces: Math.floor(h.capacity * (0.28 + rand() * 0.5)),
                 manager: h.name.replace('分拨中心', '') + '主管', phone: phone(rand),
@@ -695,7 +870,7 @@
         });
         db.data.materials = materials;
         db.data.devices = buildDevices(rand);
-        db.data.geofences = buildGeofences();
+        db.data.geofences = buildGeofences(db.data.employees);
         db.data.departments = DEPARTMENTS.map(function (d) { return util.clone(d); });
         db.data.roles = Object.keys(TMS.cfg.roles).map(function (k) {
             return {
@@ -919,6 +1094,10 @@
         CITIES: CITIES, ZONES: ZONES, REMOTE: REMOTE, HUBS: HUB_SEEDS,
         GOODS: GOODS, SERVICES: SERVICES, VEHICLE_TYPES: VEHICLE_TYPES,
         DEPARTMENTS: DEPARTMENTS, MATERIALS: MATERIALS, DISTRICTS: DISTRICTS,
+        /* 行政区划三级：省表由市表反推，区表带派生坐标（只用于展示与算市内远近） */
+        PROVINCES: PROVINCES, CITY_DISTRICTS: CITY_DISTRICTS,
+        districtsOf: districtsOf, districtName: districtName, matchDistrict: matchDistrict,
+        districtPoint: districtPoint, provinceOf: provinceOf,
         SURNAMES: SURNAMES, GIVEN: GIVEN,
         cityByName: cityByName, hubOfCity: hubOfCity, nearestHub: nearestHub,
         hubByNameOrId: hubByNameOrId, vehicleType: vehicleType,

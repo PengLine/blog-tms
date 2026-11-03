@@ -188,7 +188,7 @@
             hubFrom: ob ? ob.hubId : '', hubTo: dbb ? dbb.hubId : '',
             senderAddress: d.senderAddress || (customer ? customer.senderAddress : '') || (origin + '市工业园区 1 号'),
             receiverName: d.receiverName || d.contact || '收件人',
-            receiverAddress: d.receiverAddress || (destination + '市' + util.pick(TMS.master.DISTRICTS) + util.randomDigits(3) + '号'),
+            receiverAddress: d.receiverAddress || (destination + '市' + TMS.master.districtName(destination) + util.randomDigits(3) + '号'),
             receiverPhone: d.receiverPhone || d.phone || '',
             status: 'created',
             // 环节时间统一由扫描流水派生，订单行只留创建/更新/签收三个时间点；
@@ -517,12 +517,44 @@
         });
     }
 
+    /* 图1 的两条判定链在派单这一步收口，判定不落库而是现算：
+       地址审核状态和围栏边界都是会变的，把结论冻在订单上就等于留下一个会说谎的字段。
+       左支「送不送」：先按收件手机号取审通过的维护地址，没有再问机构派送围栏罩不罩得住收件点；
+       右支「谁去送」：单上已有编号直接结束，没有就看收件点落进哪位派送员的编号围栏。
+       收件点用目的城市质心——演示数据没有区级地理编码，判定本身仍是射线法打在勾画的边界上 */
+    function dispatchOf(order) {
+        var o = typeof order === 'string' ? db.get('orders', order) : order;
+        if (!o) return null;
+        var point = TMS.master.cityByName(o.destination);
+        var addr = TMS.address.phoneDecision(o.receiverPhone, o.receiverAddress);
+        var bound = !!o.courierId;
+        var hit = bound ? null : TMS.network.courierFenceAt(point);
+        var near = hit || bound ? null : TMS.network.nearestCourierFence(point, o.destination);
+        var nearEmp = near && near.courier ? near.courier : null;
+        return {
+            orderId: o.id, city: o.destination, point: point,
+            canDeliver: addr.canDeliver, deliverVia: addr.via, deliverNote: addr.note,
+            blocked: addr.blocked || '',
+            courierId: bound ? o.courierId : (hit ? hit.courier.id : ''),
+            courier: bound ? o.courier : (hit ? hit.courier.name : ''),
+            courierVia: bound ? '已有派送编号' : (hit ? '编号围栏自动绑定' : '需手动指定派送编号'),
+            fenceName: hit ? hit.fence.name : '',
+            /* 罩不住任何片区时给的是「离收件点最近的那片」，只预填不代填 */
+            suggestId: nearEmp ? nearEmp.id : '',
+            suggest: nearEmp ? nearEmp.name : '',
+            suggestFence: near ? near.fence.name : '', suggestKm: near ? near.km : 0
+        };
+    }
+
     function assignDelivery(orderId, data) {
         var d = data || {};
         var o = db.get('orders', orderId);
         if (!o) return { ok: false, message: '订单不存在' };
         if (statusIndex(o.status) < statusIndex('arrived')) return { ok: false, message: '订单需先到达目的网点才可派送' };
-        var courier = d.courierId ? db.get('employees', d.courierId) : findCourier(d.courier, o.destination);
+        /* 调度点了人就按点的算；没点人才让编号围栏说话（图1 右支的「在围栏内 → 绑定派送编号」）。
+           围栏里那个人必须是本城在册派送员，否则宁可回到人工指定 */
+        var auto = (!d.courierId && !d.courier) ? dispatchOf(o) : null;
+        var courier = d.courierId ? db.get('employees', d.courierId) : findCourier(d.courier || (auto && auto.courierId) || '', o.destination);
         if (courier) { o.courierId = courier.id; o.courier = courier.name; }
         if (d.deliveryEta) o.deliveryEta = d.deliveryEta;
         db.touch('orders');
@@ -534,6 +566,29 @@
         var list = db.col('employees').filter(function (e) { return e.role === 'deliveryman' && (e.name === name || e.id === name); });
         if (!list.length) list = db.col('employees').filter(function (e) { return e.role === 'deliveryman' && e.status === 'active' && (!city || e.city === city); });
         return list[0] || null;
+    }
+
+    /* 单号解析的唯一入口：输入框统一标「运单号」，但操作员手里可能是 HL 订单号、WB 运单号、
+       抄单抄错的片段，甚至只有收件人手机后四位。此前每个页面各自手抄一遍
+       `db.get(订单号) || 再 findOne(运单号)`，漏抄的那几处就把真实存在的单报成「订单不存在」。
+       只认唯一命中：片段或后四位撞出多张时返回 null，让调用方去列表里筛，不替用户猜一张。 */
+    function byCode(code, rows) {
+        var key = String(code == null ? '' : code).trim();
+        if (!key) return null;
+        var up = key.toUpperCase();
+        var list = rows || db.col('orders');
+        var hits = list.filter(function (o) {
+            return String(o.id).toUpperCase() === up || String(o.waybillNo || '').toUpperCase() === up;
+        });
+        if (hits.length === 1) return hits[0];
+        if (hits.length > 1) return hits[0];
+        /* 手机后四位要脱掉分隔符再比：档案里有「138-0000-1234」这种写法 */
+        var tail = up.replace(/\D/g, '');
+        var fuzzy = list.filter(function (o) {
+            if (tail.length === 4) return String(o.receiverPhone || '').replace(/\D/g, '').slice(-4) === tail;
+            return String(o.id).toUpperCase().indexOf(up) > -1 || String(o.waybillNo || '').toUpperCase().indexOf(up) > -1;
+        });
+        return fuzzy.length === 1 ? fuzzy[0] : null;
     }
 
     function sign(orderId, data) {
@@ -722,6 +777,7 @@
         create: create, moveTo: moveTo, advance: advance,
         collect: collect, inbound: inbound, sort: sort, depart: depart, arrive: arrive,
         assignDelivery: assignDelivery, sign: sign, markProblem: markProblem, releaseProblem: releaseProblem,
+        dispatchOf: dispatchOf,
         cancel: cancel, change: change, createReverseOrder: createReverseOrder,
         traces: traces, detail: detail, update: update, view: view,
         statusIndex: statusIndex, isTerminal: isTerminal, isLate: isLate, isSignedLate: isSignedLate,
@@ -730,7 +786,7 @@
         orderTypeOf: orderTypeOf, volumeOf: volumeOf, promiseOf: promiseOf, stdHoursOf: stdHoursOf,
         profitOf: profitOf, scanCountOf: scanCountOf, settleCycleOf: settleCycleOf,
         branchRow: branchRow, branchName: branchName, tripOf: tripOf, crewOf: crewOf, packagesOf: packagesOf,
-        findCourier: findCourier, addScan: addScan, traceView: traceView, noteScan: noteScan,
+        findCourier: findCourier, byCode: byCode, addScan: addScan, traceView: traceView, noteScan: noteScan,
         scanDeadline: scanDeadline, scanDue: scanDue, scanDueHours: scanDueHours,
         scansOf: scansOf, scanIndex: scanIndex, stageAt: stageAt, stageTimes: stageTimes,
         deviceLabelOf: deviceLabelOf

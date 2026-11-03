@@ -92,11 +92,11 @@
         var chips = pg.statusChips(rows);
         return po.grid(ctx, {
             rows: rows,
-            columns: pg.orderColumns({ hide: o.hide || ['profit', 'customer'] }).concat([
+            columns: pg.orderColumns({ hide: o.hide || ['profit', 'customer', 'scope'] }).concat([
                 { key: 'act', label: '操作', sortable: false, width: '150px', render: o.rowActions || rowActions }
             ]),
             state: ctx.state, keyName: 'id', onRow: 'd:open',
-            fields: pg.orderFields({ searchLabel: o.searchLabel || '单号 / 收件人 / 地址', hidePayment: true }),
+            fields: pg.orderFields({ searchLabel: o.searchLabel || '单号 / 收件人 / 地址', hidePayment: true, hideScope: true }),
             chips: chips.chips, chipsName: chips.chipsName,
             filter: function (r, fs) { return pg.orderFilter(r, fs) && (!o.only || o.only(r, fs)); },
             search: function (r) { return [r.id, r.waybillNo, r.receiverName, r.receiverAddress, r.goods, r.customer].join(' '); },
@@ -629,7 +629,9 @@
                 };
             }).sort(function (a, b2) { return b2.signed - a.signed; });
             return {
-                b: b, fence: TMS.network.fenceOfCity(city), districts: districts, mates: mates,
+                b: b, fence: TMS.network.fenceOfCity(city, 'branch'),
+                myFences: TMS.network.fencesOfCourier(pid()),
+                districts: districts, mates: mates,
                 peers: TMS.stats.orgStats(orgId(), 30), hub: db.get('hubs', b.hubId) || {},
                 customers: db.col('customers').filter(function (c) { return c.city === city && c.status === 'active'; })
             };
@@ -638,7 +640,7 @@
         render: function (ctx, d) {
             var f = d.fence;
             return po.wrap(ctx, {
-                sub: '片区来自收件地址的行政区划，围栏用于判定「扫描地点是不是在我的城市」，不是给我划地盘',
+                sub: '机构派送围栏管「扫描地点算不算在这座城市」，编号围栏管「件自动落到哪个派送员手里」，后者才是运营端给我划的片区',
                 body: [
                     ui.card({
                         title: '责任网点与围栏', sub: esc(d.b.name || '—'), flat: true,
@@ -648,7 +650,8 @@
                             { label: '服务范围', value: esc(d.b.city || '') + ' ' + esc(d.b.province || '') + ' · ' + esc(d.b.zone || '') + '区' },
                             { label: '营业时间', value: esc(d.b.openAt || '—') + ' – ' + esc(d.b.closeAt || '—') },
                             { label: '日处理能力', value: fmt.number(d.b.dailyCapacity || 0) + ' 件' },
-                            { label: '电子围栏', value: f ? esc(f.name) + ' · 半径 ' + fmt.number(Math.round((f.radiusM || 0) / 100) / 10) + ' km · 告警 ' + fmt.number(f.alertCount || 0) + ' 次' : '<span class="tms-dim">该城市没有生效围栏</span>' },
+                            { label: '城市派送围栏', value: f ? esc(f.name) + ' · ' + pg.fenceGeomCell(f) + ' · ' + esc(pg.GF_STATUS_TEXT[f.status] || f.status) : '<span class="tone-danger">该市没有在用派送围栏，地址再准也只能到网点自提</span>' },
+                            { label: '我的编号围栏', value: d.myFences.length ? d.myFences.map(function (g) { return esc(g.name) + '（' + pg.fenceGeomCell(g) + '）'; }).join('；') : '<span class="tms-dim">运营端还没给我勾片区围栏，派单时要手动指定派送编号</span>' },
                             { label: '近 30 天经手', value: fmt.number(d.peers.orders) + ' 单 · 及时率 ' + fmt.percent(d.peers.onTimeRate) },
                             { label: '片区同事', value: fmt.number(d.mates.length) + ' 名派送员' }
                         ], { inline: true })
@@ -776,6 +779,241 @@
             });
         },
         actions: ACT
+    });
+
+    /* ---------- 派送地址（图1 左支 + 图2 维护侧的派送员支线） ----------
+       门牌到底对不对，只有上过楼的人知道：到了楼下才发现「3 栋」是「8 栋」，
+       这一单的时效已经丢了，再等网点次日转述一遍更来不及。
+       所以派送员可以建档、可以改自己采集的那条；但「通过/打回」照旧只在运营端——
+       一线既当采集人又当放行人的话，图2 的审核环节就白画了 */
+
+    function adrCity() { return branch().city || ''; }
+
+    /* 服务范围 = 本网点这一座城。自己采集的那条即使一时认不出城市也要留在列表里，
+       否则「我上门记的地址」反倒看不见 */
+    function adrRows() {
+        var city = adrCity(), b = branch(), who = name();
+        return util.sortBy(db.col('addresses').filter(function (a) {
+            return a.owner === who || a.city === city || a.branchId === orgId() || (!!city && a.branchName === b.name);
+        }).map(function (a) {
+            var revs = TMS.address.reviewsOf(a.id);
+            var verdicts = revs.filter(function (r) { return r.kind === TMS.address.KIND.review; });
+            var scope = TMS.address.maintainScope(a, who, ROLE);
+            return {
+                id: a.id, phone: a.phone, receiver: a.receiver || '', status: a.status,
+                statusLabel: TMS.address.labelOf(a.status),
+                full: (a.city || '') + (a.district || '') + (a.detail || ''),
+                city: a.city || '', district: a.district || '', detail: a.detail || '',
+                branchName: a.branchName || '', rejectReason: a.rejectReason || '',
+                issues: a.issues || [], suggest: a.suggest || '', reviewer: a.reviewer || '',
+                rounds: verdicts.length, records: revs.length, maintainCount: a.maintainCount || 1,
+                waitHours: TMS.address.holdHours(a), overdue: TMS.address.isOverdue(a),
+                source: a.source || '', owner: a.owner || '',
+                mine: String(a.owner || '') === who,
+                /* 已通过的不能直接改是领域层的规矩（改了就不是当初通过的那版），
+                   列上先判掉，免得给一线留一个点了必然报错的按钮 */
+                canEdit: scope.ok && a.status !== 'approved', blockReason: scope.reason
+            };
+        }), 'waitHours', 'desc');
+    }
+
+    function adrFormModal(id) {
+        var a = id ? db.get('addresses', id) : null;
+        var city = adrCity(), b = branch(), who = name();
+        if (a) {
+            var scope = TMS.address.maintainScope(a, who, ROLE);
+            if (!scope.ok) { ui.toast(scope.reason, 'warn'); return; }
+        }
+        ui.formModal({
+            title: a ? '修改我采集的派送地址' : '上门采集新地址',
+            sub: a ? esc(a.phone) + ' · ' + esc((a.city || '') + (a.district || '') + (a.detail || '')) + '（' + esc(TMS.address.labelOf(a.status)) + '）'
+                : '按手机号建档：城市定归属网点、区镇定片区、门牌定能不能送到门口',
+            notice: a
+                ? '改完自动重新提交审核，改动以审查记录留档；运营端复审通过前，这个手机号不能按地址派送。'
+                : '只有本网点服务城市（' + esc(city || '未定') + '）的地址归我维护，跨城的请转交对应网点。缺项可以先提交，但审核会打回。',
+            fields: [
+                { key: 'phone', label: '收件手机号', required: true, value: a ? a.phone : '', placeholder: '11 位手机号' },
+                { key: 'receiver', label: '收件人', value: a ? (a.receiver || '') : '', placeholder: b.name || '' },
+                { key: 'address', label: '完整地址', type: 'textarea', rows: 2, span: 2, required: true, value: a ? ((a.city || '') + (a.district || '') + (a.detail || '')) : '', placeholder: '例如 ' + esc((city || '城市') + ' + 区/镇 + 街道 + 门牌 + 楼栋单元') },
+                { key: 'note', label: '本次说明', span: 2, placeholder: '上门看到的实际情况，会进审查记录' }
+            ],
+            okText: a ? '保存并重新提交' : '提交审核',
+            onSubmit: function (v) {
+                var p = TMS.address.parse(v.address);
+                if (!p.city) return '地址里认不出服务城市：请带上城市名（本网点在 ' + (city || '未知城市') + '）';
+                if (city && p.city !== city) return '只能维护本网点服务城市（' + city + '）的地址，跨城的件请转交对应网点';
+                var res = a
+                    ? TMS.address.maintain(a.id, { phone: v.phone, receiver: v.receiver, address: v.address, actor: who, role: ROLE })
+                    : TMS.address.create({ phone: v.phone, receiver: v.receiver, address: v.address, actor: who, role: ROLE, source: '派送员采集' });
+                if (!res.ok) return res.message;
+                var row = res.row || TMS.address.get(a.id);
+                var issues = row.issues || [];
+                ui.toast(issues.length ? '已提交，规范体检还有 ' + issues.length + ' 项缺口：' + issues[0] : '已提交，等待运营端审核',
+                    issues.length ? 'warn' : 'success');
+                if (a) for (var i = 0; i < 2; i++) ui.closeTop();
+            }
+        });
+    }
+
+    /* 现场版判定：客户或网点打电话问「这个地址你们送不送」，派送员在楼下也要当场给答案 */
+    function adrCheckModal(phone) {
+        ui.formModal({
+            title: '查手机号是否可派送', sub: '图1 左支：先取审核通过的维护地址，取不到才落到机构派送围栏',
+            fields: [{ key: 'phone', label: '收件手机号', required: true, value: phone || '', placeholder: '11 位手机号', span: 2 }],
+            okText: '判定',
+            onSubmit: function (v) {
+                var digits = String(v.phone || '').replace(/\D/g, '');
+                if (!/^1[3-9]\d{9}$/.test(digits.slice(-11))) return '请输入 11 位收件手机号';
+                var dec = TMS.address.phoneDecision(v.phone);
+                var p = dec.parsed || TMS.address.parse('');
+                var fence = p.city ? TMS.network.fenceOfCity(p.city, 'branch') : null;
+                var rows = dec.canDeliver
+                    ? [
+                        { label: '结论', value: ui.badge(dec.via === '维护地址' ? '可派送（按维护地址）' : '可派送（按派送围栏）', 'success') },
+                        { label: '依据', value: dec.address ? esc(dec.address.phone) + ' · ' + esc((dec.address.city || '') + (dec.address.district || '') + (dec.address.detail || '')) : esc(dec.fenceName || '') },
+                        { label: '备注', value: esc(dec.note) }
+                    ]
+                    : [
+                        { label: '结论', value: ui.badge(dec.blocked === 'review' ? '有记录但未过审，暂不可按地址派送' : '需到网点自提', 'warn') },
+                        { label: '认出的城市', value: p.city ? esc(p.city) : '<span class="tone-danger">地址里认不出服务城市</span>' },
+                        { label: '区/镇', value: p.district ? esc(p.district) : '<span class="tms-dim">未识别</span>' },
+                        { label: '门牌', value: p.door ? '已带门牌/楼栋' : '<span class="tone-danger">缺门牌号/楼栋/单元</span>' },
+                        { label: '城市派送围栏', value: fence ? esc(fence.name) + '（' + pg.fenceGeomCell(fence) + '）' : '<span class="tone-danger">该市没有在用派送围栏</span>' },
+                        { label: '缺什么', value: dec.address ? (dec.address.issues || []).map(function (x) { return ui.badge(esc(x), 'danger'); }).join(' ') : (dec.note ? esc(dec.note) : '—') },
+                        { label: '要走的路', value: '图2：我补一版地址 → 提交 → 运营端复审通过，通过后这个手机号立刻可派' }
+                    ];
+                ui.closeTop();
+                ui.drawer({
+                    title: '派送判定 · ' + esc(digits.slice(-11)),
+                    sub: dec.note,
+                    body: ui.desc(rows) + ui.notice(dec.canDeliver
+                        ? '这一单可以按地址直接送；门牌与现场不符的话，回到「派送地址」把实际情况改一版提交。'
+                        : '地址没过审或落在围栏外时不要硬送：先按工单上报，别让一趟空跑吃掉今天的及时率。',
+                        dec.canDeliver ? 'success' : 'warn')
+                });
+            }
+        });
+    }
+
+    pg.define('d-address', {
+        sub: '我上门采集的派送地址：提交 → 运营端审核 → 通过后才算可派送依据（图1 左支、图2 状态机）',
+        load: function () {
+            var rows = adrRows();
+            var mine = rows.filter(function (r) { return r.mine; });
+            var rejected = mine.filter(function (r) { return r.status === 'revise'; });
+            return {
+                rows: rows, mine: mine, rejected: rejected,
+                city: adrCity(), b: branch(),
+                ok: rows.filter(function (r) { return r.status === 'approved'; }),
+                wait: rows.filter(function (r) { return r.overdue; }).length,
+                fence: TMS.network.fenceOfCity(adrCity(), 'branch'),
+                myFences: TMS.network.fencesOfCourier(pid())
+            };
+        },
+        render: function (ctx, d) {
+            var kpi = ui.kpis([
+                { label: '我采集的地址', value: d.mine.length, unit: '条', icon: '⌖', sub: esc(d.city || '城市待定') + ' · 我名下一共 ' + d.mine.length + ' 条' },
+                { label: '被打回待我改', value: d.rejected.length, unit: '条', icon: '✎', tone: d.rejected.length ? 'danger' : 'success', sub: '超 ' + TMS.cfg.sla.addressFixHours + ' 小时未改 ' + d.rejected.filter(function (r) { return r.overdue; }).length + ' 条' },
+                { label: '在途等运营端', value: d.mine.filter(function (r) { return r.status === 'pending' || r.status === 'revised'; }).length, unit: '条', icon: '◷', tone: 'info', sub: '待审核 + 已修改待复审' },
+                { label: '已通过可派送', value: d.ok.length, unit: '条', icon: '✓', tone: 'success', sub: '本网点在册 ' + d.rows.length + ' 条 · 我采集的通过 ' + d.mine.filter(function (r) { return r.status === 'approved'; }).length + ' 条' },
+                { label: '我的编号围栏', value: d.myFences.length, unit: '张', icon: '⬡', tone: d.myFences.length ? 'success' : 'warn', sub: d.myFences.length ? esc(d.myFences.map(function (g) { return g.name; }).join('、')) : '没围栏时派单要手动指定派送编号' },
+                { label: '城市派送围栏', value: d.fence ? 1 : 0, unit: '张', icon: '⛨', tone: d.fence ? 'success' : 'warn', sub: d.fence ? esc(d.fence.name) + ' · ' + pg.fenceGeomCell(d.fence) : '没有围栏时地址之外的件只能自提' }
+            ]);
+            return po.wrap(ctx, {
+                actions: ui.btn('查是否可派送', { act: 'dad:check', icon: '⌕' }) +
+                    ui.btn('采集新地址', { tone: 'primary', act: 'dad:new', icon: '+' }),
+                sub: esc(d.city || '城市待定') + ' · 本网点在档 ' + d.rows.length + ' 条 · 我采集 ' + d.mine.length + ' 条 · 超阈值 ' + d.wait + ' 条',
+                body: [
+                    kpi,
+                    ui.card({
+                        title: '被打回，等我去改', tone: d.rejected.length ? 'danger' : '', flat: true,
+                        body: d.rejected.length ? ui.list(d.rejected.slice(0, 6).map(function (r) {
+                            return {
+                                title: '<span class="tms-mono">' + esc(r.phone) + '</span> ' + ui.badge('压了 ' + r.waitHours + ' 小时', 'warn'),
+                                sub: esc(r.full) + '<br>打回原因：' + esc(r.rejectReason || '未写明'),
+                                act: 'dad:edit', arg: r.id,
+                                right: ui.btn('去修改', { size: 'sm', tone: 'primary', act: 'dad:edit', arg: r.id })
+                            };
+                        })) : ui.empty('没有压在我这里的地址', '上门时发现门牌、楼栋对不上，就当场采一版提交，别等下一单再猜', '✓')
+                    }),
+                    ui.card({
+                        title: '本城在册地址', sub: '我能改自己采集的那几条；网点建档的只读——收件点是网点跟客户谈的，动了就说不清是谁改的', flat: true,
+                        tools: ui.btn('采集新地址', { size: 'sm', tone: 'primary', act: 'dad:new', icon: '+' }),
+                        body: po.grid(ctx, {
+                            rows: d.rows, keyName: 'id', onRow: 'dad:open', searchKey: 'q',
+                            search: function (r) { return [r.phone, r.receiver, r.full, r.rejectReason].join(' '); },
+                            filter: function (r, fs) { return (!fs.status || r.status === fs.status) && (!fs.mine || r.mine); },
+                            unit: '条', pageSize: 8,
+                            fields: [
+                                { key: 'q', type: 'search', label: '手机号 / 地址 / 收件人' },
+                                { key: 'status', label: '状态', options: [{ value: '', label: '全部状态' }].concat(TMS.address.FLOW.map(function (s) { return { value: s, label: TMS.address.labelOf(s) }; })) },
+                                { key: 'mine', label: '范围', options: [{ value: '', label: '本城全部' }, { value: '1', label: '只看我采集的' }] }
+                            ],
+                            columns: [
+                                {
+                                    key: 'full', label: '地址', render: function (r) {
+                                        return ui.link(esc(r.full || '（地址待补）'), 'dad:open', r.id) +
+                                            '<div class="tms-dim"><span class="tms-mono">' + esc(r.phone) + '</span>' +
+                                            (r.receiver ? ' · ' + esc(r.receiver) : '') +
+                                            (r.mine ? '' : ' · ' + esc(r.source || '网点维护') + '（' + esc(r.owner || '未署名') + '）') + '</div>' +
+                                            (r.rejectReason ? '<div class="tone-danger">打回：' + esc(r.rejectReason) + '</div>' : '');
+                                    }
+                                },
+                                {
+                                    key: 'status', label: '状态', width: '92px', sortable: false, render: function (r) {
+                                        return ui.badge(r.statusLabel, { pending: 'warn', revise: 'danger', revised: 'info', approved: 'success' }[r.status], { dot: true }) +
+                                            (r.mine ? ' ' + ui.badge('我采集', 'brand') : '');
+                                    }
+                                },
+                                {
+                                    key: 'waitHours', label: '停留', align: 'right', width: '80px', render: function (r) {
+                                        return '<span class="' + (r.overdue ? 'tone-danger' : '') + '">' + r.waitHours + ' 小时</span>';
+                                    }
+                                },
+                                {
+                                    key: 'ops', label: '操作', align: 'right', width: '104px', sortable: false, render: function (r) {
+                                        if (r.status === 'approved') return ui.link('看记录', 'dad:open', r.id);
+                                        if (!r.canEdit) return ui.link('只读', 'dad:why', r.id);
+                                        return ui.link('修改', 'dad:edit', r.id) + ' ' + (r.status === 'revise' || r.status === 'revised' ? ui.link('催审', 'dad:urge', r.id) : '');
+                                    }
+                                }
+                            ],
+                            emptyText: '本城还没有派送地址', emptySub: '点「采集新地址」按手机号建档，提交后由运营端审核'
+                        })
+                    }),
+                    ui.card({
+                        title: '口径说明', flat: true,
+                        body: ui.desc([
+                            { label: '我能做什么', value: '采集新地址、改自己上门记下的那几条、被打回后补一版重新提交、催运营端复审' },
+                            { label: '我不能做什么', value: '「通过 / 打回」是运营端的审核动作（address:review），这里没有这两个按钮；网点建档的地址在本网点端改，我这边只读' },
+                            { label: '为什么只读本城的', value: '派送分工按网点谈，跨城的地址归对应网点维护——我在上海改一条杭州的收件点，两边都会以为是对方动的' },
+                            { label: '改完会怎样', value: '图2：待修改 → 我提交 → 已修改（等复审）→ 运营端通过后才重新变成可派送依据，每一轮都有审核与审查双记录' },
+                            { label: '判定链', value: '图1 左支：有通过地址 → 可派送；有地址没通过 → 先改先审；没有地址 → 看机构派送围栏，不在网内就自提' },
+                            { label: '时限', value: '被打回超 ' + TMS.cfg.sla.addressFixHours + ' 小时算我这里滞留，待审核超 ' + TMS.cfg.sla.addressReviewHours + ' 小时可以催运营端' }
+                        ])
+                    })
+                ]
+            });
+        },
+        actions: {
+            'dad:open': function (id) { pg.addressDrawer(id, { edit: 'dad:edit', orders: 'dad:orders' }); },
+            'dad:new': function () { adrFormModal(''); },
+            'dad:edit': function (id) { adrFormModal(id); },
+            'dad:check': function () { adrCheckModal(''); },
+            'dad:why': function (id) {
+                var a = db.get('addresses', id);
+                var scope = TMS.address.maintainScope(a, name(), ROLE);
+                ui.toast(scope.ok ? '这条你可以改' : scope.reason, scope.ok ? 'info' : 'warn');
+            },
+            'dad:urge': function (id) {
+                var r = adrRows().filter(function (x) { return x.id === id; })[0];
+                if (!r) return;
+                if (r.status === 'approved') { ui.toast('该地址已通过审核，无需催审', 'info'); return; }
+                ui.toast('已向运营端催审：' + r.phone + '（停留 ' + r.waitHours + ' 小时）', 'success');
+                TMS.audit.log('address.maintain', 'addresses', id, '派送员催审 ' + r.phone + '，当前「' + r.statusLabel + '」已 ' + r.waitHours + ' 小时', name());
+            },
+            'dad:orders': function (phone) { TMS.shell.go('d-tasks', { q: String(phone).slice(-4) }); }
+        }
     });
 
     /* ---------- 打卡 / 排班 / 绩效 ---------- */

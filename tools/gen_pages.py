@@ -23,9 +23,10 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RBAC = os.path.join(ROOT, "js", "core", "rbac.js")
-DEFAULT_TOKEN = "v=20261103b"
+DEFAULT_TOKEN = "v=20261103m"
 
 ENTRY_RE = re.compile(r"\{\s*id:\s*'([^']+)'\s*,\s*file:\s*'([^']+)'\s*,\s*label:\s*'([^']+)'")
+TOKEN_RE = re.compile(r"\?v=[0-9a-zA-Z]+")
 # 站点根下不是角色目录、不该出现业务页外壳的目录
 NON_PAGE_DIRS = ("css", "js", "tools")
 
@@ -37,7 +38,7 @@ SHELL = u"""<!DOCTYPE html>
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{label} - 汇通物流 TMS</title>
-    <link rel="stylesheet" href="{up}css/app.css?{token}">
+    <link rel="stylesheet" href="{up}css/app.css?{token}">{extra}
 </head>
 
 <body class="tms-body">
@@ -49,6 +50,19 @@ SHELL = u"""<!DOCTYPE html>
 
 </html>
 """
+
+# 只有围栏这类带地图的页面需要第三方库，其余 70 多页不该为一个用不上的 Leaflet 付流量。
+# CDN 挂了也不白屏：js/ui/map.js 检测 window.L，取不到就降级成提示，围栏的列表与表单照旧能用。
+LEAFLET = u"""
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>"""
+
+EXTRA_HEAD = {
+    "geofence": LEAFLET,
+    "b-geofence": LEAFLET,
+}
 
 
 def parse_menu(path):
@@ -69,7 +83,25 @@ def parse_menu(path):
 def render(entry, token):
     file_name, role, page_id, label = entry
     up = "../" * file_name.count("/")
-    return SHELL.format(label=label, token=token, role=role, page=page_id, up=up)
+    return SHELL.format(label=label, token=token, role=role, page=page_id, up=up,
+                        extra=EXTRA_HEAD.get(page_id, ""))
+
+
+def sync_index_token(token):
+    """入口页是手写的，只把它的 app.css / boot.js 查询串对齐到当前 token"""
+    path = os.path.join(ROOT, "index.html")
+    if not os.path.exists(path):
+        return "跳过（无 index.html）"
+    with io.open(path, "r", encoding="utf-8") as f:
+        src = f.read()
+    new, n = TOKEN_RE.subn("?%s" % token, src)
+    if n == 0:
+        return "跳过（未找到带 token 的引用）"
+    if new != src:
+        with io.open(path, "w", encoding="utf-8") as f:
+            f.write(new)
+        return "已对齐 %d 处" % n
+    return "已是最新 %d 处" % n
 
 
 def main():
@@ -132,8 +164,12 @@ def main():
             removed += 1
             print("pruned %s（菜单中已无此页）" % rel)
 
-    print("菜单页 %d · 新建 %d · 重写 %d · 已最新 %d · 清理 %d · token=%s"
-          % (len(entries), created, updated, ok, removed, token))
+    # 登录入口是手写的，不在外壳模板里，但缓存 token 必须跟全站一致：
+    # boot.js 按自己的 src 反推 token，入口页留在旧 token 上就等于给整站发旧缓存
+    bumped = sync_index_token(token)
+
+    print("菜单页 %d · 新建 %d · 重写 %d · 已最新 %d · 清理 %d · 入口 token %s · token=%s"
+          % (len(entries), created, updated, ok, removed, bumped, token))
     return 0
 
 

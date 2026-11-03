@@ -716,6 +716,285 @@
         });
     }
 
+    /* ---------- 三之二、超时运单管理 ---------- */
+
+    /* 时效监控讲的是「均值与分位数」，这一页讲的是「哪一类超时、挂在谁身上、压了多少钱」。
+       六类超时行全部由 TMS.stats.overtimeRows 派生，页面只做展示与催办，不在这里算第二遍 */
+    var OT_TONE = { transitLate: 'danger', signedLate: 'danger', stranded: 'warn', advance: 'info', cod: 'info', podMissing: 'muted' };
+    var OT_HEX = { transitLate: '#d43b3b', signedLate: '#e0685f', stranded: '#d98207', advance: '#1668dc', cod: '#4a7ac7', podMissing: '#8b98ab' };
+    var OT_URGE = {
+        transitLate: '延迟送达', signedLate: '延迟送达', stranded: '延迟送达',
+        podMissing: '其他异常', advance: '其他异常', cod: '其他异常'
+    };
+
+    function otUrge(row, operator) {
+        var o = db.get('orders', row.orderId);
+        if (!o) return { ok: false, message: '运单已归档' };
+        var desc = '【超时运单管理·催办】' + row.typeLabel + '：应完成 ' + (row.dueAt ? fmt.dateTime(row.dueAt) : '—') +
+            '，已超 ' + util.round(row.overHours, 1) + ' 小时' +
+            (row.amount ? '，涉及金额 ' + fmt.money(row.amount) : '') + '；责任' +
+            (row.branchName ? '网点 ' + row.branchName : '环节待认') + (row.courier ? ' / 派送员 ' + row.courier : '') + '。';
+        var open = db.col('exceptions').some(function (e) {
+            return e.orderId === o.id && e.type === OT_URGE[row.type] && e.status !== 'resolved' &&
+                String(e.description || '').indexOf(row.typeLabel) > -1;
+        });
+        if (open) return { ok: false, message: '该单已有一张未闭环的「' + row.typeLabel + '」催办工单' };
+        var ex = TMS.service.createException({
+            orderId: o.id, type: OT_URGE[row.type], level: row.overHours > 48 ? '二级' : '三级',
+            description: desc, source: '超时运单管理', actor: operator
+        });
+        return { ok: true, exception: ex };
+    }
+
+    /* 台账的筛选与搜索：页面列表和 CSV 导出共用同一对函数，
+       两份口径各写一遍迟早出现「屏幕上 12 行、导出来 40 行」 */
+    function otFilter(r, fs) {
+        if (fs.type && r.type !== fs.type) return false;
+        if (fs.branch && r.branchName !== fs.branch) return false;
+        if (fs.severe === '1' && r.overHours < 24) return false;
+        return true;
+    }
+    function otSearch(r) {
+        return [r.waybillNo, r.orderId, r.customer, r.branchName, r.courier, r.destination, r.typeLabel].join(' ');
+    }
+
+    pg.define('overtime', {
+        sub: '六类超时的追责台账：履约看单、滞留看站、资金看钱、单证看回件，全部由单据实时算出',
+        load: function (ctx) {
+            var s = TMS.stats.overtimeStats(ctx.days);
+            return {
+                s: s, days: ctx.days,
+                branches: util.unique(s.rows.map(function (r) { return r.branchName; })).filter(Boolean).sort()
+            };
+        },
+        render: function (ctx, d) {
+            var s = d.s;
+            var typeOpts = [{ value: '', label: '全部超时类型' }].concat(Object.keys(TMS.stats.OT_TYPES).map(function (k) {
+                return { value: k, label: TMS.stats.OT_TYPES[k].label };
+            }));
+
+            var trendCard = ui.card({
+                title: '超时占比走势', sub: '柱＝当日开单件数，线＝当日开单里最终超时的占比', flat: true,
+                body: s.trend.length ? ch.combo({
+                    labels: s.trend.map(function (x) { return x.label; }),
+                    bars: s.trend.map(function (x) { return x.opened; }),
+                    line: s.trend.map(function (x) { return x.rate; }),
+                    barName: '开单件数', lineName: '超时占比 %', height: 250,
+                    fmt: function (v) { return fmt.number(v); }
+                }) : ui.empty('窗口内没有开单记录')
+            });
+
+            var mixCard = ui.card({
+                title: '超时构成', sub: '同一张单可以同时占多类，所以各类相加会大于超时单数', flat: true,
+                body: ch.bars({
+                    data: s.byType.map(function (x) {
+                        return { label: x.label, value: x.count, color: OT_HEX[x.key] };
+                    }),
+                    height: 250, fmt: function (v) { return fmt.number(v) + ' 行'; }
+                }) + ui.table({
+                    dense: true, zebra: true,
+                    columns: [
+                        { key: 'label', label: '超时类型' },
+                        { key: 'line', label: '归属线', render: function (r) { return ui.badge(r.line, 'muted'); } },
+                        { key: 'count', label: '行数', align: 'right' },
+                        { key: 'orders', label: '涉及单', align: 'right' },
+                        { key: 'amount', label: '涉及金额', align: 'right', render: function (r) { return ui.moneyCell(r.amount); } },
+                        { key: 'avgHours', label: '平均超时', align: 'right', render: function (r) { return fmt.duration(r.avgHours); } },
+                        { key: 'maxHours', label: '最久', align: 'right', render: function (r) { return fmt.duration(r.maxHours); } }
+                    ],
+                    rows: s.byType
+                })
+            });
+
+            var rollupTable = function (title, whoLabel, sub, rows) {
+                return ui.card({
+                    title: title, sub: sub, flat: true,
+                    body: rows.length ? ui.table({
+                        dense: true, zebra: true,
+                        columns: [
+                            { key: 'label', label: whoLabel },
+                            { key: 'count', label: '超时行', align: 'right' },
+                            { key: 'orders', label: '单数', align: 'right' },
+                            { key: 'amount', label: '涉及金额', align: 'right', render: function (r) { return ui.moneyCell(r.amount); } },
+                            { key: 'maxHours', label: '最久超时', align: 'right', render: function (r) { return fmt.duration(r.maxHours); } },
+                            {
+                                key: 'mix', label: '构成', render: function (r) {
+                                    var p = [];
+                                    if (r.late) p.push(ui.badge('履约 ' + r.late, 'danger'));
+                                    if (r.stranded) p.push(ui.badge('滞留 ' + r.stranded, 'warn'));
+                                    if (r.advance) p.push(ui.badge('垫付 ' + r.advance, 'info'));
+                                    if (r.cod) p.push(ui.badge('代收 ' + r.cod, 'info'));
+                                    if (r.pod) p.push(ui.badge('回件 ' + r.pod, 'muted'));
+                                    return p.join(' ');
+                                }
+                            }
+                        ],
+                        rows: rows.slice(0, 10)
+                    }) : ui.empty('窗口内没有超时记录', '这一项暂时干净')
+                });
+            };
+
+            return wrap(ctx, {
+                actions: ui.btn('批量催办超时 TOP20', { tone: 'primary', act: 'ot:urgeAll', icon: '⚡' }) +
+                    ui.btn('导出台账', { act: 'ot:export', icon: '⤓' }),
+                body: [
+                    ui.kpis([
+                        {
+                            label: '超时占比', value: s.lateRate, unit: '%', icon: '⧗',
+                            tone: s.lateRate <= 5 ? 'success' : s.lateRate <= 12 ? 'warn' : 'danger',
+                            sub: '超时 ' + fmt.number(s.lateOrders) + ' / 开单 ' + fmt.number(s.opened) + ' 单'
+                        },
+                        {
+                            label: '超时单数', value: s.lateOrders, unit: '单',
+                            tone: s.lateOrders ? 'danger' : 'success',
+                            sub: '在途超承诺 ' + s.transitLate + ' · 超时签收 ' + s.signedLate
+                        },
+                        {
+                            label: '滞留超时', value: s.stranded, unit: '单',
+                            tone: s.stranded ? 'warn' : 'success',
+                            sub: '最后一站超标准时限 · 压运费 ' + fmt.money(s.strandedAmount)
+                        },
+                        {
+                            label: '垫付超时单数', value: s.advance, unit: '单',
+                            tone: s.advance ? 'warn' : 'success',
+                            sub: '已签收但应收过账期 · 垫付 ' + fmt.money(s.advanceAmount)
+                        },
+                        {
+                            label: '代收超时单数', value: s.cod, unit: '单',
+                            tone: s.cod ? 'danger' : 'success',
+                            sub: '签收后超 ' + cfg.sla.codRemitHours + ' 小时未上划 · 压 ' + fmt.money(s.codAmount)
+                        },
+                        {
+                            label: '收揽回件率', value: s.podRate, unit: '%',
+                            tone: s.podRate >= 90 ? 'success' : s.podRate >= 75 ? 'warn' : 'danger',
+                            sub: '回件 ' + fmt.number(s.podBack) + ' / 应回件 ' + fmt.number(s.podDue) + ' 单'
+                        },
+                        {
+                            label: '未回件单数', value: s.podMissing, unit: '单',
+                            tone: s.podMissing ? 'warn' : 'success',
+                            sub: '签收超 ' + cfg.sla.podReturnHours + ' 小时无 POD 回传'
+                        },
+                        {
+                            label: '开单件数', value: s.opened, unit: '单', tone: 'brand',
+                            sub: '近 ' + s.days + ' 日新建且未取消'
+                        }
+                    ]),
+                    s.exposure ? ui.notice('资金侧压款合计 ' + fmt.money(s.exposure) + '（垫付 ' + fmt.money(s.advanceAmount) +
+                        ' + 代收 ' + fmt.money(s.codAmount) + '）。这部分不是时效问题，是网点替客户和发货方垫着的现金，' +
+                        '超期越久越接近坏账，建议与应收对账、代收货款两页对着清。', 'warn', '资金敞口') : '',
+                    ui.split('side', [trendCard, mixCard]),
+                    ui.split('2', [
+                        rollupTable('超时归属 · 责任网点', '网点', '按超时行数排序，构成里能看出这个卡的是履约还是资金', s.byBranch),
+                        rollupTable('超时归属 · 派送员', '派送员', '末端派送与回件的直接责任人', s.byCourier)
+                    ]),
+                    ui.card({
+                        title: '超时运单台账', sub: '一行 = 一张单的一类超时；催办会生成异常工单并计入闭环看板',
+                        body: grid(ctx, {
+                            /* keyName 同时决定「点行带哪个字段去 order:open」：台账一行 = 一单一类，
+                               行内唯一键是 orderId#type，但点行要开的是单，所以这里给订单号；
+                               催办按钮另走 r.key，不受行键影响 */
+                            rows: s.rows, keyName: 'orderId', onRow: 'order:open', searchKey: 'q',
+                            search: otSearch, filter: otFilter, unit: '行', pageSize: 12,
+                            fields: [
+                                { key: 'q', type: 'search', label: '单号 / 客户 / 网点 / 派送员' },
+                                { key: 'type', label: '超时类型', options: typeOpts },
+                                { key: 'branch', label: '责任网点', options: [{ value: '', label: '全部网点' }].concat(d.branches.map(function (b) { return { value: b, label: b }; })) },
+                                { key: 'severe', label: '只看超 24 小时', options: [{ value: '', label: '全部超时' }, { value: '1', label: '仅超 24 小时' }] }
+                            ],
+                            valueOf: function (r, k) { return k === 'overHours' ? r.overHours : r[k]; },
+                            columns: [
+                                { key: 'waybillNo', label: '运单号', render: function (r) { return '<span class="tms-mono">' + esc(r.waybillNo) + '</span>'; } },
+                                { key: 'typeLabel', label: '超时类型', render: function (r) { return ui.badge(r.typeLabel, OT_TONE[r.type]); } },
+                                { key: 'customer', label: '客户', render: function (r) { return esc(r.customer) + ' ' + ui.badge(r.customerLevel, 'info'); } },
+                                { key: 'origin', label: '线路', render: function (r) { return esc(r.origin) + ' → ' + esc(r.destination); } },
+                                { key: 'status', label: '当前环节', render: function (r) { return ui.statusBadge(r.status); } },
+                                { key: 'dueAt', label: '应完成', render: function (r) { return r.dueAt ? '<span class="tms-nowrap">' + fmt.dateTime(r.dueAt) + '</span>' : dim('—'); } },
+                                {
+                                    key: 'overHours', label: '已超时', align: 'right', render: function (r) {
+                                        return '<span class="tms-badge tone-' + (r.overHours > 48 ? 'danger' : r.overHours > 24 ? 'warn' : 'muted') + '">' +
+                                            fmt.duration(r.overHours) + '</span>';
+                                    }
+                                },
+                                { key: 'amount', label: '涉及金额', align: 'right', render: function (r) { return ui.moneyCell(r.amount); } },
+                                { key: 'branchName', label: '责任网点', render: function (r) { return dim(r.branchName); } },
+                                { key: 'courier', label: '派送员', render: function (r) { return dim(r.courier); } },
+                                {
+                                    key: 'act', label: '操作', sortable: false, width: '84px',
+                                    render: function (r) { return ui.btn('催办', { size: 'sm', act: 'ot:urge', arg: r.key }); }
+                                }
+                            ],
+                            emptyText: '窗口内没有超时运单', emptySub: '顶栏换到更长的时间窗可以回看历史积压'
+                        })
+                    }),
+                    ui.card({
+                        title: '这八个数的口径', sub: '与时效监控、应收对账、代收货款的分界写清楚，避免同一个「超时」两套说法',
+                        flat: true,
+                        body: ui.desc([
+                            { label: '开单件数', value: '近 ' + s.days + ' 日创建且未取消的订单，与经营报表同源（取消单不计，否则开单量会被冲销重复计一次）' },
+                            { label: '超时单数', value: '在途已超承诺送达 + 已签收但晚于承诺，按「单」去重：一张单同时超承诺又滞留只算一次' },
+                            { label: '超时占比', value: '超时单数 ÷ 开单件数。分母用开单量而不是签收量，因为压着没签收的单恰恰是最该被计入的那批' },
+                            { label: '滞留超时', value: '最后一个作业节点超过下一环节标准时限（与「轨迹超时巡检」同一条判定线），前序节点已被后续扫描证明达成，不重复计' },
+                            { label: '垫付超时单数', value: '已签收、应收仍挂账且已过账期截止日的单——运费已由网点先行垫付给干线，钱还没从客户手里回来' },
+                            { label: '代收超时单数', value: '代收货款签收后超 ' + cfg.sla.codRemitHours + ' 小时仍未上划，金额按扣除服务费后的应付净额' },
+                            { label: '收揽回件率', value: '窗口内已签收单里带回单照片的比例。签收人、备注可以电话口头补录，只有 POD 照片才算完整回件' },
+                            { label: '未回件单数', value: '签收超 ' + cfg.sla.podReturnHours + ' 小时仍无 POD 回传，是理赔与月结对账的缺件来源' },
+                            { label: '与时效监控的分工', value: '时效监控看均值与 P90（产品有没有兑现承诺），这一页看逐单追责与资金敞口（该催谁、压了多少钱）' }
+                        ])
+                    })
+                ]
+            });
+        },
+        actions: {
+            'ot:urge': function (key) {
+                var row = TMS.stats.overtimeRows(curCtx().days).filter(function (r) { return r.key === key; })[0];
+                if (!row) { ui.toast('该超时行已消解（单据已推进或回件已补传）', 'warn'); return; }
+                var res = otUrge(row, actor());
+                if (!res.ok) { ui.toast('催办未发起：' + res.message, 'warn'); return; }
+                ui.toast('已生成催办工单 ' + res.exception.id + '（' + res.exception.level + '）', 'success');
+                TMS.shell.refresh();
+            },
+            'ot:urgeAll': function () {
+                var s = TMS.stats.overtimeStats(curCtx().days);
+                var top = s.rows.filter(function (r) { return r.overHours >= 24; }).slice(0, 20);
+                if (!top.length) { ui.toast('没有超 24 小时的超时行需要催办', 'info'); return; }
+                ui.confirm({
+                    title: '批量催办 ' + top.length + ' 行超时运单',
+                    okText: '全部生成工单',
+                    message: '对已超 24 小时的 TOP ' + top.length + ' 行逐单生成异常工单，涉及金额 ' +
+                        fmt.money(util.sum(top, 'amount')) + '。',
+                    detail: '已有同类未闭环工单的单会被跳过，不重复立案；工单进入异常页后照常走受理、定责、扣款与闭环。'
+                }).then(function (yes) {
+                    if (!yes) return;
+                    var made = 0, skipped = 0;
+                    top.forEach(function (r) {
+                        var res = otUrge(r, actor());
+                        if (res.ok) made++; else skipped++;
+                    });
+                    ui.toast('已催办 ' + made + ' 单' + (skipped ? '，跳过 ' + skipped + ' 单（已有未闭环工单）' : ''),
+                        made ? 'success' : 'warn');
+                    TMS.shell.refresh();
+                });
+            },
+            'ot:export': function () {
+                var s = TMS.stats.overtimeStats(curCtx().days);
+                exportGrid({
+                    rows: s.rows, name: '超时运单台账-' + util.dateKey(util.now()) + '.csv',
+                    searchKey: 'q', search: otSearch, filter: otFilter,
+                    cols: [
+                        { label: '运单号', key: 'waybillNo' }, { label: '订单号', key: 'orderId' },
+                        { label: '超时类型', key: 'typeLabel' }, { label: '归属线', key: 'line' },
+                        { label: '客户', key: 'customer' }, { label: '等级', key: 'customerLevel' },
+                        { label: '始发', key: 'origin' }, { label: '目的', key: 'destination' },
+                        { label: '当前环节', value: function (r) { return cfg.orderLabels[r.status] || r.status; } },
+                        { label: '应完成', key: 'dueAt' }, { label: '已超时小时', key: 'overHours' },
+                        { label: '涉及金额', key: 'amount' }, { label: '责任网点', key: 'branchName' },
+                        { label: '派送员', key: 'courier' }, { label: '服务', key: 'service' }
+                    ]
+                }, 'overtime');
+            }
+        }
+    });
+
     /* ---------- 四、系统监控 ---------- */
 
     pg.define('monitor', {
@@ -1440,6 +1719,7 @@
                         { label: '客户', key: 'customer' }, { label: '等级', key: 'customerLevel' },
                         { label: '状态', value: function (r) { return cfg.orderLabels[r.status]; } },
                         { label: '始发', key: 'origin' }, { label: '目的', key: 'destination' },
+                        { label: '范围分级', value: function (r) { var sc = TMS.network.scopeOfOrder(r); return sc.name + (sc.sub ? '（' + sc.sub + '）' : ''); } },
                         { label: '服务', key: 'service' }, { label: '件数', key: 'pieces' },
                         { label: '实重', key: 'weight' }, { label: '计费重', key: 'chargeableWeight' },
                         { label: '运费', key: 'freight' }, { label: '成本', value: function (r) { return TMS.pricing.costTotalOf(r); } },
@@ -1456,6 +1736,18 @@
 
     /* ---------- 六、路由管理 ---------- */
 
+    /* 路由的三级归属只问城市：routes 行没有地址文本，区级留给单票
+       （按 route 行判「区内直送」是假命题——同城路由根本不进路由表） */
+    function routeScope(r) {
+        return TMS.network.scopeOf(TMS.network.endLevels(r.origin, ''), TMS.network.endLevels(r.destination, ''));
+    }
+
+    function routeChain(r) {
+        var a = TMS.network.endLevels(r.origin, ''), b = TMS.network.endLevels(r.destination, '');
+        var pr = a.province === b.province ? a.province : a.province + ' → ' + b.province;
+        return '<div>' + esc(pr) + '</div><div class="tms-dim tms-mono">' + esc(r.origin) + ' → ' + esc(r.destination) + '</div>';
+    }
+
     /* 段次表：routes.segments 与订单路由计划面板同构，列定义只写一次 */
     function segmentTable(segs) {
         return ui.table({
@@ -1463,6 +1755,7 @@
             columns: [
                 { key: 'seq', label: '段次', width: '58px', sortable: false, render: function (s) { return ui.rank(s.seq); } },
                 { key: 'legType', label: '环节', width: '92px', render: function (s) { return ui.badge(pg.LEG_TYPE[s.legType] || s.legType, s.legType === 'trunk' ? 'brand' : 'muted'); } },
+                { key: 'scopeName', label: '跨度', width: '86px', sortable: false, render: function (s) { var sc = TMS.network.segmentScope(s); return ui.badge(sc.name, sc.tone); } },
                 { key: 'from', label: '起点' },
                 { key: 'to', label: '终点' },
                 { key: 'mode', label: '方式', width: '70px' },
@@ -1488,6 +1781,7 @@
         var trips = tripsOfRoute(r);
         var trunk = segs.filter(function (s) { return s.legType === 'trunk'; });
         var byHub = util.round(util.sum(trunk, 'stdHours'), 1);
+        var sc = routeScope(r);
         ui.modal({
             title: esc(r.origin) + ' → ' + esc(r.destination),
             size: 'wide',
@@ -1495,6 +1789,8 @@
                 esc(r.mode) + ' · ' + (r.isFallback ? '全国兜底路由' : '由班次表推导'),
             body: ui.stack([
                 ui.desc([
+                    { label: '范围分级', value: ui.badge(esc(sc.name), sc.tone, { dot: true }) + (sc.sub ? ' <span class="tms-dim">' + esc(sc.sub) + '</span>' : '') + '<div class="tms-dim">' + esc(sc.hint) + '</div>' },
+                    { label: '三级链路', value: routeChain(r) },
                     { label: '标准时长', value: fmt.duration(r.totalStdHours) },
                     { label: '总里程', value: fmt.km(r.distanceKm) },
                     { label: '段数', value: segs.length + ' 段（干线 ' + trunk.length + ' 段）' },
@@ -1566,7 +1862,18 @@
             var rs = TMS.stats.routeStats();
             var rows = db.col('routes');
             return {
-                rs: rs, rows: rows,
+                rs: rs, rows: rows, scopes: TMS.network.scopeStats(rows),
+                provs: (function () {
+                    var m = {};
+                    rows.forEach(function (r) {
+                        var p = TMS.network.endLevels(r.origin, '').province || '未知';
+                        var sc = routeScope(r);
+                        var cell = m[p] || (m[p] = { label: p, value: 0, cross: 0 });
+                        cell.value++;
+                        if (sc.code === 'cross') cell.cross++;
+                    });
+                    return util.sortBy(Object.keys(m).map(function (k) { return m[k]; }), 'value', 'desc');
+                })(),
                 dist: (function () {
                     var buckets = [{ label: '≤24h', value: 0 }, { label: '24-48h', value: 0 }, { label: '48-72h', value: 0 }, { label: '>72h', value: 0 }];
                     rows.forEach(function (r) {
@@ -1581,6 +1888,7 @@
         render: function (ctx, d) {
             var kpi = ui.kpis([
                 { label: '路由总数', value: d.rs.total, unit: '条', tone: 'brand', icon: '⇄', sub: '生效 ' + d.rs.active + ' 条' },
+                { label: '跨省路由', value: d.scopes.by.cross, unit: '条', tone: 'danger', icon: '⤨', sub: '占 ' + fmt.percent(d.scopes.total ? util.round(d.scopes.by.cross / d.scopes.total * 100, 1) : 0) + ' · 内含跨大区' },
                 { label: '平均标准时长', value: util.round(d.rs.avgStdHours, 1), unit: '小时', icon: '◷', sub: '含揽收与派送支线' },
                 { label: '平均里程', value: fmt.number(d.rs.avgDistance), unit: 'km', icon: '⤳', sub: '全网路由均值' },
                 { label: '偏离轨迹', value: d.rs.deviationTraces, unit: '条', tone: d.rs.deviationTraces ? 'warn' : 'muted', icon: '⚠', sub: '涉及 ' + d.rs.deviationOrders + ' 单' }
@@ -1593,6 +1901,32 @@
                 title: '标准时长分布', sub: '时长桶反映网络覆盖度，>72h 多为西部/东北长线', flat: true,
                 body: ch.bars({ data: d.dist, height: 230, fmt: function (v) { return v + ' 条'; } })
             });
+            /* 分级结构按「跨到哪一层」看，不是按距离看：
+               同为 800km，同省跨市走省域支线、跨省要占干线班次舱位，成本与舱位压力不是一回事 */
+            var scopeCard = ui.card({
+                title: '路由范围分级', sub: '省内跨市与跨省（含同大区/跨大区）分别看', flat: true,
+                body: ui.stack([
+                    ch.hbars({
+                        data: d.scopes.items.filter(function (x) { return x.count; }).map(function (x) {
+                            return { label: x.name, value: x.count };
+                        }),
+                        rowH: 30, labelWidth: 110, valueWidth: 128,
+                        fmt: function (v) { return v + ' 条 · ' + fmt.percent(util.round(v / (d.scopes.total || 1) * 100, 1)); }
+                    }),
+                    ui.notice(d.scopes.total
+                        ? '跨省 ' + d.scopes.by.cross + ' 条 / 同省跨市 ' + d.scopes.by.prov + ' 条：跨省的件才进干线舱位台账，同省的多由省域支线消化'
+                        : '路由表为空', 'info')
+                ])
+            });
+            var provCard = ui.card({
+                title: '始发省份路由量', sub: d.provs.length + ' 个省级单元在册', flat: true,
+                body: ch.hbars({
+                    data: d.provs.slice(0, 10).map(function (p) {
+                        return { label: p.label, value: p.value, sub: p.cross ? '跨省 ' + p.cross : '' };
+                    }),
+                    rowH: 24, labelWidth: 96, valueWidth: 130, fmt: function (v) { return v + ' 条'; }
+                })
+            });
             var devCard = ui.card({
                 title: '偏离最多的路由', sub: '偏离 = 扫描到的实际分拨与计划不符，通常是班次变更未重算', flat: true,
                 body: ch.hbars({
@@ -1602,16 +1936,27 @@
             });
             return wrap(ctx, {
                 actions: ui.btn('导出路由', { size: 'sm', act: 'rt:export', icon: '⤓' }),
-                body: [kpi, ui.split('2', [modeCard, distCard]), devCard, grid(ctx, {
+                body: [kpi, ui.split('2', [modeCard, distCard]), ui.split('2', [scopeCard, provCard]), devCard, grid(ctx, {
                     rows: d.rows, keyName: 'id', onRow: 'rt:open', searchKey: 'q',
-                    search: function (r) { return [r.id, r.origin, r.destination, r.originZone, r.destinationZone, r.mode].join(' '); },
+                    search: function (r) {
+                        /* 省份也进搜索串：按「浙江省」筛路由是规划时的第一反应，
+                           只搜城市名就得先背下省里有哪些城 */
+                        var a = TMS.network.endLevels(r.origin, ''), b = TMS.network.endLevels(r.destination, '');
+                        return [r.id, r.origin, r.destination, r.originZone, r.destinationZone, r.mode,
+                            a.province, b.province, routeScope(r).name].join(' ');
+                    },
                     fields: [
-                        { key: 'q', type: 'search', label: '城市 / 路由号', placeholder: '上海 / RT0001' },
+                        { key: 'q', type: 'search', label: '城市 / 省份 / 路由号', placeholder: '上海 / 浙江省 / RT0001' },
+                        { key: 'scope', label: '范围分级', options: [{ value: '', label: '全部分级' }].concat(ui.optionsOf(TMS.network.SCOPE_ORDER.map(function (k) { return TMS.network.SCOPE[k].name; }))) },
+                        { key: 'prov', label: '始发省份', options: [{ value: '', label: '全部省份' }].concat(ui.optionsOf(TMS.master.PROVINCES.map(function (p) { return p.name; }))) },
                         { key: 'zone', label: '始发大区', options: [{ value: '', label: '全部大区' }].concat(ui.optionsOf(TMS.master.ZONES)) },
                         { key: 'mode', label: '方式', options: [{ value: '', label: '全部方式' }].concat(ui.optionsOf(colUnique('routes', 'mode'))) },
                         { key: 'dev', label: '偏离', options: [{ value: '', label: '全部' }, { value: '1', label: '有偏离' }] }
                     ],
                     filter: function (r, fs) {
+                        var sc = routeScope(r);
+                        if (fs.scope && sc.name !== fs.scope) return false;
+                        if (fs.prov && TMS.network.endLevels(r.origin, '').province !== fs.prov) return false;
                         if (fs.zone && r.originZone !== fs.zone) return false;
                         if (fs.mode && r.mode !== fs.mode) return false;
                         if (fs.dev === '1' && !(r.deviationCount || 0)) return false;
@@ -1620,6 +1965,8 @@
                     columns: [
                         { key: 'id', label: '路由号', width: '92px', render: function (r) { return idLink(r.id, 'rt:open'); } },
                         { key: 'origin', label: '起讫', render: function (r) { return esc(r.origin) + ' → ' + esc(r.destination); } },
+                        { key: 'prov', label: '省级链路', width: '150px', sortable: false, render: routeChain },
+                        { key: 'scope', label: '分级', width: '104px', sortable: false, render: function (r) { var sc = routeScope(r); return ui.badge(esc(sc.name), sc.tone) + (sc.sub ? ' <span class="tms-dim">' + esc(sc.sub) + '</span>' : ''); } },
                         { key: 'originZone', label: '大区', width: '110px', render: function (r) { return esc(r.originZone) + ' → ' + esc(r.destinationZone); } },
                         { key: 'mode', label: '方式', width: '70px', render: function (r) { return ui.badge(esc(r.mode), r.mode === '空运' ? 'brand' : 'muted'); } },
                         { key: 'segments', label: '段数', align: 'right', width: '68px', render: function (r) { return (r.segments || []).length; } },
@@ -1641,6 +1988,9 @@
                     search: function (r) { return [r.id, r.origin, r.destination, r.originZone, r.mode].join(' '); },
                     cols: [
                         { label: '路由号', key: 'id' }, { label: '始发', key: 'origin' }, { label: '目的', key: 'destination' },
+                        { label: '始发省', value: function (r) { return TMS.network.endLevels(r.origin, '').province; } },
+                        { label: '目的省', value: function (r) { return TMS.network.endLevels(r.destination, '').province; } },
+                        { label: '范围分级', value: function (r) { var sc = routeScope(r); return sc.name + (sc.sub ? '（' + sc.sub + '）' : ''); } },
                         { label: '始发大区', key: 'originZone' }, { label: '目的大区', key: 'destinationZone' },
                         { label: '方式', key: 'mode' }, { label: '优先级', key: 'priority' },
                         { label: '段数', value: function (r) { return (r.segments || []).length; } },
@@ -1799,7 +2149,7 @@
             okText: '写入流水',
             onSubmit: function (data) {
                 var key = String(data.orderId || '').trim();
-                var o = db.get('orders', key) || db.findOne('orders', function (x) { return x.waybillNo === key; });
+                var o = TMS.order.byCode(key);
                 if (!o) return '找不到单号 ' + key;
                 if (!data.node) return '请选择作业节点';
                 /* 人工补录最容易写的就是「件其实不在该去的地方」。
@@ -2589,8 +2939,17 @@
     function assignModal(orderId) {
         var o = db.get('orders', orderId);
         if (!o) return;
+        /* 图1 的两条支路在派单这一步露脸：送不送由维护地址与机构派送围栏决定，
+           默认勾谁由派送员编号围栏决定。罩不住收件点时只给「最近片区」候选并按它预填，
+           最终派给仍然由调度确认——判不准写成自动绑，就是把错单派出去 */
+        var plan = TMS.order.dispatchOf(o) || {};
+        var pre = plan.courierId || plan.suggestId || '';
         ui.formModal({
             title: '派单', sub: esc(o.waybillNo) + ' · ' + esc(o.destination) + ' → ' + esc(TMS.order.branchName(o, 'dest') || o.receiverAddress),
+            notice: esc((plan.canDeliver ? '可派送｜' : '需自提｜') + plan.deliverNote + '；' + plan.courierVia +
+                (plan.fenceName ? '（' + plan.fenceName + '）'
+                    : plan.suggest ? '：最近片区 ' + plan.suggest + '（' + plan.suggestFence + '，距收件点 ' + plan.suggestKm + ' km）' : '')),
+            values: pre ? { courierId: pre } : undefined,
             fields: [
                 { key: 'courierId', label: '派送员', type: 'select', required: true, options: [{ value: '', label: '请选择' }].concat(courierOptions(o.destination)) },
                 { key: 'deliveryEta', label: '预计送达', type: 'datetime', hint: '留空即取承诺时效' },
@@ -3028,7 +3387,7 @@
             okText: '登记',
             onSubmit: function (data) {
                 var key = String(data.orderId || '').trim();
-                var o = key ? (db.get('orders', key) || db.findOne('orders', function (x) { return x.waybillNo === key; })) : null;
+                var o = key ? (TMS.order.byCode(key)) : null;
                 if (key && !o) return '找不到运单 ' + key;
                 if (o && data.hold) {
                     if (TMS.order.isTerminal(o)) return '运单已是终态，不能挂起';
@@ -3551,7 +3910,7 @@
             okText: '登记',
             onSubmit: function (data) {
                 var key = String(data.orderId || '').trim();
-                var o = key ? (db.get('orders', key) || db.findOne('orders', function (x) { return x.waybillNo === key; })) : null;
+                var o = key ? (TMS.order.byCode(key)) : null;
                 if (key && !o) return '找不到运单 ' + key;
                 var rec = TMS.service.createTicket({
                     orderId: o ? o.id : '', type: data.type, priority: data.priority,
@@ -3906,7 +4265,7 @@
             okText: '立案',
             onSubmit: function (data) {
                 var key = String(data.orderId || '').trim();
-                var o = db.get('orders', key) || db.findOne('orders', function (x) { return x.waybillNo === key; });
+                var o = TMS.order.byCode(key);
                 if (!o) return '找不到运单 ' + key;
                 var rule = claimRule(o);
                 if (rule.cap && Number(data.amount) > rule.cap) {
@@ -5161,7 +5520,7 @@
             okText: '入账',
             onSubmit: function (data) {
                 var key = String(data.orderId || '').trim();
-                var o = key ? (db.get('orders', key) || db.findOne('orders', function (x) { return x.waybillNo === key; })) : null;
+                var o = key ? (TMS.order.byCode(key)) : null;
                 if (key && !o) return '找不到运单 ' + key;
                 var amt = Number(data.amount) || 0;
                 if (amt <= 0) return '金额必须大于 0';
@@ -6835,7 +7194,7 @@
                     values: { waybillNo: '' }, okText: '下一步',
                     onSubmit: function (data) {
                         var key = String(data.waybillNo || '').trim();
-                        var o = db.get('orders', key) || db.findOne('orders', function (x) { return x.waybillNo === key; });
+                        var o = TMS.order.byCode(key);
                         if (!o) return '找不到运单 ' + esc(key);
                         ui.closeTop();
                         rcRunModal(o.id);
@@ -10718,18 +11077,22 @@
         })
     });
 
-    /* ---------- 二十八、电子围栏 ---------- */
+    /* ---------- 二十八、电子围栏（勾画边界 · 到货/派送/编号三类 · 图1 判定链） ---------- */
 
-    /* 围栏表只存几何与归属（圆心、半径、绑定对象、状态），覆盖 / 越界 / 命中一律读时现算：
-       扫描流水每天在长，把统计落库等于第二天就开始说谎 */
-    var GF_TYPE_TEXT = { hub: '分拨场地围栏', city: '城市作业围栏' };
-    var GF_STATUS_TEXT = { active: '在用', draft: '草稿', disabled: '已停用' };
+    /* 围栏表只存几何与归属（顶点环或半径、绑定对象、状态），覆盖 / 越界 / 命中一律读时现算：
+       扫描流水每天在长，把统计落库等于第二天就开始说谎。
+       类型字典取 cfg.fence.LABEL：这是全站唯一一份，网点端维护同一批围栏时必须同名同义 */
+    var GF_TYPE_TEXT = cfg.fence.LABEL;
+    var GF_STATUS_TEXT = cfg.fence.STATUS;
 
-    function gfRefName(g) {
-        if (!g.refId) return '不绑定场地';
-        var h = TMS.master.hubByNameOrId(g.refId);
-        return h ? h.name : g.refId;
-    }
+    /* 绑定对象反查、图形摘要、图1 判定演示与建档表单都在 registry：网点端维护同一批围栏，
+       两处各写一遍就会出现「运营端说可派送、网点端说要自提」 */
+    function gfRefName(g) { return pg.fenceRefName(g); }
+
+    function gfRefOptions(type) { return pg.fenceRefOptions(type); }
+
+    /* 图形摘要：勾过的报「几点的多边形 + 面积」，只有半径的报「圆」 */
+    function gfGeomCell(g) { return pg.fenceGeomCell(g); }
 
     /* 每座城市归第一张罩住它的在用围栏所有：归属唯一，命中数才不会在两张围栏间重复计 */
     function gfOwners() {
@@ -10764,13 +11127,12 @@
         return { owners: owners, byFence: byFence, byCity: byCity, orphan: orphan, located: located };
     }
 
-    /* 半径是这张表上唯一能改变结论的参数：调小会放走边缘城市，调大会顺手罩住邻市 */
-    function gfRadiusEffect(g) {
-        var c = TMS.master.cityByName(g.city);
+    /* 边界是这张表上唯一能改变结论的参数：往里收会放走边缘城市，往外扩会顺手罩住邻市 */
+    function gfCoverEffect(g) {
         var inside = [], outside = [];
+        var c = TMS.master.cityByName(g.city);
         TMS.master.CITIES.forEach(function (x) {
-            if (!c) return;
-            var km = util.distanceKm(c, x);
+            var km = c ? util.distanceKm(c, x) : 0;
             if (TMS.network.pointInFence(x, g)) inside.push({ city: x.name, km: util.round(km, 1) });
             else outside.push({ city: x.name, km: util.round(km, 1) });
         });
@@ -10778,34 +11140,51 @@
         return { inside: inside, nearMiss: outside.slice(0, 3) };
     }
 
+    /* 图1 的三条问句用一座城的质心当样本点跑一遍（判定链本体在 registry，两端共用） */
+    function gfProbe(city) { return pg.fenceProbe(city); }
+
     function gfModal(id) {
         var g = db.get('geofences', id);
         if (!g) { ui.toast('未找到围栏 ' + id, 'warn'); return; }
         var days = Math.max(7, Number(curCtx().days) || 7);
         var stats = gfScanStats(days);
         var st = stats.byFence[id] || { hit: 0, lastAt: '', orders: {} };
-        var eff = gfRadiusEffect(g);
+        var eff = gfCoverEffect(g);
+        var geo = TMS.network.geometryOf(g);
+        var citiesIn = TMS.network.citiesInFence(g);
         var branches = db.col('branches').filter(function (b) { return b.city === g.city; });
         var orderIds = Object.keys(st.orders).slice(0, 6);
+        var probe = gfProbe(g.city);
         ui.modal({
             title: g.name,
-            sub: (GF_TYPE_TEXT[g.type] || g.type) + ' · ' + g.city + ' · 半径 ' + fmt.number(g.radiusM) + ' m',
+            sub: (GF_TYPE_TEXT[g.type] || g.type) + ' · ' + g.city + ' · ' + gfGeomCell(g),
             body: ui.stack([
                 ui.kpis([
-                    { label: '罩住城市', value: eff.inside.length, unit: '座', tone: eff.inside.length ? 'success' : 'danger', sub: '圆心在本市质心' },
+                    { label: '罩住城市', value: eff.inside.length, unit: '座', tone: eff.inside.length ? 'success' : 'danger', sub: '按顶点环判定' },
                     { label: '窗口命中', value: st.hit, unit: '次', tone: 'brand', sub: '近 ' + days + ' 天写在地点的流水' },
                     { label: '涉及订单', value: Object.keys(st.orders).length, unit: '票', tone: 'info' },
-                    { label: '半径', value: util.round(Number(g.radiusM) / 1000, 2), unit: 'km', tone: 'warn', sub: '决定覆盖范围' },
-                    { label: '同城网点', value: branches.length, unit: '个', tone: 'muted' },
-                    { label: '同城终端', value: db.col('devices').filter(function (d) { return d.city === g.city; }).length, unit: '台', tone: 'muted' }
+                    { label: geo.kind === 'polygon' ? '勾画面积' : '覆盖半径', value: geo.kind === 'polygon' ? geo.areaKm2 : util.round(geo.radiusM / 1000, 2), unit: geo.kind === 'polygon' ? 'km²' : 'km', tone: 'warn' },
+                    { label: '顶点', value: geo.points, unit: geo.kind === 'polygon' ? '个' : '未勾', tone: geo.kind === 'polygon' ? 'success' : 'muted', sub: geo.kind === 'polygon' ? '闭合多边形' : '退回半径判定' },
+                    { label: '同城网点', value: branches.length, unit: '个', tone: 'muted' }
                 ]),
                 ui.card({
-                    title: '覆盖判定', sub: '城市质心到圆心的距离与半径对照，超出即算越界', flat: true,
+                    title: '这块边界在回答哪个问题', sub: cfg.fence.LABEL[g.type] + '：' + cfg.fence.ASKS[g.type], flat: true,
+                    body: probe ? ui.list(probe.rows.map(function (r) {
+                        return {
+                            title: esc(r.ask) + ' ' + r.verdict,
+                            sub: esc(r.fence && r.fence.id === g.id ? '本围栏：' + r.fence.name : r.note),
+                            right: r.fence ? ui.link('看围栏', 'gf:open', r.fence.id, { tone: 'ghost' }) : '<span class="tms-dim">未命中</span>'
+                        };
+                    })) : ui.empty('该市不在城市档案里', '围栏挂在一个认不出的城市上，覆盖判定会一直算它越界')
+                }),
+                ui.card({
+                    title: '覆盖判定', sub: '城市质心落在边界环内即算覆盖', flat: true,
                     body: ui.desc([
                         { label: '绑定对象', value: esc(gfRefName(g)) + (g.refId ? ' ' + ui.idCell(g.refId, '') : '') },
                         { label: '围栏状态', value: statusBadge(g.status, GF_STATUS_TEXT) },
-                        { label: '罩住的城市', value: eff.inside.length ? util.unique(eff.inside.map(function (x) { return x.city; })).join('、') : ui.badge('一座也没有', 'danger') },
-                        { label: '半径外最近城市', value: eff.nearMiss.length ? eff.nearMiss.map(function (x) { return esc(x.city) + ' ' + x.km + ' km'; }).join(' · ') : '—' },
+                        { label: '罩住的城市', value: citiesIn.length ? util.unique(citiesIn.map(function (x) { return x.name; })).join('、') : ui.badge('一座也没有', 'danger') },
+                        { label: '环外最近城市', value: eff.nearMiss.length ? eff.nearMiss.map(function (x) { return esc(x.city) + ' ' + x.km + ' km'; }).join(' · ') : '—' },
+                        { label: '备注', value: g.note ? esc(g.note) : '<span class="tms-dim">无</span>' },
                         { label: '最近命中', value: st.lastAt ? fmt.dateTime(st.lastAt) : '<span class="tms-dim">窗口内无地点流水</span>' },
                         { label: '建档时间', value: g.updatedAt ? fmt.dateTime(g.updatedAt) : '<span class="tms-dim">未记录</span>' }
                     ]),
@@ -10829,97 +11208,56 @@
                     })
                 })
             ]),
-            footer: ui.btn('调整半径', { tone: 'primary', act: 'gf:resize', arg: g.id }) +
+            footer: ui.btn('改边界', { tone: 'primary', act: 'gf:redraw', arg: g.id }) +
+                (geo.kind === 'polygon' ? '' : ui.btn('调整半径', { act: 'gf:resize', arg: g.id })) +
                 ui.btn(g.status === 'active' ? '停用' : '启用', { act: 'gf:toggle', arg: g.id }) +
                 ui.btn('编辑档案', { act: 'gf:edit', arg: g.id }) +
+                ui.btn('删除', { tone: 'danger', act: 'gf:remove', arg: g.id }) +
                 ui.btn('关闭', { act: 'ui:close' })
         });
     }
 
-    /* 圆心不接受手填：手填经纬度迟早和 cities 表分家，城市一选圆心就定 */
-    function gfFormModal(id, presetCity) {
-        var g = id ? db.get('geofences', id) : null;
-        var hubOptions = ui.optionsOf(db.col('hubs'), 'id', 'name');
-        ui.formModal({
-            title: g ? '编辑围栏 ' + g.name : '新建电子围栏',
-            sub: g ? '改半径会立刻改变覆盖判定与越界告警' : '城市作业围栏建议 20~40 km，分拨场地围栏 1~3 km',
-            notice: g ? '' : '新围栏落库后立刻重跑「电子围栏覆盖缺口」巡检：该城市的越界告警当场核销，不需要等下一轮。',
-            values: g ? {
-                name: g.name, city: g.city, type: g.type, refId: g.refId || '',
-                radiusM: g.radiusM, status: g.status
-            } : {
-                name: presetCity ? presetCity + '作业围栏' : '', city: presetCity || '', type: 'city',
-                refId: '', radiusM: (function () {
-                    var a = TMS.network.fenceAudit(Math.max(7, Number(curCtx().days) || 7));
-                    var b = a.breaches.filter(function (x) { return x.city === presetCity; })[0];
-                    return b ? b.radiusM : 25000;
-                })(),
-                status: 'active'
-            },
-            fields: [
-                { key: 'name', label: '围栏名称', required: true, span: 2, placeholder: '例：福州作业围栏' },
-                { key: 'city', label: '所在城市', type: 'city', required: true, tip: '圆心取该城市质心，不可手填经纬度' },
-                { key: 'type', label: '围栏类型', type: 'select', options: dictOptions(GF_TYPE_TEXT) },
-                { key: 'refId', label: '绑定分拨', type: 'select', options: [{ value: '', label: '不绑定（城市作业围栏）' }].concat(hubOptions) },
-                { key: 'radiusM', label: '覆盖半径', type: 'number', required: true, min: 300, max: 120000, step: 500, unit: '米', tip: '城市质心到圆心的距离小于半径即算覆盖' },
-                { key: 'status', label: '状态', type: 'select', options: dictOptions(GF_STATUS_TEXT) }
-            ],
-            okText: g ? '保存并重跑巡检' : '建立并重跑巡检',
-            onSubmit: function (v) {
-                var city = TMS.master.cityByName(v.city);
-                if (!city) return '城市「' + v.city + '」不在城市档案里，请先在主数据里补';
-                var patch = {
-                    name: v.name, city: v.city, type: v.type, refId: v.type === 'hub' ? v.refId : '',
-                    radiusM: Math.max(300, Number(v.radiusM) || 0), status: v.status,
-                    center: { lat: city.lat, lng: city.lng }, updatedAt: util.iso(util.now())
-                };
-                var saved;
-                db.batch(function () {
-                    saved = g ? db.update('geofences', g.id, patch) : db.create('geofences', patch);
-                    if (saved) db.commit('geofences', saved.id, 'geofence:save');
-                }, 'geofence:save');
-                if (!saved) return '保存失败';
-                TMS.audit.log(g ? 'geofence.update' : 'geofence.create', 'geofences', saved.id,
-                    saved.name + ' 半径 ' + saved.radiusM + ' m', actor());
-                var out = TMS.jobs.run('fenceCoverage').out || {};
-                ui.toast((g ? '已更新围栏' : '已建立围栏') + '，' + v.city + ' 越界告警核销 ' + (out.resolved || 0) +
-                    ' 条，剩余缺口 ' + out.gap + ' 座城市', 'success');
-                TMS.shell.refresh();
-            }
+    /* 建档表单在 registry：两端共用同一份字段、同一条校验，也共用「类型不进表单」这个取舍——
+       类型决定「绑定对象」的取值域（分拨 / 网点 / 派送员），在同一次提交里改类型会让下拉选项和已选值打架。
+       这里只把运营端口径（当前窗口、署名）传进去 */
+    function gfFormModal(id, opts) {
+        var o = opts || {};
+        pg.fenceFormModal(id, {
+            points: o.points, type: o.type, city: o.city, days: Math.max(7, Number(curCtx().days) || 7),
+            actor: actor()
         });
     }
 
-    /* 半径单独调：这是围栏上唯一「改了立刻变结论」的参数，给它一条独立入口 */
+    /* 半径单独调只给没勾边界的围栏（判定与落库都在 registry.fenceResizeModal，与网点端共用），
+       这里只补运营端才看得到的口径：一张圆罩住几座城市、环外最近的是哪座 */
     function gfResizeModal(id) {
         var g = db.get('geofences', id);
         if (!g) return;
-        var eff = gfRadiusEffect(g);
-        ui.formModal({
-            title: '调整 ' + g.name + ' 的覆盖半径',
+        var eff = gfCoverEffect(g);
+        pg.fenceResizeModal(id, {
+            actor: actor(),
             sub: '当前 ' + fmt.number(g.radiusM) + ' m，罩住 ' + eff.inside.length + ' 座城市',
-            notice: eff.nearMiss.length ? '半径外最近的是 ' + eff.nearMiss[0].city + '（' + eff.nearMiss[0].km +
-                ' km），放大到该距离以上即可一并覆盖。' : '',
-            values: { radiusM: g.radiusM },
-            fields: [{ key: 'radiusM', label: '覆盖半径', type: 'number', required: true, min: 300, max: 120000, step: 500, unit: '米', span: 2 }],
-            okText: '保存并重跑巡检',
-            onSubmit: function (v) { gfApply(id, { radiusM: Math.max(300, Number(v.radiusM) || 0) }, '半径'); }
+            notice: eff.nearMiss.length ? '环外最近的是 ' + eff.nearMiss[0].city + '（' + eff.nearMiss[0].km +
+                ' km），放大到该距离以上即可一并覆盖；要贴合真实边界请改用勾画。' : ''
         });
     }
 
+    /* 一切写围栏的入口都走 network.saveFence / removeFence：顶点、圆心、面积、所在城市在领域层一次算齐。
+       页面自己 db.update 就会造出「面积和形状对不上」的围栏 */
     function gfApply(id, patch, what) {
         var g = db.get('geofences', id);
         if (!g) return;
-        db.batch(function () {
-            db.update('geofences', id, patch);
-            db.commit('geofences', id, 'geofence:' + what);
-        }, 'geofence:' + what);
-        TMS.audit.log('geofence.update', 'geofences', id, g.name + ' 调整' + what, actor());
+        var merged = util.clone(g);
+        Object.keys(patch).forEach(function (k) { merged[k] = patch[k]; });
+        delete merged.createdAt;
+        var res = TMS.network.saveFence(merged, actor());
+        if (!res.ok) { ui.toast(res.message, 'warn'); return; }
         var out = TMS.jobs.run('fenceCoverage').out || {};
-        ui.toast('已调整' + what + '，越界缺口剩 ' + out.gap + ' 座城市，本轮核销 ' + (out.resolved || 0) + ' 条告警', 'success');
+        ui.toast('已' + what + '，缺派送围栏的城市剩 ' + out.gap + ' 座，本轮核销 ' + (out.resolved || 0) + ' 条告警', 'success');
         TMS.shell.refresh();
     }
 
-    /* 批量补围栏：按缺口从大到小建城市作业围栏，半径用审计给出的建议值。
+    /* 批量补围栏：按缺口从大到小建机构派送围栏，半径用审计给出的建议值。
        一次建完再跑巡检，所以告警是一次性核销掉一批，而不是建一张响一轮 */
     function gfBulkCover() {
         var days = Math.max(7, Number(curCtx().days) || 7);
@@ -10927,30 +11265,27 @@
         var targets = audit.breaches.slice(0, 10);
         if (!targets.length) { ui.toast('所有作业城市都已在围栏覆盖内', 'success'); return; }
         ui.confirm({
-            title: '为 ' + targets.length + ' 座缺口城市建立作业围栏',
+            title: '为 ' + targets.length + ' 座缺口城市建立派送围栏',
             message: '这些城市的扫描地点写在任何在用围栏之外，系统无法判定作业是否合规。',
             detail: targets.map(function (b) {
                 return esc(b.city + '：越界 ' + b.count + ' 次 / ' + b.branches + ' 个网点，建议半径 ' + Math.round(b.radiusM / 1000) + ' km');
-            }).join('<br>') + '<br>建完立即重跑巡检，覆盖到的城市告警当场核销。'
+            }).join('<br>') + '<br>批量补的是半径围栏（先把判定接上）；要贴合真实边界，建完在地图上逐张勾画即可。' +
+                '<br>建完立即重跑巡检，覆盖到的城市告警当场核销。'
         }).then(function (yes) {
             if (!yes) return;
-            var created = [];
+            var created = 0, failed = '';
             db.batch(function () {
                 targets.forEach(function (b) {
-                    var c = TMS.master.cityByName(b.city);
-                    if (!c) return;
-                    var row = db.create('geofences', {
-                        name: b.city + '作业围栏', type: 'city', refId: '', city: b.city,
-                        center: { lat: c.lat, lng: c.lng }, radiusM: b.radiusM,
-                        status: 'active', updatedAt: util.iso(util.now())
-                    });
-                    if (row) { db.commit('geofences', row.id, 'geofence:bulk'); created.push(row.name); }
+                    var res = TMS.network.saveFence({
+                        name: b.city + GF_TYPE_TEXT.branch, type: 'branch', city: b.city, refId: '',
+                        radiusM: b.radiusM, status: 'active', note: '按覆盖缺口批量补点（半径）'
+                    }, actor());
+                    if (res.ok) created++; else failed = res.message;
                 });
             }, 'geofence:bulk');
-            if (!created.length) { ui.toast('没有可建立的城市', 'warn'); return; }
-            TMS.audit.log('geofence.bulk', 'geofences', '', '批量建立作业围栏：' + created.join('、'), actor());
+            if (!created) { ui.toast(failed || '没有可建立的城市', 'warn'); return; }
             var out = TMS.jobs.run('fenceCoverage').out || {};
-            ui.toast('已建立 ' + created.length + ' 张围栏，核销 ' + (out.resolved || 0) + ' 条越界告警，剩 ' + out.gap + ' 座城市缺口', 'success');
+            ui.toast('已建立 ' + created + ' 张围栏，核销 ' + (out.resolved || 0) + ' 条围栏告警，剩 ' + out.gap + ' 座城市没有派送围栏', 'success');
             TMS.shell.refresh();
         });
     }
@@ -10982,30 +11317,130 @@
     var gfActions = {
         'gf:open': function (id) { gfModal(id); },
         'gf:edit': function (id) { gfFormModal(id); },
-        'gf:new': function () { gfFormModal(''); },
-        'gf:cover': function (city) { gfFormModal('', city); },
+        /* 参数是「类型提示」：不认识的取值退回当前勾选的绘制类型，
+           而不是拼出一张「新建undefined」的表单——深链和外部跳转都可能带进旧的类型码 */
+        'gf:new': function (type) { gfFormModal('', { type: GF_TYPE_TEXT[type] ? type : gfState().gfDrawType }); },
+        'gf:cover': function (city) { gfFormModal('', { city: city, type: 'branch' }); },
         'gf:bulk': function () { gfBulkCover(); },
         'gf:resize': function (id) { gfResizeModal(id); },
+        'gf:redraw': function (id) { gfDraw(id); },
+        'gf:remove': function (id) {
+            var g = db.get('geofences', id);
+            if (!g) { ui.toast('未找到围栏 ' + id, 'warn'); return; }
+            ui.confirm({
+                title: '删除围栏「' + g.name + '」',
+                message: '删除是不可逆的：这张围栏罩住的作业城市会立刻重新报出越界告警，绑定它的派送员编号也会跟着消失。',
+                detail: (GF_TYPE_TEXT[g.type] || g.type) + ' · ' + g.city + ' · ' + gfGeomCell(g) +
+                    '<br>只是暂时不想让它参与判定的话，用「停用」而不是删除——停用保留了边界数据，随时能启用。',
+                danger: true
+            }).then(function (yes) {
+                if (!yes) return;
+                var res = TMS.network.removeFence(id, actor());
+                if (!res.ok) { ui.toast(res.message, 'warn'); return; }
+                var out = TMS.jobs.run('fenceCoverage').out || {};
+                ui.toast('已删除围栏，当前缺派送围栏的城市 ' + out.gap + ' 座', 'success');
+                TMS.shell.refresh();
+            });
+        },
         'gf:toggle': function (id) {
             var g = db.get('geofences', id);
             if (!g) return;
-            gfApply(id, { status: g.status === 'active' ? 'disabled' : 'active', updatedAt: util.iso(util.now()) },
+            gfApply(id, { status: g.status === 'active' ? 'disabled' : 'active' },
                 g.status === 'active' ? '停用' : '启用');
+        },
+        /* 地图上选中一张围栏：只改页内状态并重画，不整页刷新——
+           刷新会把 Leaflet 实例销毁重建，用户刚拖平的视野立刻飞回全国 */
+        'gf:pick': function (id) { gfSelect(id); },
+        'gf:dtype': function (type) {
+            if (!GF_TYPE_TEXT[type]) return;
+            var st = gfState();
+            st.gfDrawType = type;
+            gfRenderMap();
+            ui.toast('接下来勾画的是' + GF_TYPE_TEXT[type] + '：' + cfg.fence.ASKS[type], 'info');
+        },
+        'gf:probe': function (city) {
+            if (!TMS.master.cityByName(city)) return;
+            var st = gfState();
+            st.gfProbeCity = city;
+            TMS.shell.refresh();
         },
         'gf:audit': function () {
             var out = TMS.jobs.run('fenceCoverage').out || {};
-            ui.toast('巡检完成：' + out.gap + ' 座城市存在越界作业，核销 ' + (out.resolved || 0) + ' 条已消除的告警', 'info');
+            ui.toast('巡检完成：' + out.gap + ' 座城市缺派送围栏、' + out.courierGap + ' 座缺编号围栏、' +
+                out.hubGap + ' 处分拨没勾到货围栏，核销 ' + (out.resolved || 0) + ' 条已消除的告警', 'info');
             TMS.shell.refresh();
         },
         'gf:exception': function (orderId) { gfException(orderId); },
         'gf:goOrders': function (city) { ui.closeTop(); TMS.shell.go('order', { q: city }); }
     };
 
+    /* 地图句柄只活在当前这一页：换页/刷新时旧的 Leaflet 实例必须摘掉，
+       否则容器还在、事件还在，勾两下就把围栏写到上一页去 */
+    var gfMap = null;
+
+    /* 页内状态顺手兜住绘制类型：外部深链、旧版本残留的类型码都可能带进来一个认不出的值 */
+    function gfState() {
+        var st = curCtx().state;
+        if (!GF_TYPE_TEXT[st.gfDrawType]) st.gfDrawType = 'branch';
+        return st;
+    }
+
+    function gfMapFences() { return db.col('geofences'); }
+
+    function gfRenderMap() {
+        if (!gfMap) return;
+        var st = gfState();
+        gfMap.sync(gfMapFences(), st.gfSelected || '');
+    }
+
+    function gfSelect(id) {
+        var st = gfState();
+        st.gfSelected = st.gfSelected === id ? '' : id;
+        var g = st.gfSelected ? db.get('geofences', id) : null;
+        if (gfMap) { gfMap.sync(gfMapFences(), st.gfSelected); if (g) gfMap.focusFence(g); }
+        var box = document.querySelector('[data-gf-focus]');
+        if (box && g) {
+            box.innerHTML = ui.stack([
+                ui.desc([
+                    { label: '围栏', value: esc(g.name) + ' ' + ui.idCell(g.id, '') },
+                    { label: '类型', value: esc(GF_TYPE_TEXT[g.type] || g.type) },
+                    { label: '绑定对象', value: esc(gfRefName(g)) },
+                    { label: '图形', value: gfGeomCell(g) },
+                    { label: '罩住城市', value: (function () { var c = TMS.network.citiesInFence(g); return c.length ? esc(util.unique(c.map(function (x) { return x.name; })).join('、')) : ui.badge('一座也没有', 'danger'); })() },
+                    { label: '状态', value: statusBadge(g.status, GF_STATUS_TEXT) }
+                ]),
+                '<div class="tms-row">' + ui.btn('打开详情', { tone: 'primary', size: 'sm', act: 'gf:open', arg: g.id }) +
+                ui.btn('在这张上改边界', { size: 'sm', act: 'gf:redraw', arg: g.id }) +
+                ui.btn(g.status === 'active' ? '停用' : '启用', { size: 'sm', act: 'gf:toggle', arg: g.id }) + '</div>'
+            ]);
+        }
+        if (!st.gfSelected && box) box.innerHTML = ui.empty('没有选中围栏', '在地图上点一块边界，或在台账里点围栏名');
+    }
+
+    /* 「改边界」= 选中这张围栏并进入勾画态：地图上的顶点直接来自它现在的环，
+       拖完点闭合回到表单，保存即写回原 id */
+    function gfDraw(id) {
+        var g = db.get('geofences', id);
+        if (!g) return;
+        var st = gfState();
+        st.gfSelected = id;
+        if (!gfMap || gfMap.offline) {
+            ui.toast('地图组件没加载出来，这次改不了边界；可以编辑档案里的半径', 'warn');
+            return;
+        }
+        gfMap.sync(gfMapFences(), id);
+        gfMap.focusFence(g);
+        gfMap.startDraft(TMS.network.fenceRing(g));
+        ui.closeTop();
+        ui.toast('已带入「' + g.name + '」的 ' + (TMS.network.fenceRing(g) || []).length + ' 个顶点，拖完点「闭合保存」', 'info');
+    }
+
     /* 「重复布点」借用 status 这一列筛选位：它不是状态而是归属冲突，单独一档 */
     function gfRowFilter(r, fs) {
         if (fs.status === 'redundant') { if (!r.redundant) return false; }
         else if (fs.status && r.status !== fs.status) return false;
         if (fs.type && r.type !== fs.type) return false;
+        if (fs.shape && r.shape !== fs.shape) return false;
         if (fs.city && r.city !== fs.city) return false;
         return true;
     }
@@ -11014,50 +11449,512 @@
        导出走另一条取数路径迟早和表格对不上号 */
     function gfView(days) {
         var audit = TMS.network.fenceAudit(days);
+        /* 三类缺口取领域那份，与巡检告警同一个口径：页面自己再数一遍城市列表，
+           表格和告警就会一个说缺三城、一个说缺五城 */
+        var gaps = TMS.network.fenceGaps(days);
         var stats = gfScanStats(days);
         var rows = db.col('geofences').map(function (g) {
             var st = stats.byFence[g.id] || { hit: 0, lastAt: '', orders: {} };
-            var eff = gfRadiusEffect(g);
+            var eff = gfCoverEffect(g);
+            var geo = TMS.network.geometryOf(g);
             var same = db.col('branches').filter(function (b) { return b.city === g.city; });
             return {
-                id: g.id, name: g.name, type: g.type, city: g.city, status: g.status,
+                id: g.id, name: g.name, type: g.type, typeLabel: GF_TYPE_TEXT[g.type] || g.type,
+                city: g.city, status: g.status,
                 radiusM: Number(g.radiusM) || 0, refId: g.refId || '', refName: gfRefName(g),
+                shape: geo.kind, points: geo.points, areaKm2: geo.areaKm2, shapeText: gfGeomCell(g),
                 coverCount: eff.inside.length, coverNames: util.unique(eff.inside.map(function (x) { return x.city; })),
                 nearMiss: eff.nearMiss.length ? eff.nearMiss[0].city + ' ' + eff.nearMiss[0].km + ' km' : '',
                 staff: util.sum(same, 'staffCount'), branchCount: same.length,
                 devices: db.col('devices').filter(function (d) { return d.city === g.city; }).length,
                 hit: st.hit, orderCount: Object.keys(st.orders).length, lastAt: st.lastAt,
-                redundant: g.status === 'active' && !!stats.owners[g.city] && stats.owners[g.city] !== g.id,
+                redundant: g.status === 'active' && g.type !== 'courier' && !!stats.owners[g.city] && stats.owners[g.city] !== g.id,
                 updatedAt: g.updatedAt || ''
             };
         });
         var orphanTickets = {};
         var orphan = util.sortBy(stats.orphan, function (x) { return x.scan.opTime; }, 'desc');
         orphan.forEach(function (x) { if (x.scan.orderId) orphanTickets[x.scan.orderId] = 1; });
+        /* 编号围栏缺口：图1 右支走到「需手动指定派送编号」的城市。
+           有派送员、有在用派送围栏，却一张编号围栏都没勾——这些城市的每一件都要人工指派 */
         return {
             days: days, audit: audit, rows: rows, stats: stats, gaps: audit.breaches,
             orphan: orphan, orphanTickets: Object.keys(orphanTickets).length,
-            alerts: db.col('alerts').filter(function (a) { return a.status === 'open' && String(a.key).indexOf('fence:gap:') === 0; })
+            courierGap: gaps.courierGap, hubGap: gaps.hubGap, legacyGaps: gaps.legacy, cityGaps: gaps.rows,
+            byType: util.countBy(rows, 'type'),
+            drawn: rows.filter(function (r) { return r.shape === 'polygon'; }).length,
+            alerts: db.col('alerts').filter(function (a) { return a.status === 'open' && String(a.key).indexOf('fence:') === 0; })
         };
     }
 
+    /* ---------- 派送地址：维护与审核（图2） ---------- */
+
+    var ADR_TONE = { pending: 'warn', revise: 'danger', revised: 'info', approved: 'success' };
+
+    function adrBadge(r) { return ui.badge(r.statusLabel, ADR_TONE[r.status], { dot: true }); }
+
+    function adrRows() {
+        return util.sortBy(db.col('addresses').map(function (a) {
+            var revs = TMS.address.reviewsOf(a.id);
+            var verdicts = revs.filter(function (r) { return r.kind === TMS.address.KIND.review; });
+            var last = verdicts.length ? verdicts[verdicts.length - 1] : null;
+            // 停留时长与超时判定都读领域口径，页面不复制一份阈值
+            var wait = TMS.address.holdHours(a);
+            var over = TMS.address.overdueKind(a);
+            return {
+                id: a.id, phone: a.phone, receiver: a.receiver || '', city: a.city || '',
+                district: a.district || '', detail: a.detail || '', branchName: a.branchName || '',
+                status: a.status, statusLabel: TMS.address.labelOf(a.status),
+                rejectReason: a.rejectReason || '', issues: a.issues || [], suggest: a.suggest || '',
+                reviewer: a.reviewer || '', reviewedAt: a.reviewedAt || '', approvedAt: a.approvedAt || '',
+                rounds: verdicts.length, lastResult: last ? last.result : '', lastAt: last ? last.at : '',
+                records: revs.length, maintainCount: a.maintainCount || 1,
+                source: a.source || '', owner: a.owner || '', custCode: a.custCode || '',
+                createdAt: a.createdAt, updatedAt: a.updatedAt || a.createdAt,
+                full: (a.city || '') + (a.district || '') + (a.detail || ''),
+                waitHours: wait,
+                overdue: over === 'review',
+                stuck: over === 'fix',
+                clean: !(a.issues && a.issues.length)
+            };
+        }), 'waitHours', 'desc');
+    }
+
+    /* 队列与台账共用一对谓词：两处各写一遍迟早出现「待办 8 条、筛出来 11 条」 */
+    function adrFilter(r, fs) {
+        if (fs.status && r.status !== fs.status) return false;
+        if (fs.branch && r.branchName !== fs.branch) return false;
+        if (fs.pending === '1' && r.status !== 'pending') return false;
+        if (fs.wait === '1' && !(r.overdue || r.stuck)) return false;
+        return true;
+    }
+
+    function adrSearch(r) {
+        return [r.id, r.phone, r.receiver, r.city, r.district, r.detail, r.branchName, r.reviewer, r.statusLabel].join(' ');
+    }
+
+    function adrQueue(rows) {
+        return rows.filter(function (r) { return r.status !== 'approved'; });
+    }
+
+    function adrColumns(withOps) {
+        var cols = [
+            {
+                key: 'phone', label: '手机号 / 收件人', width: '146px', render: function (r) {
+                    return '<span class="tms-mono">' + esc(r.phone) + '</span>' +
+                        '<div class="tms-dim">' + (r.receiver ? esc(r.receiver) : '未填收件人') +
+                        (r.custCode ? ' · ' + esc(r.custCode) : '') + '</div>';
+                }
+            },
+            {
+                key: 'full', label: '派送地址', render: function (r) {
+                    return ui.link(esc(r.full), 'adr:open', r.id) +
+                        (r.branchName ? '<div class="tms-dim">归属 ' + esc(r.branchName) + '</div>'
+                            : '<div class="tone-danger">认不出服务城市，无法归属网点</div>') +
+                        (r.rejectReason ? '<div class="tone-danger">打回：' + esc(r.rejectReason) + '</div>' : '');
+                }
+            },
+            { key: 'status', label: '状态', width: '98px', sortable: false, render: adrBadge },
+            {
+                key: 'rounds', label: '审核轮次', align: 'right', width: '104px', render: function (r) {
+                    return r.rounds ? r.rounds + ' 轮 · ' + r.records + ' 记录'
+                        : '<span class="tms-dim">' + r.maintainCount + ' 次提交未审</span>';
+                }
+            },
+            {
+                key: 'waitHours', label: '本状态停留', align: 'right', width: '112px', render: function (r) {
+                    return '<span class="' + (r.overdue || r.stuck ? 'tone-danger' : '') + '">' + r.waitHours + ' 小时</span>';
+                }
+            },
+            {
+                key: 'reviewer', label: '最近处理', width: '132px', render: function (r) {
+                    return dim(r.reviewer || r.owner) +
+                        '<div class="tms-dim">' + fmt.dateTime(r.lastAt || r.updatedAt || r.createdAt) + '</div>';
+                }
+            }
+        ];
+        if (withOps) cols.push({
+            key: 'ops', label: '操作', align: 'right', width: '158px', sortable: false, render: function (r) {
+                if (r.status === 'pending') return ui.link('通过', 'adr:pass', r.id) + ' ' + ui.link('打回', 'adr:reject', r.id);
+                if (r.status === 'revise') return ui.link('代改', 'adr:edit', r.id) + ' ' + ui.link('记录', 'adr:open', r.id);
+                if (r.status === 'revised') return ui.link('复审通过', 'adr:pass', r.id) + ' ' + ui.link('再打回', 'adr:reject', r.id);
+                return ui.link('发起复审', 'adr:reopen', r.id) + ' ' + ui.link('记录', 'adr:open', r.id);
+            }
+        });
+        return cols;
+    }
+
+    /* 详情抽屉与网点端共用（registry.addressDrawer）：
+       动作键在这里传进去，网点端只拿到「修改」，拿不到通过与打回 */
+    function adrDrawer(id) {
+        pg.addressDrawer(id, {
+            pass: 'adr:pass', reject: 'adr:reject', reopen: 'adr:reopen',
+            edit: 'adr:edit', del: 'adr:del', orders: 'adr:orders'
+        });
+    }
+
+    function adrFormModal(id) {
+        var a = id ? db.get('addresses', id) : null;
+        var approved = a && a.status === 'approved';
+        ui.formModal({
+            title: a ? (approved ? '复审后再改内容' : '修改派送地址') : '新建派送地址',
+            sub: a ? esc(a.phone) + ' · ' + esc((a.city || '') + (a.district || '') + (a.detail || '')) + '（' + esc(TMS.address.labelOf(a.status)) + '）'
+                : '按手机号建档，提交即进待审核；通过审核前不能作为派送地址使用',
+            notice: a && approved
+                ? '已通过的地址改动后会退回「待审核」，改动内容以审查记录留档，需要重新过审才放行。'
+                : '地址要能拆出「城市 / 区镇 / 门牌」三段：城市决定归属网点、区镇决定片区、门牌决定能否送到门口。缺项可以提交，但审核会打回。',
+            fields: [
+                { key: 'phone', label: '收件手机号', required: true, placeholder: '11 位手机号', tip: '同一手机号 + 同一地址不会重复建档' },
+                { key: 'receiver', label: '收件人' },
+                { key: 'address', label: '完整地址', type: 'textarea', rows: 2, span: 2, required: true, placeholder: '城市 + 区/镇 + 街道门牌 + 楼栋单元' },
+                { key: 'note', label: '本次说明', span: 2, placeholder: '打回后改了什么，写在这里会进审查记录' }
+            ],
+            values: a ? { phone: a.phone, receiver: a.receiver, address: (a.city || '') + (a.district || '') + (a.detail || '') } : null,
+            okText: a ? '保存并留痕' : '提交审核',
+            onSubmit: function (v) {
+                var p = TMS.address.parse(v.address);
+                if (!p.city) return '地址里认不出服务城市，无法归属网点：请带上城市名（例如「哈尔滨市南岗区…」）';
+                var act = actor();
+                var res = a
+                    ? TMS.address.maintain(a.id, { phone: v.phone, receiver: v.receiver, address: v.address, actor: act, force: approved })
+                    : TMS.address.create({ phone: v.phone, receiver: v.receiver, address: v.address, actor: act, source: '运营端维护' });
+                if (!res.ok) return res.message;
+                var row = res.row || TMS.address.get(a.id);
+                var issues = row.issues || [];
+                ui.toast(issues.length
+                    ? '已提交，规范化体检仍有 ' + issues.length + ' 项缺口：' + issues[0]
+                    : '已提交，要素齐全等待审核', issues.length ? 'warn' : 'success');
+                if (id) for (var i = 0; i < 2; i++) ui.closeTop();
+            }
+        });
+    }
+
+    function adrRejectModal(id) {
+        var r = adrRows().filter(function (x) { return x.id === id; })[0];
+        if (!r) { ui.toast('地址记录不存在', 'warn'); return; }
+        ui.formModal({
+            title: '打回派送地址', sub: esc(r.phone) + ' · ' + esc(r.full) + '（' + r.statusLabel + '）',
+            danger: true,
+            notice: '打回会生成一条审核记录（地址内容没动，不留快照），并由「派送地址审核与打回通知」巡检推送给有维护地址权限的人。' +
+                (r.issues.length ? '<br>系统体检已发现：' + r.issues.map(esc).join('；') : ''),
+            fields: [
+                { key: 'reason', label: '缺什么（必填）', type: 'select', required: true, options: ui.optionsOf(['缺区/镇一级，无法分派到片区', '缺门牌号/楼栋/单元，派送员找不到具体点位', '地址把备注写进正文，需要拆解', '城市与归属网点不符', '收件手机号与收件人对不上', '地址重复，请合并到已有档案']) },
+                { key: 'extra', label: '补充说明', type: 'textarea', span: 2, placeholder: '写清要怎么改，网点才不会改完还是一样被打回' }
+            ],
+            okText: '打回并通知网点',
+            onSubmit: function (v) {
+                var res = TMS.address.review(id, { action: 'reject', reason: v.reason + (v.extra ? '：' + v.extra : ''), actor: actor() });
+                if (!res.ok) return res.message;
+                ui.toast('已打回，状态转「待修改」并进入通知队列', 'warn');
+                for (var i = 0; i < 2; i++) ui.closeTop();
+            }
+        });
+    }
+
+    function adrPass(id) {
+        var res = TMS.address.review(id, { action: 'approve', actor: actor() });
+        if (!res.ok) { ui.toast('审核失败：' + res.message, 'error'); return false; }
+        ui.toast('已通过，该手机号可按此地址派送', 'success');
+        return true;
+    }
+
+    function adrExport(rows) {
+        exportGrid({
+            name: '派送地址台账.csv', rows: rows, searchKey: 'q', search: adrSearch, filter: adrFilter,
+            cols: [
+                { key: 'id', label: '地址编号' }, { key: 'phone', label: '手机号' }, { key: 'receiver', label: '收件人' },
+                { key: 'full', label: '地址' }, { key: 'branchName', label: '归属网点' },
+                { key: 'statusLabel', label: '状态' },
+                { key: 'rounds', label: '审核轮次' }, { key: 'records', label: '留痕条数' },
+                { key: 'maintainCount', label: '提交次数' },
+                { key: 'waitHours', label: '本状态停留(小时)' },
+                { key: 'reviewer', label: '最近处理人' },
+                { key: 'rejectReason', label: '打回原因' },
+                { key: 'issuesText', label: '规范缺口', value: function (r) { return (r.issues || []).join('；'); } },
+                { key: 'source', label: '来源' }, { key: 'createdAt', label: '建档时间' }
+            ]
+        }, 'address');
+    }
+
+    pg.define('address', {
+        sub: '图2 的四级状态机：待审核 → 待修改 → 已修改 → 通过。审核记录留结论、审查记录留版本，打回由巡检定时通知有维护权限的人',
+        load: function (ctx) {
+            applyParamFilter(ctx, ['status', 'branch']);
+            var rows = adrRows();
+            var st = TMS.address.stats(Math.max(7, Number(ctx.days) || 30));
+            var queue = adrQueue(rows);
+            return {
+                rows: rows, st: st, queue: queue,
+                cleanPending: rows.filter(function (r) { return r.status === 'pending' && r.clean; }),
+                phones: util.unique(rows.filter(function (r) { return r.status === 'approved'; }).map(function (r) { return r.phone; })).length,
+                alerts: db.col('alerts').filter(function (a) {
+                    return a.status === 'open' && String(a.key).indexOf('addr:') === 0;
+                })
+            };
+        },
+        render: function (ctx, d) {
+            var st = d.st;
+            var kpi = ui.kpis([
+                { label: '地址档案', value: st.total, unit: '条', icon: '⌖', sub: '近 ' + st.days + ' 天建档 ' + st.recent + ' 条' },
+                { label: '待审核', value: st.pending, unit: '条', icon: '◷', tone: st.overdue ? 'danger' : 'warn', sub: '超 ' + cfg.sla.addressReviewHours + ' 小时 ' + st.overdue + ' 条' },
+                { label: '待网点修改', value: st.revise, unit: '条', icon: '✎', tone: st.revise ? 'warn' : 'success', sub: '打回后超 ' + cfg.sla.addressFixHours + ' 小时未改 ' + st.stuck + ' 条' },
+                { label: '已修改待复审', value: st.revised, unit: '条', icon: '⟳', tone: st.revised ? 'info' : 'muted', sub: '返工后重新提交' },
+                { label: '可通过地址', value: st.approved, unit: '条', icon: '✓', tone: 'success', sub: '覆盖 ' + d.phones + ' 个手机号' },
+                { label: '一次通过率', value: st.firstPassRate, unit: '%', icon: '◎', tone: st.firstPassRate >= 70 ? 'success' : 'warn', sub: '平均审核 ' + st.avgReviewHours + ' 小时 · 共 ' + st.reviews + ' 轮' }
+            ]);
+            var stateCard = ui.card({
+                title: '审核流水线', sub: '四级状态的实际停量，配色越红说明卡得越久', flat: true,
+                body: TMS.charts.bars({
+                    height: 210,
+                    data: TMS.address.FLOW.map(function (s) {
+                        var g = d.rows.filter(function (r) { return r.status === s; });
+                        var over = g.filter(function (r) { return r.overdue || r.stuck; }).length;
+                        return {
+                            label: TMS.address.labelOf(s), value: g.length,
+                            color: { pending: '#d98207', revise: '#d43b3b', revised: '#1668dc', approved: '#1f9d55' }[s],
+                            sub: '超阈值 ' + over + ' 条 · 平均停留 ' + (g.length ? util.round(util.sum(g, 'waitHours') / g.length, 1) : 0) + ' 小时'
+                        };
+                    })
+                })
+            });
+            var branches = st.byBranch.map(function (b) {
+                return {
+                    label: b.label, total: b.total, approved: b.approved,
+                    revise: b.revise, pending: b.pending,
+                    passPct: util.pct(b.approved, b.total)
+                };
+            });
+            var qualityCard = ui.card({
+                title: '网点维护质量', sub: '建档多不等于建得好：看退回率与未审积压', flat: true,
+                body: branches.length ? ui.table({
+                    dense: true, keyName: 'label', rows: branches.slice(0, 12),
+                    columns: [
+                        { key: 'label', label: '归属网点', render: function (r) { return esc(r.label); } },
+                        { key: 'total', label: '建档', align: 'right', width: '68px' },
+                        { key: 'approved', label: '已通过', align: 'right', width: '78px' },
+                        { key: 'passPct', label: '通过率', align: 'right', width: '126px', render: function (r) { return rateBar(r.passPct, { target: 70 }); } },
+                        { key: 'pending', label: '未审', align: 'right', width: '66px', render: function (r) { return r.pending ? ui.badge(r.pending + ' 条', 'warn') : '<span class="tms-dim">—</span>'; } },
+                        { key: 'revise', label: '返工中', align: 'right', width: '78px', render: function (r) { return r.revise ? ui.badge(r.revise + ' 条', 'danger') : '<span class="tms-dim">—</span>'; } }
+                    ]
+                }) : ui.empty('窗口内没有建档', '网点端提交后这里就会出人')
+            });
+            var noticeCard = ui.card({
+                title: '待发送的通知', tone: d.alerts.length ? 'warn' : '', flat: true,
+                tools: ui.btn('重跑巡检', { size: 'sm', tone: 'ghost', act: 'adr:sweep', icon: '⟳' }),
+                body: d.alerts.length ? ui.list(d.alerts.slice(0, 8).map(function (a) {
+                    return {
+                        title: esc(a.title) + ' ' + ui.badge(a.level === 'danger' ? '严重' : a.level === 'warn' ? '警告' : '提示', a.level === 'danger' ? 'danger' : a.level === 'warn' ? 'warn' : 'info'),
+                        sub: esc(a.message), act: 'adr:open', arg: a.refId
+                    };
+                })) : ui.empty('没有待通知的地址', '待审核与待修改都清空了', '✓'),
+                foot: '通知由「派送地址审核与打回通知」巡检按权限找到该改的人，条件一消失就自动核销，不需要手工关单'
+            });
+            return wrap(ctx, {
+                actions: ui.btn('新建地址', { tone: 'primary', act: 'adr:new', icon: '+' }) +
+                    ui.btn('批量通过无缺口件', { act: 'adr:passClean', icon: '✓' }) +
+                    ui.btn('导出台账', { act: 'adr:export', icon: '⤓' }),
+                sub: '在档 ' + d.rows.length + ' 条 · 待办 ' + d.queue.length + ' 条（审核 ' + st.pending + ' / 打回 ' + st.revise + ' / 复审 ' + st.revised + '）· 通知 ' + d.alerts.length + ' 条',
+                body: [
+                    kpi,
+                    ui.split('2', [stateCard, qualityCard]),
+                    grid(ctx, {
+                        title: '待办队列', sub: '按在当前状态停留时长倒排，压得最久的先处理',
+                        rows: d.queue, keyName: 'id', onRow: 'adr:open', searchKey: 'q',
+                        search: adrSearch, unit: '条', pageSize: 8, columns: adrColumns(true),
+                        fields: [
+                            { key: 'q', type: 'search', label: '手机号 / 地址 / 收件人 / 审核人' },
+                            { key: 'branch', label: '归属网点', options: [{ value: '', label: '全部网点' }].concat(ui.optionsOf(util.unique(d.rows.map(function (r) { return r.branchName; })).filter(Boolean))) }
+                        ],
+                        chips: [{ label: '全部待办', value: '', count: d.queue.length }].concat(TMS.address.FLOW.filter(function (s) { return s !== 'approved'; }).map(function (s) {
+                            return { label: TMS.address.labelOf(s), value: s, count: d.queue.filter(function (r) { return r.status === s; }).length };
+                        })),
+                        chipsName: 'status',
+                        filter: adrFilter,
+                        tools: (d.cleanPending.length ? ui.btn('通过 ' + d.cleanPending.length + ' 条无缺口件', { size: 'sm', tone: 'primary', act: 'adr:passClean' }) : '') +
+                            ui.btn('只看超阈值', { size: 'sm', act: 'adr:onlyOver', icon: '⚑' }),
+                        emptyText: '待办队列是空的', emptySub: '所有地址都已通过审核，或还没有网点提交'
+                    }),
+                    grid(ctx, {
+                        title: '派送地址台账', sub: '一条地址 = 一个手机号下的一条可派送记录，历史轮次都在审查记录里',
+                        rows: d.rows, keyName: 'id', onRow: 'adr:open', searchKey: 'q',
+                        search: adrSearch, filter: adrFilter, unit: '条', pageSize: 12,
+                        columns: adrColumns(true),
+                        fields: [
+                            { key: 'q', type: 'search', label: '手机号 / 地址 / 收件人' },
+                            { key: 'status', label: '状态', options: [{ value: '', label: '全部状态' }].concat(dictOptions(TMS.address.STATUS)) },
+                            { key: 'branch', label: '归属网点', options: [{ value: '', label: '全部网点' }].concat(ui.optionsOf(util.unique(d.rows.map(function (r) { return r.branchName; })).filter(Boolean))) },
+                            { key: 'wait', label: '停留时长', options: [{ value: '', label: '不限时长' }, { value: '1', label: '只看超阈值' }] }
+                        ],
+                        chips: [{ label: '全部', value: '', count: d.rows.length }].concat(TMS.address.FLOW.map(function (s) {
+                            return { label: TMS.address.labelOf(s), value: s, count: d.rows.filter(function (r) { return r.status === s; }).length };
+                        })),
+                        chipsName: 'status',
+                        tools: ui.btn('导出台账', { size: 'sm', act: 'adr:export', icon: '⤓' }),
+                        emptyText: '没有符合条件的地址'
+                    }),
+                    noticeCard,
+                    ui.card({
+                        title: '口径说明', flat: true,
+                        body: ui.desc([
+                            { label: '为什么要审核', value: '地址是一线按手机号取到的派送依据。没有审核这一环，「按手机号命中历史地址」就等于把一个没核过的字符串直接送到派送员手上，错一次就是一趟空跑' },
+                            { label: '四级状态怎么流转', value: '新建/补充 → 待审核；地址规范 → 通过；不规范 → 打回 → 待修改；网点改完 → 已修改 → 复审通过。已修改再被打回会退回待修改并重新计轮次' },
+                            { label: '审核记录与审查记录的区别', value: '审核记录 = 审核人对这一版地址下的结论（通过/打回），追责看它；审查记录 = 地址内容变化时的对照快照，复审要看它。打回时地址一个字没动，所以只留审核记录' },
+                            { label: '为什么已通过的不能直接改', value: '改了就不是当初通过的那版地址，直接落库等于绕过审核。要先「发起复审」退回待审核，改动以审查记录留档' },
+                            { label: '通知发给谁', value: '按权限找人不写死角色名——「派送地址审核与打回通知」巡检读 RBAC，把有 address:manage 的角色列出来当收件人；网点改完或地址结案，告警自动核销' },
+                            { label: '与图1 的关系', value: '「按手机号获取维护地址」只认「通过」的记录；查不到（或没通过）才落到机构派送围栏判定，围栏也不覆盖就是「不可派送需自提」' },
+                            { label: '审核时限', value: '待审核超过 ' + cfg.sla.addressReviewHours + ' 小时进超时告警；打回后 48 小时未改算网点滞留，两边都在待办队列标红' }
+                        ])
+                    })
+                ]
+            });
+        },
+        actions: {
+            'adr:open': adrDrawer,
+            'adr:new': function () { adrFormModal(''); },
+            'adr:edit': function (id) { adrFormModal(id); },
+            'adr:reject': function (id) { adrRejectModal(id); },
+            'adr:pass': function (id) { adrPass(id); TMS.shell.refresh(); },
+            'adr:reopen': function (id) {
+                var r = adrRows().filter(function (x) { return x.id === id; })[0];
+                if (!r) return;
+                ui.confirm({
+                    title: '对已通过的地址发起复审', okText: '退回待审核',
+                    message: '地址「' + r.full + '」当前为「通过」，复审会退回「待审核」，期间该手机号不能再按地址直接派送。',
+                    detail: '历史审核与审查记录一条不删——客户投诉「地址明明是错的你们却放行」时，要能翻出每一轮是谁批的。'
+                }).then(function (yes) {
+                    if (!yes) return;
+                    var res = TMS.address.reopen(id, actor());
+                    if (!res.ok) { ui.toast('发起复审失败：' + res.message, 'error'); return; }
+                    ui.toast('已退回待审核，该手机号暂时不能按地址派送', 'warn');
+                    TMS.shell.refresh();
+                });
+            },
+            'adr:del': function (id) {
+                var r = adrRows().filter(function (x) { return x.id === id; })[0];
+                if (!r) return;
+                ui.confirm({
+                    title: '删除地址档案', okText: '删除', danger: true,
+                    message: '将删除 ' + r.phone + ' 下的这条地址及其 ' + r.records + ' 条审核/审查记录。',
+                    detail: '已通过的地址被删除后，该手机号会退回「按围栏判定」这一支；如果它还有在途件，派送依据会当场消失。'
+                }).then(function (yes) {
+                    if (!yes) return;
+                    var res = TMS.address.remove(id, actor());
+                    if (!res.ok) { ui.toast('删除失败：' + res.message, 'error'); return; }
+                    ui.toast('地址档案与审核记录已删除', 'success');
+                    TMS.shell.refresh();
+                });
+            },
+            'adr:passClean': function () {
+                var list = adrRows().filter(function (r) { return r.status === 'pending' && r.clean; });
+                if (!list.length) { ui.toast('没有「要素齐全且待审核」的地址', 'info'); return; }
+                ui.confirm({
+                    title: '批量通过无缺口件', okText: '通过 ' + list.length + ' 条',
+                    message: '将把 ' + list.length + ' 条「城市/区镇/门牌齐全且未超审核时限」的待审核地址一次放行。',
+                    detail: '缺口件不会被带上，仍然留在待审核队列里等人工判断；每条都会生成审核记录 + 通过版审查快照，与单条通过同一条路径。'
+                }).then(function (yes) {
+                    if (!yes) return;
+                    var who = actor(), ok = 0;
+                    db.batch(function () {
+                        list.forEach(function (r) {
+                            if (TMS.address.review(r.id, { action: 'approve', actor: who }).ok) ok++;
+                        });
+                    }, 'address:passClean');
+                    ui.toast('已通过 ' + ok + ' 条，' + (list.length - ok) + ' 条被状态变动跳过', ok ? 'success' : 'warn');
+                    TMS.shell.refresh();
+                });
+            },
+            'adr:onlyOver': function () {
+                var st = curCtx().state;
+                st.filters = st.filters || {};
+                st.filters.wait = st.filters.wait === '1' ? '' : '1';
+                st.page = 1;
+                TMS.shell.refresh();
+            },
+            'adr:sweep': function () {
+                var out = TMS.jobs.run('addressReview');
+                if (!out.ok) { ui.toast(out.message, 'warn'); return; }
+                ui.toast('通知已重跑：待审 ' + out.out.backlog + ' 条 / 待改 ' + out.out.needFix + ' 条 → ' + out.out.notify, 'success');
+                TMS.shell.refresh();
+            },
+            'adr:export': function () { adrExport(adrRows()); },
+            'adr:orders': function (phone) {
+                ui.closeTop();
+                TMS.shell.go('order', { q: String(phone).slice(-4) });
+            }
+        }
+    });
+
     pg.define('geofence', {
-        sub: '围栏决定「这个城市的作业地点算不算在网内」：缺口由巡检自动报警，补齐围栏当场自动核销',
+        sub: '围栏是勾出来的边界，不是圆心加半径：到货、派送、编号三层各回答图1 里的一个问题',
         load: function (ctx) {
             applyParamFilter(ctx, ['type', 'city', 'q']);
             return gfView(ctx.days);
         },
+        afterRender: function (ctx, root) {
+            var host = root && root.querySelector('[data-map="1"]');
+            if (gfMap) { try { gfMap.destroy(); } catch (e) { } gfMap = null; }
+            if (!host) return;
+            var st = ctx.state;
+            gfMap = TMS.map.mount(host, {
+                fences: gfMapFences(),
+                selected: st.gfSelected || '',
+                editable: true,
+                onPick: function (id) { gfSelect(id); },
+                /* 勾画闭合 = 带着顶点回到表单。名称/绑定/状态这些属性地图管不着，
+                   但几何必须一次算齐再落库，所以出口只有 saveFence 一条 */
+                onDraw: function (points) {
+                    var sel = st.gfSelected ? db.get('geofences', st.gfSelected) : null;
+                    gfFormModal(sel ? sel.id : '', { points: points, type: sel ? sel.type : (st.gfDrawType || 'branch') });
+                }
+            });
+        },
         render: function (ctx, d) {
-            var a = d.audit;
+            var a = d.audit, st = ctx.state;
+            st.gfDrawType = st.gfDrawType || 'branch';
+            st.gfProbeCity = st.gfProbeCity && TMS.master.cityByName(st.gfProbeCity) ? st.gfProbeCity
+                : (TMS.master.CITIES[0] || {}).name;
+            var probe = gfProbe(st.gfProbeCity);
             var kpi = ui.kpis([
-                { label: '围栏总数', value: d.rows.length, unit: '张', tone: 'brand', sub: '在用 ' + a.activeRows + ' 张' },
+                { label: '围栏总数', value: d.rows.length, unit: '张', tone: 'brand', sub: '在用 ' + a.activeRows + ' 张 · 其中 ' + d.drawn + ' 张已勾边界' },
+                { label: GF_TYPE_TEXT.hub, value: d.byType.hub || 0, unit: '张', tone: 'warn', sub: cfg.fence.ASKS.hub },
+                { label: GF_TYPE_TEXT.branch, value: d.byType.branch || 0, unit: '张', tone: 'brand', sub: cfg.fence.ASKS.branch },
+                { label: GF_TYPE_TEXT.courier, value: d.byType.courier || 0, unit: '张', tone: 'success', sub: cfg.fence.ASKS.courier },
                 { label: '覆盖城市', value: a.coveredCities, unit: '/ ' + a.cityCount, tone: 'success', sub: '城市质心落在任一在用围栏内' },
                 { label: '缺口城市', value: d.gaps.length, unit: '座', tone: d.gaps.length ? 'danger' : 'success', sub: '窗口内有越界作业的城市' },
-                { label: '带地点扫描', value: a.total, unit: '次', tone: 'info', sub: '常规作业地点由订单派生，不落库' },
-                { label: '围栏内命中', value: a.covered, unit: '次', tone: 'brand', sub: '占比 ' + util.pct(a.covered, a.total) + '%，另有 ' + a.unknown + ' 次地点认不出城市' },
-                { label: '越界作业', value: d.orphan.length, unit: '次', tone: d.orphan.length ? 'danger' : 'success', sub: '涉及 ' + d.orphanTickets + ' 票' },
-                { label: '未决告警', value: d.alerts.length, unit: '条', tone: d.alerts.length ? 'warn' : 'success', sub: '补齐围栏即自动核销' }
+                { label: '编号围栏缺口', value: d.courierGap.length, unit: '座城市', tone: d.courierGap.length ? 'warn' : 'success', sub: '有派送员却没勾编号围栏，只能人工指派' },
+                { label: '越界作业', value: d.orphan.length, unit: '次', tone: d.orphan.length ? 'danger' : 'success', sub: '涉及 ' + d.orphanTickets + ' 票 · 围栏内命中 ' + util.pct(a.covered, a.total) + '%' }
             ]);
+            var drawTypes = cfg.fence.TYPES.map(function (t) {
+                return ui.btn(GF_TYPE_TEXT[t], {
+                    tone: st.gfDrawType === t ? 'primary' : 'ghost', size: 'sm', act: 'gf:dtype', arg: t
+                });
+            }).join(' ');
+            var mapCard = ui.card({
+                title: '围栏地图', icon: '⬡',
+                sub: '先选类型再勾边界 · 地图上的点用于落顶点，拖红色手柄用于改顶点 · 未联网时地图空白但下方台账照旧可维护',
+                tools: ui.btn('新建当前类型围栏', { tone: 'primary', size: 'sm', act: 'gf:new', arg: st.gfDrawType, icon: '+' }) +
+                    ui.btn('重跑巡检', { size: 'sm', act: 'gf:audit', icon: '⟳' }),
+                body: '<div class="tms-row" style="margin:0 0 8px"><span class="tms-dim">这次要勾的是</span> ' + drawTypes +
+                    '<span class="tms-dim">｜' + esc(cfg.fence.ASKS[st.gfDrawType]) + '｜新围栏落库后立即重跑覆盖巡检</span></div>' +
+                    TMS.map.box({ hint: '当前类型：' + GF_TYPE_TEXT[st.gfDrawType] + ' · 点地图依次落点，≥' + cfg.fence.minPoints + ' 点后可闭合保存' }) +
+                    '<div data-gf-focus>' + (st.gfSelected && db.get('geofences', st.gfSelected) ? '' : ui.empty('没有选中围栏', '在地图上点一块边界，或在台账里点围栏名')) + '</div>'
+            });
+            var probeCard = ui.card({
+                title: '判定链演示', icon: '⑂',
+                sub: '换一座城市，看图1 的三条判定分别给出什么答案',
+                tools: ui.link('查这单的作业', 'gf:goOrders', probe.city, { tone: 'ghost', size: 'sm' }),
+                body: ui.list(probe.rows.map(function (r) {
+                    return {
+                        title: esc(r.ask) + ' ' + r.verdict,
+                        sub: esc(r.note),
+                        right: r.fence ? ui.link('看围栏', 'gf:open', r.fence.id, { tone: 'ghost' }) : '<span class="tms-dim">未命中</span>'
+                    };
+                })) + '<div class="tms-row" style="margin-top:8px">' +
+                    TMS.master.CITIES.slice(0, 12).map(function (c) {
+                        return ui.btn(c.name, { size: 'sm', tone: c.name === probe.city ? 'primary' : 'ghost', act: 'gf:probe', arg: c.name });
+                    }).join(' ') +
+                    '<span class="tms-dim">样本点取城市质心：' + probe.city + ' ' + probe.point.lat + ', ' + probe.point.lng + '</span></div>'
+            });
             var gapCard = ui.card({
                 title: '覆盖缺口', sub: '越界次数从多到少 · 点「补围栏」直接带城市建档', icon: '⬡',
                 tools: ui.btn('批量补前 10 座城市', { tone: 'primary', act: 'gf:bulk', icon: '⚑' }) +
@@ -11102,13 +11999,57 @@
                     rows: d.orphan.slice(0, 60).map(function (r, i) { return { key: i, city: r.city, scan: r.scan }; })
                 }) : ui.empty('窗口内没有越界作业', '所有带地点的扫描都能对应到在用围栏')
             });
+            var courierGapCard = ui.card({
+                title: '编号围栏缺口', icon: '③',
+                sub: d.courierGap.length + ' 座城市有派送员、有在用派送围栏，却一张编号围栏都没勾',
+                body: d.courierGap.length ? ui.table({
+                    dense: true, keyName: 'city', emptyText: '每个派送城市都勾了编号围栏',
+                    columns: [
+                        { key: 'city', label: '城市', width: '92px', sortable: false, render: function (r) { return '<b>' + esc(r.city) + '</b>'; } },
+                        { key: 'couriers', label: '在册派送员', align: 'right', width: '104px', sortable: false },
+                        { key: 'scans', label: '窗口内带地点扫描', align: 'right', width: '150px', sortable: false, render: function (r) { return r.scans ? fmt.number(r.scans) + ' 次' : '<span class="tms-dim">窗口内无</span>'; } },
+                        {
+                            key: 'ops', label: '操作', align: 'right', width: '120px', sortable: false, render: function (r) {
+                                return ui.link('去地图勾', 'gf:probe', r.city, { tone: 'ghost' });
+                            }
+                        }
+                    ],
+                    rows: d.courierGap.slice(0, 12)
+                }) : ui.empty('派送城市都挂了编号围栏', '图1 右支的每一格都有着落：收件点落进谁的围栏就自动绑谁'),
+                foot: '<span class="tms-dim">这些城市里的件，派单时会全部退回「需手动指定派送编号」——不是系统算不出，是没人告诉它这片归谁</span>'
+            });
+            /* 巡检另两类缺口在这里给出口：到货围栏证明不了场地、旧版自动方框判不准边界，
+               两条都要能一步点到该改的那张围栏上，不然告警看完了还是没处动手 */
+            var healthCard = ui.card({
+                title: '到货围栏与待重勾边界', icon: '①',
+                sub: '分拨落点缺口 ' + d.hubGap.length + ' 处 · 旧版方框 ' + d.legacyGaps.length + ' 张',
+                body: (d.hubGap.length || d.legacyGaps.length) ? ui.list(
+                    d.hubGap.slice(0, 6).map(function (h) {
+                        return {
+                            title: esc(h.hub) + ' ' + ui.badge('无到货围栏', 'danger'),
+                            sub: esc(h.city) + ' · ' + esc(h.zone) + ' · 到件扫描无法证明件落在了这块场地上',
+                            right: ui.link('勾边界', 'gf:new', 'hub', { tone: 'ghost' })
+                        };
+                    }).concat(d.legacyGaps.slice(0, 6).map(function (g) {
+                        return {
+                            title: esc(g.name) + ' ' + ui.badge('旧版方框', 'warn'),
+                            sub: esc(GF_TYPE_TEXT[g.type] || g.type) + ' · ' + esc(g.city) + ' · 按圆心自动生成的边界与现场对不上，面积与命中都不可信',
+                            right: ui.link('重勾', 'gf:redraw', g.id, { tone: 'ghost' })
+                        };
+                    }))) : ui.empty('每个分拨都有到货围栏，也没有待重勾的旧版方框', '图1 的第一问「件到没到」全部有据可查')
+            });
             var listCard = grid(ctx, {
-                title: '围栏台账', sub: '半径决定覆盖、状态决定是否参与判定',
+                title: '围栏台账', sub: '勾过的按顶点环判定，只填半径的按圆判定，状态决定是否参与判定',
                 rows: d.rows, searchKey: 'q',
                 search: function (r) { return [r.id, r.name, r.city, r.refName].join(' '); },
                 fields: [
                     { key: 'q', type: 'search', label: '编号 / 名称 / 城市' },
                     { key: 'type', label: '类型', options: [{ value: '', label: '全部类型' }].concat(dictOptions(GF_TYPE_TEXT)) },
+                    {
+                        key: 'shape', label: '图形', options: [
+                            { value: '', label: '全部图形' }, { value: 'polygon', label: '勾画边界' }, { value: 'circle', label: '半径圆' }
+                        ]
+                    },
                     { key: 'city', label: '城市', type: 'city', placeholder: '城市名，留空为全部' }
                 ],
                 filter: gfRowFilter,
@@ -11119,17 +12060,21 @@
                     { label: '重复布点', value: 'redundant', count: d.rows.filter(function (r) { return r.redundant; }).length }
                 ],
                 chipsName: 'status',
-                tools: ui.btn('新建围栏', { tone: 'primary', act: 'gf:new', icon: '+' }) +
-                    ui.btn('导出台账', { act: 'gf:export', icon: '⤓' }),
+                tools: ui.btn('导出台账', { act: 'gf:export', icon: '⤓' }),
                 columns: [
                     {
                         key: 'name', label: '围栏', render: function (r) {
                             return ui.link(esc(r.name), 'gf:open', r.id) +
-                                '<div class="tms-dim">' + esc(GF_TYPE_TEXT[r.type] || r.type) + ' · ' + esc(r.refName) + '</div>';
+                                '<div class="tms-dim">' + esc(r.typeLabel) + ' · ' + esc(r.refName) + '</div>';
                         }
                     },
                     { key: 'city', label: '城市', width: '86px' },
-                    { key: 'radiusM', label: '半径', align: 'right', width: '92px', render: function (r) { return util.round(r.radiusM / 1000, 2) + ' km'; } },
+                    {
+                        key: 'areaKm2', label: '图形', width: '150px', render: function (r) {
+                            return (r.shape === 'polygon' ? ui.badge('勾画', 'success') : ui.badge('半径', 'muted')) +
+                                '<div class="tms-dim">' + esc(r.shapeText) + '</div>';
+                        }
+                    },
                     { key: 'coverCount', label: '罩住城市', align: 'right', width: '104px', render: function (r) { return r.coverCount ? ui.badge(r.coverCount + ' 座', r.coverCount > 1 ? 'success' : 'muted') : ui.badge('未覆盖', 'danger'); } },
                     { key: 'branchCount', label: '同城网点', align: 'right', width: '100px', render: function (r) { return r.branchCount + ' 个 · ' + r.staff + ' 人'; } },
                     { key: 'hit', label: '窗口命中', align: 'right', width: '104px', render: function (r) { return r.hit ? fmt.number(r.hit) + ' 次' : '<span class="tms-dim">无流水</span>'; } },
@@ -11141,8 +12086,8 @@
                         }
                     },
                     {
-                        key: 'ops', label: '操作', align: 'right', width: '168px', sortable: false, render: function (r) {
-                            return ui.link('半径', 'gf:resize', r.id, { tone: 'ghost' }) + ' ' +
+                        key: 'ops', label: '操作', align: 'right', width: '176px', sortable: false, render: function (r) {
+                            return ui.link('勾边界', 'gf:redraw', r.id, { tone: 'ghost' }) + ' ' +
                                 ui.link('编辑', 'gf:edit', r.id, { tone: 'ghost' }) + ' ' +
                                 ui.link(r.status === 'active' ? '停用' : '启用', 'gf:toggle', r.id, { tone: 'ghost' });
                         }
@@ -11151,22 +12096,27 @@
                 emptyText: '没有符合条件的围栏'
             });
             return wrap(ctx, {
-                actions: ui.btn('新建围栏', { tone: 'primary', act: 'gf:new', icon: '+' }) +
+                actions: ui.btn('新建' + GF_TYPE_TEXT[st.gfDrawType], { tone: 'primary', act: 'gf:new', arg: st.gfDrawType, icon: '+' }) +
                     ui.btn('批量补缺口', { act: 'gf:bulk', icon: '⚑' }),
                 sub: '窗口 ' + d.days + ' 天 · ' + fmt.number(a.total) + ' 次带地点扫描 · ' +
-                    a.coveredCities + '/' + a.cityCount + ' 座城市在网内 · ' + d.gaps.length + ' 座城市越界',
-                body: [kpi, ui.split('2', [gapCard, cityCard]), orphanCard, listCard, ui.card({
-                    title: '口径说明', flat: true,
-                    body: ui.desc([
-                        { label: '为什么只统计带地点的扫描', value: '常规环节的地点由订单与节点派生、根本不落库；显式写了 location 的都是人工改判或异常上报，正是需要拿围栏核对的那批（本窗口 ' + a.total + ' 条）' },
-                        { label: '覆盖怎么判', value: '城市质心到圆心的距离 ≤ 半径即算覆盖。同城网点在档案里共用城市质心，逐点算距离得到的是同一个答案，因此判定落在城市粒度' },
-                        { label: '半径有什么用', value: '它是围栏上唯一能改变结论的参数：调小会放走边缘城市，调大可顺手罩住邻市（例如 25 km 能同时管住广佛）' },
-                        { label: '缺口怎么消', value: '「电子围栏覆盖缺口」巡检按城市建告警（键 fence:gap:城市），补一张覆盖该城市的在用围栏后重跑巡检即自动核销，不需要手工关单。巡检固定按近 30 天窗口跑，与顶栏时间窗无关，所以页面显示的缺口城市数与告警数可能有几天差' },
-                        { label: '重复布点', value: '同一城市被多张在用围栏罩住时，命中数只归第一张，其余标「重复」提示可以停用' },
-                        { label: '越界了怎么办', value: '明细里可一键转异常工单，走异常页那套定责、扣款与理赔闭环；围栏本身不改订单状态' }
-                    ])
-                })]
-            });
+                    a.coveredCities + '/' + a.cityCount + ' 座城市在网内 · ' + d.gaps.length + ' 座城市越界 · ' +
+                    d.drawn + '/' + d.rows.length + ' 张已勾边界',
+                body: [kpi, mapCard, ui.split('2', [probeCard, ui.stack([gapCard, cityCard])]),
+                    ui.split('2', [courierGapCard, healthCard]), orphanCard, listCard, ui.card({
+                        title: '口径说明', flat: true,
+                        body: ui.desc([
+                            { label: '为什么是三类围栏', value: '图1 把一件事拆成了三层：到货围栏证明「件到没到这片场地」，机构派送围栏证明「这个收件点送不送」，派送员编号围栏证明「归哪位派送员送」。三层各自判定、各自缺口，合成一张「覆盖/不覆盖」就看不出漏在哪一环' },
+                            { label: '勾画怎么算', value: '顶点环用射线法判点在不在内，面积用鞋带公式按纬度收缩后算。只填半径的围栏退回圆判定，两者在判定时等价——所以老数据不必一次改完，地图上有蓝有绿才是要补的那批' },
+                            { label: '为什么城市质心当样本点', value: '站点没有地理编码，区级坐标不在演示数据里，因此判定落在城市粒度：城市质心落进派送围栏即算该市可派送。同城网点在档案里共用城市质心，逐点算得到的是同一个答案' },
+                            { label: '缺口怎么消', value: '「电子围栏覆盖缺口」巡检按图1 的三层分别建告警：fence:gap:城市 是没有在用派送围栏的作业城市，fence:hub:编号 是落点没有到货围栏的分拨，fence:courier:城市 是没勾编号围栏的派送城市，fence:legacy:编号 是旧版按圆心自动生成的方框。补齐或重勾后重跑巡检即自动核销，不需要手工关单。巡检固定按近 30 天窗口跑，与顶栏时间窗无关，所以页面显示的缺口城市数与告警数可能有几天差' },
+                            { label: '判定链怎么接到派单', value: '派单弹层按 TMS.order.dispatchOf 现算：收件手机号有审通过的维护地址就可派送，没有就看城市质心落没落进机构派送围栏，都没落进就写明「需自提」；派送员一栏由编号围栏决定——罩得住就自动绑那位，罩不住只预填离收件点最近的片区并要求确认，系统不替调度猜人' },
+                            { label: '编号围栏缺口有什么用', value: '它对应图1 右支的「否 → 需手动指定派送编号」。这些城市的每一件都要人工指派，派单页不会自动绑人——不是系统算不出，是没人告诉它这片归谁' },
+                            { label: '重复布点', value: '同一城市被多张同类在用围栏罩住时，命中数只归第一张，其余标「重复」提示可以停用' },
+                            { label: '越界了怎么办', value: '明细里可一键转异常工单，走异常页那套定责、扣款与理赔闭环；围栏本身不改订单状态' },
+                            { label: '地图打不开怎么办', value: '围栏不依赖地图也能维护：台账里的编辑入口照样能改名称、绑定、半径与状态，勾画等设备能连到 CDN 再补' }
+                        ])
+                    })]
+                });
         },
         actions: merge(gfActions, {
             'gf:export': function () {
@@ -11177,11 +12127,14 @@
                     cols: [
                         { key: 'id', label: '围栏编号' }, { key: 'name', label: '名称' },
                         { key: 'type', label: '类型', value: function (r) { return GF_TYPE_TEXT[r.type] || r.type; } },
-                        { key: 'city', label: '城市' }, { key: 'refName', label: '绑定分拨' },
+                        { key: 'city', label: '城市' }, { key: 'refName', label: '绑定对象' },
+                        { key: 'shape', label: '图形', value: function (r) { return r.shape === 'polygon' ? '勾画边界' : '半径圆'; } },
+                        { key: 'points', label: '顶点数' },
+                        { key: 'areaKm2', label: '面积(km²)' },
                         { key: 'radiusM', label: '半径(米)' },
                         { key: 'coverCount', label: '罩住城市数' },
                         { key: 'coverNames', label: '罩住城市', value: function (r) { return (r.coverNames || []).join('、'); } },
-                        { key: 'nearMiss', label: '半径外最近城市' },
+                        { key: 'nearMiss', label: '环外最近城市' },
                         { key: 'branchCount', label: '同城网点' }, { key: 'staff', label: '同城员工' },
                         { key: 'devices', label: '同城终端' },
                         { key: 'hit', label: '窗口命中' }, { key: 'orderCount', label: '涉及订单' },

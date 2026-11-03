@@ -33,6 +33,8 @@
         roles: { prefix: 'ROL', label: '角色' },
         permissions: { prefix: 'PER', label: '权限' },
         customers: { prefix: 'CU', label: '客户' },
+        addresses: { prefix: 'ADR', label: '派送地址' },
+        addressReviews: { prefix: 'ARV', label: '地址审核记录', trim: 120 },
         branches: { prefix: 'BR', label: '网点' },
         hubs: { prefix: 'HB', label: '分拨中心' },
         vehicles: { prefix: 'VEH', label: '车辆' },

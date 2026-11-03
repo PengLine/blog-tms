@@ -164,6 +164,17 @@
         };
     }
 
+    /* 路由卡片的副标题：先说这一单跨到哪一层，再说怎么走。
+       试算表单只收城市，收不到区级，所以这里不提示「缺区级」——
+       客户填不了的东西不该当成他的地址有问题 */
+    function routeScopeSub(plan, p) {
+        if (!plan) return '路由由线路主数据即时给出，下单后不会另起一条线';
+        var sc = plan.scope || TMS.network.scopeOfOrder(p);
+        var ch = plan.chain || {};
+        return esc(ch.from || p.origin) + ' → ' + esc(ch.to || p.destination) + ' · ' +
+            ui.badge(esc(sc.name), sc.tone);
+    }
+
     function quoteOf(p) {
         if (!p.destination) return null;
         if (!TMS.master.cityByName(p.origin) || !TMS.master.cityByName(p.destination)) return null;
@@ -821,12 +832,14 @@
                         }) : ui.empty('先填目的城市', '填好后这里列出四种服务的报价与时效')
                     }),
                     ui.card({
-                        title: '这票货怎么走', sub: '路由由线路主数据即时给出，下单后不会另起一条线', flat: true,
+                        title: '这票货怎么走', sub: routeScopeSub(plan, p), flat: true,
                         body: plan ? ui.timeline(plan.segments.map(function (s) {
+                            var sc = TMS.network.segmentScope(s);
                             return {
                                 title: esc(String(s.from)) + ' → ' + esc(String(s.to)),
                                 time: pg.LEG_TYPE[s.legType] || s.legType || '中转',
-                                body: fmt.km(s.km) + ' · 标准 ' + fmt.duration(s.stdHours) + ' · ' + esc(s.mode || '陆运'),
+                                body: fmt.km(s.km) + ' · 标准 ' + fmt.duration(s.stdHours) + ' · ' + esc(s.mode || '陆运') +
+                                    ' · <span class="tms-dim">跨度 ' + esc(sc.name) + '</span>',
                                 tone: 'ok'
                             };
                         })) : ui.empty('等待目的城市', '路由段、中转分拨与标准时长都会在这里列出')
@@ -870,17 +883,11 @@
     /* ---------- 货物跟踪 ---------- */
 
     function findMine(code) {
-        var key = String(code || '').trim().toUpperCase();
-        if (!key) return null;
         var list = myRaw();
-        var hit = list.filter(function (o) {
-            return String(o.id).toUpperCase() === key || String(o.waybillNo).toUpperCase() === key;
-        })[0];
+        var hit = TMS.order.byCode(code, list);
         if (hit) return hit;
-        var fuzzy = list.filter(function (o) {
-            return String(o.waybillNo).indexOf(key) > -1 || String(o.id).indexOf(key) > -1 ||
-                String(o.goods).toUpperCase().indexOf(key) > -1;
-        });
+        var key = String(code || '').trim().toUpperCase();
+        var fuzzy = list.filter(function (o) { return String(o.goods).toUpperCase().indexOf(key) > -1; });
         return fuzzy.length === 1 ? fuzzy[0] : null;
     }
 
@@ -1019,7 +1026,7 @@
             var hitCity = f.addr ? (TMS.network.cityOfText(f.addr) || c.city || '') : '';
             return {
                 city: scope, rows: list, kw: kw, coord: TMS.master.cityByName(scope),
-                fence: TMS.network.fenceOfCity(scope),
+                fence: TMS.network.fenceOfCity(scope, 'branch'),
                 hubs: db.col('hubs').filter(function (h) { return h.status === 'active'; }).length,
                 branchTotal: db.col('branches').filter(function (b) { return b.status === 'active'; }).length,
                 cityCount: util.unique(all.filter(function (b) { return b.status === 'active'; }).map(function (b) { return b.city; })).length,
@@ -1083,15 +1090,15 @@
                         }),
                         ui.stack([
                             ui.card({
-                                title: '电子围栏覆盖', sub: '揽收范围按围栏几何判定', flat: true,
+                                title: '电子围栏覆盖', sub: '揽收与派送范围按围栏几何判定，勾出来的边界才算数', flat: true,
                                 body: d.fence ? ui.stack([
                                     ui.desc([
                                         { label: '围栏', value: esc(d.fence.name) },
-                                        { label: '半径', value: fmt.km(util.round((d.fence.radiusM || 0) / 1000, 1)) },
+                                        { label: '边界', value: pg.fenceGeomCell(d.fence) },
                                         { label: '覆盖城市', value: util.unique(TMS.network.citiesInFence(d.fence).map(function (x) { return x.name; })).slice(0, 8).join('、') },
-                                        { label: '越界告警', value: fmt.number(d.fence.alertCount || 0) + ' 次' }
+                                        { label: '状态', value: ui.badge(pg.GF_STATUS_TEXT[d.fence.status] || d.fence.status, d.fence.status === 'active' ? 'success' : 'warn') }
                                     ])
-                                ]) : ui.empty('该城市暂无活动围栏', '由运营端电子围栏维护')
+                                ]) : ui.empty('该城市暂无在用派送围栏', '范围由运营端与网点在围栏地图上勾画维护')
                             }),
                             ui.card({
                                 title: '我的收派网点', sub: '近 60 张单实际使用过', flat: true,
