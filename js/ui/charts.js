@@ -310,11 +310,15 @@
         var h = o.height || 150;
         var cx = W / 2, cy = h - 18, r = Math.min(96, h - 34);
         var value = Math.max(0, Math.min(100, Number(o.value) || 0));
-        var start = Math.PI, end = 0;
+        /* 轨道是上半圆：屏幕坐标 y 向下，端点角必须从 π 走到 2π 才经过顶部；
+           写成 0 会让数值弧端点落到下半圆，彩色弧整段脱离轨道 */
+        var start = Math.PI, end = Math.PI * 2;
         var ang = start + (end - start) * (value / 100);
         function pt(a, rad) { return [cx + rad * Math.cos(a), cy + rad * Math.sin(a)]; }
         var p0 = pt(start, r), p1 = pt(end, r), pv = pt(ang, r);
-        var tone = o.tone || (value >= (o.okAt || 90) ? '#2e9e5b' : value >= (o.warnAt || 70) ? '#d98207' : '#d43b3b');
+        /* 调用方有传语义色（warn/danger）的：直接拼进 stroke 是无效颜色，弧会整段隐形 */
+        var TONES = { success: '#2e9e5b', warn: '#d98207', danger: '#d43b3b', info: '#1668dc', brand: '#1668dc', muted: '#8a94a6' };
+        var tone = TONES[o.tone] || o.tone || (value >= (o.okAt || 90) ? '#2e9e5b' : value >= (o.warnAt || 70) ? '#d98207' : '#d43b3b');
         var body = '<path d="M' + p0[0] + ' ' + p0[1] + ' A' + r + ' ' + r + ' 0 0 1 ' + p1[0] + ' ' + p1[1] +
             '" fill="none" stroke="#eef2f7" stroke-width="13" stroke-linecap="round"/>' +
             '<path d="M' + p0[0] + ' ' + p0[1] + ' A' + r + ' ' + r + ' 0 0 1 ' + pv[0] + ' ' + pv[1] +

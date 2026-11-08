@@ -6,7 +6,7 @@
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>登录 - 汇通物流 TMS 运输管理系统</title>
-    <link rel="stylesheet" href="css/app.css?v=20261103m">
+    <link rel="stylesheet" href="css/app.css?v=20261108a">
     <style>
         .tms-login {
             min-height: 100vh;
@@ -138,6 +138,120 @@
         .tms-login-loops ul {
             margin: 0;
             padding: 0;
+        }
+
+        /* 架构说明书入口：公开文档，登录前就能看；服务名单与色号都读 TMS.architecture，
+           与架构页同源，不在这里另写一份 */
+        .tms-login-arch {
+            position: relative;
+            margin-top: 24px;
+            padding: 15px 16px 13px;
+            border-radius: 14px;
+            background: rgba(6, 18, 38, .42);
+            border: 1px solid rgba(255, 255, 255, .14);
+        }
+
+        .tms-login-arch-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 11px;
+            flex-wrap: wrap;
+        }
+
+        .tms-login-arch-head b { font-size: 13.5px; color: #fff; letter-spacing: .5px; }
+
+        .tms-login-arch-tag {
+            font-size: 10px;
+            letter-spacing: .6px;
+            color: #9fe6de;
+            border: 1px solid rgba(159, 230, 222, .45);
+            background: rgba(159, 230, 222, .1);
+            border-radius: 999px;
+            padding: 2px 9px;
+            white-space: nowrap;
+        }
+
+        .tms-login-arch-head a {
+            margin-left: auto;
+            font-size: 12px;
+            font-weight: 600;
+            color: #cfe3ff;
+            white-space: nowrap;
+        }
+
+        .tms-login-arch-head a:hover { color: #fff; }
+
+        .tms-login-arch-pills {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 7px;
+        }
+
+        .tms-login-arch-pill {
+            display: grid;
+            grid-template-columns: 22px minmax(0, 1fr);
+            grid-template-rows: auto auto;
+            column-gap: 8px;
+            align-items: center;
+            padding: 7px 9px;
+            border-radius: 9px;
+            background: rgba(255, 255, 255, .06);
+            border: 1px solid rgba(255, 255, 255, .1);
+            border-left: 3px solid var(--h);
+            text-decoration: none;
+            transition: transform .16s ease, background .16s ease, box-shadow .16s ease;
+        }
+
+        .tms-login-arch-pill i {
+            grid-row: 1 / span 2;
+            font-style: normal;
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-family: var(--tms-mono);
+            color: var(--h);
+            background: rgba(255, 255, 255, .08);
+            border: 1px solid var(--h);
+        }
+
+        .tms-login-arch-pill b {
+            grid-column: 2;
+            font-size: 12px;
+            font-weight: 600;
+            color: #eef4ff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tms-login-arch-pill span {
+            grid-column: 2;
+            font-size: 10px;
+            color: rgba(255, 255, 255, .52);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .tms-login-arch-pill:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, .12);
+            box-shadow: 0 8px 20px rgba(4, 12, 26, .4);
+            text-decoration: none;
+        }
+
+        .tms-login-arch-pill:focus-visible { outline: 2px solid var(--h); outline-offset: 2px; }
+
+        .tms-login-arch-stats {
+            margin-top: 10px;
+            font-size: 11px;
+            letter-spacing: .3px;
+            color: rgba(255, 255, 255, .55);
         }
 
         .tms-login-foot {
@@ -358,6 +472,7 @@
                     <li>作业城市缺电子围栏即告警，补围栏后自动消警</li>
                 </ul>
             </div>
+            <div class="tms-login-arch" id="login-arch" hidden></div>
             <div class="tms-login-foot">
                 <span id="login-capacity">演示库准备中…</span>
                 <div id="login-copy"></div>
@@ -393,7 +508,7 @@
         </section>
     </div>
 
-    <script src="js/boot.js?v=20261103m"></script>
+    <script src="js/boot.js?v=20261108a"></script>
     <script>
         /* 登录页只用运行时内核，不装外壳：先建库，再把演示账号从 users 表读出来。
            账号的身份、组织、绑定人员一律取种子结果，配置里的 demoAccounts 只提供口令与角色，
@@ -447,6 +562,26 @@
                 }).join('');
                 el('login-capacity').textContent = '演示库 ' + (info.bytes / 1048576).toFixed(2) +
                     ' MB · ' + Object.keys(rows).length + ' 张数据表 · 浏览器 localStorage';
+            }
+
+            /* 架构入口：每枚胶囊深链到公开架构页并聚焦对应服务（#architecture?service=ID），
+               名单、色号、统计全部取领域读模型，架构页改了这里跟着变 */
+            function renderArch() {
+                if (!TMS.architecture) return;
+                var svcs = TMS.architecture.services(), st = TMS.architecture.stats();
+                el('login-arch').innerHTML =
+                    '<div class="tms-login-arch-head"><b>架构设计 · ' + svcs.length + ' 服务拆分</b>' +
+                    '<span class="tms-login-arch-tag">公开文档 · 无需登录</span>' +
+                    '<a href="architecture.html">查看完整架构 →</a></div>' +
+                    '<div class="tms-login-arch-pills">' + svcs.map(function (s) {
+                        return '<a class="tms-login-arch-pill" style="--h:' + esc(s.hue) +
+                            '" href="architecture.html#architecture?service=' + encodeURIComponent(s.id) +
+                            '" title="' + esc(s.mission) + '"><i>' + s.no + '</i><b>' + esc(s.name) +
+                            '</b><span>' + esc(s.tag) + '</span></a>';
+                    }).join('') + '</div>' +
+                    '<div class="tms-login-arch-stats">' + esc(st.services + ' 个服务 · ' + st.layers + ' 层拆分 · ' + st.collections +
+                        ' 张表单一写入者 · ' + st.flows + ' 条端到端链路 · ' + st.jobs + ' 个定时 handler 统一调度') + '</div>';
+                el('login-arch').hidden = false;
             }
 
             function renderRoles() {
@@ -529,6 +664,7 @@
             });
 
             metrics();
+            renderArch();
             fill();
             /* 首屏无感延迟：种子库刚建完时同步渲染会白一下，让用户先看到结构 */
             if (!seeded) metrics();

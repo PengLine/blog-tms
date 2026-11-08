@@ -6,9 +6,10 @@
 按「一个 HTML 只承载一个菜单页」的约定为每个条目落一个外壳。
 菜单改了不必记得来改脚本，也不会出现「菜单里有、文件没有」或「文件在、菜单已删」的漂移。
 
-菜单里的 file 形如 admin/order.html：第一段是角色目录，第二段是页面文件名。
+菜单里的 file 形如 tms/order.html：第一段是角色目录，第二段是页面文件名。
 外壳因此住在角色目录里，css/js 一律加 ../ 前缀；js/boot.js 会按自己的 src 反推出站点基准，
 所以同一份模块清单在根目录的登录页和角色目录下的业务页都能正常加载。
+外壳启动传入的是目录名，boot.start 经 cfg.roleOf 解析成角色 key（目录 tms → 角色 admin）。
 
 用法：
     python tools/gen_pages.py                 # 按当前 token 生成缺失的外壳（已存在的只校验不重写）
@@ -23,7 +24,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RBAC = os.path.join(ROOT, "js", "core", "rbac.js")
-DEFAULT_TOKEN = "v=20261103m"
+DEFAULT_TOKEN = "v=20261108a"
 
 ENTRY_RE = re.compile(r"\{\s*id:\s*'([^']+)'\s*,\s*file:\s*'([^']+)'\s*,\s*label:\s*'([^']+)'")
 TOKEN_RE = re.compile(r"\?v=[0-9a-zA-Z]+")
@@ -66,7 +67,7 @@ EXTRA_HEAD = {
 
 
 def parse_menu(path):
-    """菜单条目 → [(file, role, pageId, label)]；角色即文件所在目录，与 cfg.roles 的 dir 一致"""
+    """菜单条目 → [(file, roleDir, pageId, label)]；roleDir 是文件所在目录，与 cfg.roles 的 dir 一致"""
     with io.open(path, "r", encoding="utf-8") as f:
         src = f.read()
     out, seen = [], {}
@@ -83,25 +84,33 @@ def parse_menu(path):
 def render(entry, token):
     file_name, role, page_id, label = entry
     up = "../" * file_name.count("/")
-    return SHELL.format(label=label, token=token, role=role, page=page_id, up=up,
-                        extra=EXTRA_HEAD.get(page_id, ""))
+    # extra 里也要能写 {up}/{token}：第三方库或私有样式的路径前缀与缓存 token
+    # 必须跟着外壳一起算，不能写死
+    extra = EXTRA_HEAD.get(page_id, "").replace("{up}", up).replace("{token}", token)
+    return SHELL.format(label=label, token=token, role=role, page=page_id, up=up, extra=extra)
 
 
 def sync_index_token(token):
-    """入口页是手写的，只把它的 app.css / boot.js 查询串对齐到当前 token"""
-    path = os.path.join(ROOT, "index.html")
-    if not os.path.exists(path):
-        return "跳过（无 index.html）"
-    with io.open(path, "r", encoding="utf-8") as f:
-        src = f.read()
-    new, n = TOKEN_RE.subn("?%s" % token, src)
-    if n == 0:
-        return "跳过（未找到带 token 的引用）"
-    if new != src:
-        with io.open(path, "w", encoding="utf-8") as f:
-            f.write(new)
-        return "已对齐 %d 处" % n
-    return "已是最新 %d 处" % n
+    """手写的根页面（登录入口、公开架构页）只把 css/js 查询串对齐到当前 token"""
+    results = []
+    for name in ("index.html", "architecture.html"):
+        path = os.path.join(ROOT, name)
+        if not os.path.exists(path):
+            results.append("%s 跳过（不存在）" % name)
+            continue
+        with io.open(path, "r", encoding="utf-8") as f:
+            src = f.read()
+        new, n = TOKEN_RE.subn("?%s" % token, src)
+        if n == 0:
+            results.append("%s 跳过（未找到带 token 的引用）" % name)
+            continue
+        if new != src:
+            with io.open(path, "w", encoding="utf-8") as f:
+                f.write(new)
+            results.append("%s 已对齐 %d 处" % (name, n))
+        else:
+            results.append("%s 已是最新 %d 处" % (name, n))
+    return "；".join(results)
 
 
 def main():
@@ -164,7 +173,7 @@ def main():
             removed += 1
             print("pruned %s（菜单中已无此页）" % rel)
 
-    # 登录入口是手写的，不在外壳模板里，但缓存 token 必须跟全站一致：
+    # 手写的根页面不在外壳模板里，但缓存 token 必须跟全站一致：
     # boot.js 按自己的 src 反推 token，入口页留在旧 token 上就等于给整站发旧缓存
     bumped = sync_index_token(token)
 
