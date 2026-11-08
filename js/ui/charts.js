@@ -263,7 +263,10 @@
     function donut(opts) {
         var o = opts || {};
         var rows = (o.data || []).filter(function (d) { return (Number(d.value) || 0) > 0; }).slice(0, o.limit || 8);
-        var h = o.height || 240;
+        /* 图例每项两行（名称 + 数值·占比），行距必须容纳下行文字的全高：
+           19px 行距下数值行被下一项名称压住；画布高度随项数自适应，不裁切 */
+        var pitch = 28;
+        var h = Math.max(o.height || 240, rows.length * pitch + 26);
         var size = Math.min(h, 210);
         var cx = size / 2 + 4, cy = h / 2, r = size / 2 - 10, r2 = o.ring === false ? r : r * 0.62;
         var total = util.sum(rows, 'value') || 1;
@@ -295,7 +298,7 @@
         /* 右侧图例带数值，小占比也能读出绝对量 */
         var lx = size + 22;
         rows.forEach(function (d, i) {
-            var y = cy - (rows.length * 19) / 2 + i * 19 + 10;
+            var y = cy - (rows.length * pitch) / 2 + i * pitch + 10;
             body += '<rect x="' + lx + '" y="' + (y - 8) + '" width="9" height="9" rx="2" fill="' + (d.color || color(i)) + '"/>';
             body += '<text x="' + (lx + 15) + '" y="' + y + '" font-size="11.5" fill="#43516a">' + esc(d.label) + '</text>';
             body += '<text x="' + (lx + 15) + '" y="' + (y + 13) + '" font-size="10.5" fill="#a4b0c2">' +
@@ -310,11 +313,15 @@
         var h = o.height || 150;
         var cx = W / 2, cy = h - 18, r = Math.min(96, h - 34);
         var value = Math.max(0, Math.min(100, Number(o.value) || 0));
-        var start = Math.PI, end = 0;
+        /* 轨道是上半圆：屏幕坐标 y 向下，端点角必须从 π 走到 2π 才经过顶部；
+           写成 0 会让数值弧端点落到下半圆，彩色弧整段脱离轨道 */
+        var start = Math.PI, end = Math.PI * 2;
         var ang = start + (end - start) * (value / 100);
         function pt(a, rad) { return [cx + rad * Math.cos(a), cy + rad * Math.sin(a)]; }
         var p0 = pt(start, r), p1 = pt(end, r), pv = pt(ang, r);
-        var tone = o.tone || (value >= (o.okAt || 90) ? '#2e9e5b' : value >= (o.warnAt || 70) ? '#d98207' : '#d43b3b');
+        /* 调用方有传语义色（warn/danger）的：直接拼进 stroke 是无效颜色，弧会整段隐形 */
+        var TONES = { success: '#2e9e5b', warn: '#d98207', danger: '#d43b3b', info: '#1668dc', brand: '#1668dc', muted: '#8a94a6' };
+        var tone = TONES[o.tone] || o.tone || (value >= (o.okAt || 90) ? '#2e9e5b' : value >= (o.warnAt || 70) ? '#d98207' : '#d43b3b');
         var body = '<path d="M' + p0[0] + ' ' + p0[1] + ' A' + r + ' ' + r + ' 0 0 1 ' + p1[0] + ' ' + p1[1] +
             '" fill="none" stroke="#eef2f7" stroke-width="13" stroke-linecap="round"/>' +
             '<path d="M' + p0[0] + ' ' + p0[1] + ' A' + r + ' ' + r + ' 0 0 1 ' + pv[0] + ' ' + pv[1] +

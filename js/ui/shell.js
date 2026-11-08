@@ -43,9 +43,9 @@
         return item ? item.file : null;
     }
 
-    /* 菜单里的 file 是站点根相对路径（admin/order.html），页面自己住在角色目录里，
+    /* 菜单里的 file 是站点根相对路径（tms/order.html），页面自己住在角色目录里，
        所以链接一律经 util.url 换算基准：根目录的登录页基准为空，角色页的基准是 ../。
-       少这一步，角色页点侧栏就会跳去 admin/admin/order.html */
+       少这一步，角色页点侧栏就会跳去 tms/tms/order.html */
     function currentFile() {
         var segs = String(global.location.pathname || '').split('/').filter(Boolean);
         return segs.length > 1 ? segs.slice(-2).join('/') : (segs[0] || 'index.html');
@@ -255,7 +255,10 @@
         /* 地址栏 hash 优先：tms-order.html#order-detail?orderId=… 这类深链要落在 hash 指向的页面 */
         var hashed = parseHash(global.location.hash);
         var hash = o.pageId && !hashed.pageId ? { pageId: o.pageId, params: o.params || {} } : hashed;
-        var session = o.session || TMS.auth.current();
+        var session = o.session || TMS.auth.current() ||
+            /* 公开页的访客会话只挂在 state 上：hash 深链重挂载没有 o.session，
+               auth.current() 又是 null，不回落的话访客点页内深链整页不更新 */
+            (s.session && s.session.guest ? s.session : null);
         if (!session) return;
         var pageId = hash.pageId || defaultPage(session);
         var def = TMS.pages.get(pageId) || TMS.pages.get(defaultPage(session));

@@ -660,6 +660,80 @@ body.tms-body img { max-width: 100%; }
 @keyframes tms-out { to { opacity: 0; transform: translateX(20px); } }
 @keyframes tms-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
+/* ---------- 中转装卸时间线（多干线路由） ---------- */
+
+/* 规划台八控件：宽屏固定 4×2，避免 auto-fit 排出 5+3 的失衡行 */
+@media (min-width: 1100px) {
+    .tms-form.tms-planner { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* 分级中转链路条：网点(墨) → 三级(琥珀) → 二级(青蓝) → 一级(品牌蓝)，层级即色相 */
+.tms-chain {
+    display: flex; align-items: stretch; overflow-x: auto; padding: 4px 2px 10px;
+    scrollbar-width: thin; scrollbar-color: var(--tms-brand) var(--tms-line-2);
+}
+.tms-chain::-webkit-scrollbar { height: 6px; }
+.tms-chain::-webkit-scrollbar-track { background: var(--tms-line-2); border-radius: 3px; }
+.tms-chain::-webkit-scrollbar-thumb { background: var(--tms-brand); border-radius: 3px; }
+.tms-chain::-webkit-scrollbar-thumb:hover { background: var(--tms-brand-dark); }
+.tms-chain-node {
+    flex: none; display: flex; flex-direction: column; gap: 1px;
+    padding: 7px 12px; border: 1px solid var(--tms-line); border-left-width: 3px;
+    border-radius: var(--tms-r-sm); background: var(--tms-card);
+    animation: tms-pop .25s ease both;
+}
+.tms-chain-node b { font-size: 12.5px; color: var(--tms-ink); white-space: nowrap; }
+.tms-chain-node span { font-size: 11px; white-space: nowrap; color: var(--tms-ink-3); }
+.tms-chain-lv0 { border-left-color: var(--tms-ink-3); }
+.tms-chain-lv1 { border-left-color: var(--tms-brand); background: linear-gradient(135deg, var(--tms-brand-soft), var(--tms-card) 75%); }
+.tms-chain-lv1 span { color: var(--tms-brand-dark); font-weight: 600; }
+.tms-chain-lv2 { border-left-color: var(--tms-info); background: linear-gradient(135deg, var(--tms-info-soft), var(--tms-card) 75%); }
+.tms-chain-lv2 span { color: var(--tms-info); font-weight: 600; }
+.tms-chain-lv3 { border-left-color: var(--tms-warn); background: linear-gradient(135deg, var(--tms-warn-soft), var(--tms-card) 75%); }
+.tms-chain-lv3 span { color: var(--tms-warn); font-weight: 600; }
+.tms-chain-arrow { align-self: center; padding: 0 6px; font-style: normal; color: var(--tms-ink-4); flex: none; }
+
+.tms-xfer { display: flex; flex-direction: column; gap: 10px; }
+.tms-xfer-hub {
+    border: 1px solid var(--tms-line); border-radius: var(--tms-r);
+    background: linear-gradient(135deg, var(--tms-brand-soft), var(--tms-card) 55%);
+    padding: 10px 12px;
+}
+.tms-xfer-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.tms-xfer-head b { color: var(--tms-ink); }
+.tms-xfer-seq {
+    font-size: 11px; font-weight: 600; color: #fff; background: var(--tms-brand);
+    border-radius: 999px; padding: 1px 8px;
+}
+.tms-xfer-trips { margin-left: auto; font-size: 12px; color: var(--tms-ink-3); }
+.tms-xfer-steps { display: flex; align-items: stretch; gap: 6px; }
+.tms-xfer-step {
+    flex: 1 1 0; display: flex; align-items: center; gap: 8px; min-width: 0;
+    background: var(--tms-card); border: 1px solid var(--tms-line); border-radius: var(--tms-r-sm);
+    padding: 7px 10px; border-left-width: 3px;
+}
+.tms-xfer-step > i { font-style: normal; font-size: 16px; width: 22px; text-align: center; flex: none; }
+.tms-xfer-step > div { min-width: 0; display: flex; flex-direction: column; }
+.tms-xfer-step b { font-size: 12px; color: var(--tms-ink); white-space: nowrap; }
+.tms-xfer-step span { font-size: 11px; color: var(--tms-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tms-xfer-hours { color: var(--tms-brand-dark); font-family: var(--tms-mono); }
+.tms-xfer-step.in { border-left-color: var(--tms-info); }
+.tms-xfer-step.in > i { color: var(--tms-info); }
+.tms-xfer-step.mid { border-left-color: var(--tms-brand); }
+.tms-xfer-step.mid > i { color: var(--tms-brand); }
+.tms-xfer-step.out { border-left-color: var(--tms-success); }
+.tms-xfer-step.out > i { color: var(--tms-success); }
+.tms-xfer-step.wait { border-left-color: var(--tms-warn); }
+.tms-xfer-step.wait > i { color: var(--tms-warn); }
+.tms-xfer-arrow { align-self: center; font-style: normal; color: var(--tms-ink-4); flex: none; }
+
+@media (max-width: 720px) {
+    .tms-xfer-trips { margin-left: 0; width: 100%; }
+    .tms-xfer-steps { flex-wrap: wrap; }
+    .tms-xfer-step { flex: 1 1 40%; }
+    .tms-xfer-arrow { display: none; }
+}
+
 /* ---------- 响应式 ---------- */
 
 @media (max-width: 1200px) {

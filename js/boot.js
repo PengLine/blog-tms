@@ -27,6 +27,7 @@
         'js/domain/stats.js',
         'js/domain/audit.js',
         'js/domain/jobs.js',
+        'js/domain/architecture.js',
         'js/ui/kit.js',
         'js/ui/charts.js',
         'js/ui/map.js',
@@ -34,6 +35,7 @@
         'js/pages/registry.js',
         'js/pages/portal.js',
         'js/pages/admin.js',
+        'js/pages/architecture.js',
         'js/pages/branch.js',
         'js/pages/sorter.js',
         'js/pages/transporter.js',
@@ -43,7 +45,7 @@
 
     /* 站点根基准与缓存 token 都从 boot.js 自己的 src 反推：
        登录页在根目录（src='js/boot.js'）、业务页在角色目录（src='../js/boot.js'），
-       同一份清单不能对两边都写成相对当前页的路径，否则子目录页会去加载 admin/js/core/config.js。
+       同一份清单不能对两边都写成相对当前页的路径，否则子目录页会去加载 tms/js/core/config.js。
        currentScript 只在本脚本同步执行期间有效，所以这里一次性取好，后面都用这个值 */
     var SELF_SRC = (function () {
         var self = global.document && document.currentScript;
@@ -115,13 +117,27 @@
 
     function start(portal, pageId, rootSelector) {
         if (!ready()) return;
-        var session = TMS.auth.require(TMS.cfg.roles[portal] ? portal : null);
+        /* 外壳传入的是目录名（tms），角色 key 可能不同（admin）：经 roleOf 解析，
+           直接拿目录名查 roles 会落空，require(null) 等于任何登录角色都放行 */
+        var role = TMS.cfg.roleOf(portal);
+        var session = TMS.auth.require(role);
         if (!session) return;
         // 定时任务模拟：进入页面先跑一轮 SLA 巡检，产出超时/升级/告警
         try { TMS.jobs.sweep(); } catch (err) { if (console) console.error('[TMS] 巡检失败', err); }
         var root = document.querySelector(rootSelector || '.content');
         if (!root) return;
-        TMS.shell.mount({ portal: portal, pageId: pageId, root: root, session: session });
+        TMS.shell.mount({ portal: role || portal, pageId: pageId, root: root, session: session });
+    }
+
+    /* 公开页启动（根 architecture.html）：不要求登录、不跑巡检——
+       访客只是来看说明书，不该因为打开一页就触发一轮 SLA 写库。
+       已登录用户沿用真实会话，页内 masthead 据此给出「进入系统」入口 */
+    function startPublic(pageId, rootSelector) {
+        if (!ready()) return;
+        var root = document.querySelector(rootSelector || '.content');
+        if (!root) return;
+        var session = TMS.auth.current() || { username: 'guest', name: '访客', role: 'guest', guest: true, permissions: [] };
+        TMS.shell.mount({ portal: session.role, pageId: pageId, root: root, session: session });
     }
 
     /* 演示数据维护：重建 / 导出 / 容量查看，供系统监控页调用 */
@@ -133,7 +149,7 @@
         };
     }
 
-    TMS.boot = { inject: inject, start: start, ready: ready, modules: MODULES };
+    TMS.boot = { inject: inject, start: start, startPublic: startPublic, ready: ready, modules: MODULES };
     TMS.maintenance = maintenance();
 
     /* 未捕获异常统一提示，避免页面白屏无反馈 */

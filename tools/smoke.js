@@ -23,7 +23,7 @@ global.localStorage = {
     clear: () => storageMap.clear()
 };
 global.addEventListener = () => {};
-global.location = { href: '', hash: '', pathname: '/admin/index.html', replace() {}, search: '' };
+global.location = { href: '', hash: '', pathname: '/tms/index.html', replace() {}, search: '' };
 global.scrollTo = () => {};
 global.URL = { createObjectURL: () => 'blob:smoke' };
 
@@ -67,8 +67,9 @@ const MODULES = [
     'js/domain/order.js', 'js/domain/operation.js', 'js/domain/finance.js', 'js/domain/service.js',
     'js/domain/address.js',
     'js/domain/people.js', 'js/domain/stats.js', 'js/domain/audit.js', 'js/domain/jobs.js',
+    'js/domain/architecture.js',
     'js/ui/kit.js', 'js/ui/charts.js', 'js/ui/map.js', 'js/ui/shell.js', 'js/pages/registry.js',
-    'js/pages/portal.js', 'js/pages/admin.js', 'js/pages/branch.js', 'js/pages/sorter.js',
+    'js/pages/portal.js', 'js/pages/admin.js', 'js/pages/architecture.js', 'js/pages/branch.js', 'js/pages/sorter.js',
     'js/pages/transporter.js', 'js/pages/deliveryman.js', 'js/pages/client.js'
 ];
 
@@ -524,6 +525,208 @@ section('行政区划三级与路由范围分级');
         })());
 })();
 
+/* 多干线路由：一票货可能 serial 经过几条干线，中途枢纽要卸货→分拣→装货→候车。
+   规划器必须在班次图上枚举全路径同场评分，而不是只找一条直发——
+   这里把「枚举得出、评分别塌、装卸派生、采纳落库」四件事钉死 */
+section('多干线智能规划与中途装卸');
+(() => {
+    const M = TMS.master, N = TMS.network;
+    const ob = (c) => ({ city: c });
+
+    const exp = N.planOptions('沈阳', '成都', '加急', {});
+    check('规划台对长线 OD 枚举出多个可行方案', !!exp && exp.candidates.length > 1,
+        exp ? exp.candidates.length + ' 个方案 / 策略 ' + exp.strategy : 'null');
+    check('加急件允许空陆联运且含多干线方案',
+        !!exp && exp.candidates.some((c) => c.mode === '联运') && exp.candidates.some((c) => c.trunkLegs >= 2),
+        exp ? exp.candidates.filter((c) => c.trunkLegs >= 2).length + ' 个多干线方案' : '');
+    check('候选按综合得分降序、推荐在首位',
+        !!exp && exp.candidates[0] === exp.best &&
+        exp.candidates.every((c, i) => i === 0 || exp.candidates[i - 1].score >= c.score),
+        exp ? exp.best.label + ' ' + exp.best.score + ' 分' : '');
+    check('候选都带起讫与分级、中转是装卸计划数组',
+        !!exp && exp.candidates.every((c) => c.origin === '沈阳' && c.destination === '成都' &&
+            c.scope && Array.isArray(c.transfers) && typeof c.trunkLegs === 'number'));
+
+    const direct = M.planSegments(ob('上海'), ob('成都'), '陆运', { strategy: '均衡', maxTransfers: 0, withCandidates: true });
+    check('最多中转 0 次时只出直达', !!direct && (direct.candidates || [direct]).every((c) => c.trunkLegs <= 1),
+        direct ? (direct.candidates || [direct]).length + ' 个候选' : 'null');
+    const multi = M.planSegments(ob('上海'), ob('成都'), '陆运', { strategy: '成本', maxTransfers: 2, withCandidates: true });
+    const directCost = ((multi && multi.candidates) || []).filter((c) => c.trunkLegs === 1).map((c) => c.trunkCost)[0];
+    check('成本策略会真的改选多干线路径（比直达便宜才选）',
+        !!multi && multi.trunkLegs >= 2 && directCost != null && multi.trunkCost <= directCost,
+        multi ? '选中 ¥' + multi.trunkCost + ' / 直达 ¥' + directCost : 'null');
+
+    const ops = exp ? N.transferOps(exp.best) : [];
+    const xferBest = exp ? exp.candidates.filter((c) => (c.transfers || []).length > 0)[0] : null;
+    const xferOps = xferBest ? xferBest.transfers : [];
+    check('多干线方案派生出中途装卸计划', xferOps.length >= 1 && xferOps.every((o) =>
+        o.hub && o.unloadHours > 0 && o.sortHours > 0 && o.loadHours > 0 && o.waitHours >= 0 &&
+        o.totalHours === o.unloadHours + o.sortHours + o.loadHours + o.waitHours &&
+        /^D[1-8]$/.test(o.dockIn) && /^D[1-8]$/.test(o.dockOut)),
+        xferOps.length ? xferOps[0].hub + ' 共 ' + xferOps[0].totalHours + 'h · 月台 ' + xferOps[0].dockIn + '→' + xferOps[0].dockOut : '无');
+    check('装卸计划带前后班次衔接', xferOps.length > 0 && xferOps.every((o) => o.prevTripCode && o.nextTripCode),
+        xferOps.length ? xferOps[0].prevTripCode + ' → ' + xferOps[0].nextTripCode : '');
+
+    const inactive = db.col('trips').filter((t) => t.status === 'inactive').map((t) => t.id);
+    const usedInactive = [];
+    ['上海', '沈阳', '广州', '哈尔滨'].forEach((o) => ['成都', '昆明', '乌鲁木齐'].forEach((d) => {
+        const r = N.planOptions(o, d, '标准', {});
+        (r ? r.candidates : []).forEach((c) => (c.segments || []).forEach((s) => {
+            if (s.tripId && inactive.indexOf(s.tripId) > -1) usedInactive.push(s.tripId);
+        }));
+    }));
+    check('停用班次不参与规划', usedInactive.length === 0,
+        inactive.length + ' 条停用班次 / 误用 ' + usedInactive.length);
+
+    /* 采纳：同 OD 建档→再采纳更新不重复；路由行存中转次数（数字），规划对象存装卸数组 */
+    const before = db.col('routes').length;
+    const pick = xferBest || (exp && exp.best);
+    const a1 = N.adoptRoutePlan(pick, '冒烟');
+    const row1 = db.get('routes', a1.id);
+    check('采纳方案建档且段次事实落库', a1.ok && a1.created && row1.planner === 'smart2' &&
+        typeof row1.transfers === 'number' && row1.trunkLegs >= 1 && (row1.segments || []).length >= 3,
+        a1.id + ' · 干线 ' + row1.trunkLegs + ' 段 / 中转 ' + row1.transfers + ' 次');
+    const a2 = N.adoptRoutePlan(pick, '冒烟');
+    check('同 OD 再采纳是更新不是重复建档', a2.ok && !a2.created && a2.id === a1.id && db.col('routes').length === before + 1);
+    check('采纳留审计', db.col('auditLogs').some((x) => x.refId === a1.id && /采纳/.test(x.detail || '')),
+        a1.id);
+    /* 采纳后 planRoute 命中路由行，装卸计划从老段次也能派生（月台/工时不凭空消失） */
+    const hit = N.planRoute('沈阳', '成都', '加急', { noCache: true });
+    check('采纳后同 OD 下单命中新路由且装卸计划可派生',
+        !!hit && hit.routeId === a1.id && (hit.transfers || []).length === row1.transfers,
+        hit ? 'source=' + hit.source + ' · 装卸 ' + (hit.transfers || []).length + ' 次' : 'null');
+
+    /* 规划台页面：八个条件控件改动即重算，对比表 + 选中方案段次/装卸可视化 */
+    const def = TMS.pages.get('route');
+    const rst = TMS.ui.state('route');
+    const keepPl = rst.pl;
+    rst.pl = { origin: '沈阳', destination: '成都', originDistrict: '', destDistrict: '', service: '加急', strategy: '', maxTransfers: '2', mode: '', picked: 1 };
+    try {
+        const rctx = { shell: TMS.shell, session: { username: 'admin', name: '冒烟', role: 'admin', permissions: [] }, params: {}, days: 7, layout: 'full', pageId: 'route', role: 'admin', state: rst };
+        const html = String(def.render(rctx, def.load(rctx)) || '');
+        check('规划台八个条件下拉改动即重算', (html.match(/data-change="rt:pl-set"/g) || []).length === 8);
+        check('规划台常驻控件 >= 7（重规划/采纳/两导出/选用/全量重算）',
+            ['rt:pl-run', 'rt:pl-adopt', 'rt:pl-csv', 'rt:pl-seg-csv', 'rt:pl-pick', 'rt:recompute-all']
+                .every((a) => html.indexOf('data-act="' + a + '"') > -1));
+        check('选中方案展开中转装卸可视化', html.indexOf('tms-xfer') > -1 && html.indexOf('卸货') > -1 &&
+            html.indexOf('分拣转运') > -1 && html.indexOf('候车') > -1 && html.indexOf('月台') > -1);
+        check('规划台渲染无脏值', !/undefined|NaN|\[object Object\]/.test(html));
+    } finally {
+        rst.pl = keepPl;
+    }
+})();
+
+/* 分级中转：网点 → 三级中转场（县） → 二级中转站（市） → 一级中转站（跨省枢纽）。
+   两条用户示例链是硬口径：定西某县→嘉峪关经兰州（省内），嘉峪关→嘉兴经兰州/杭州（跨省） */
+section('分级中转路由体系');
+(() => {
+    const M = TMS.master, N = TMS.network;
+    const chainOf = (p) => {
+        const segs = p.segments || [];
+        return segs.length ? [segs[0].from].concat(segs.map((s) => s.to)) : [];
+    };
+    const ordered = (chain, names) => {
+        let at = -1;
+        return names.every((n) => { const i = chain.indexOf(n); if (i <= at) return false; at = i; return true; });
+    };
+
+    ['定西', '嘉峪关', '嘉兴'].forEach((c) => check('新开城市在主数据内：' + c, !!M.cityByName(c)));
+    check('示例区县真实在册', M.districtsOf('定西').some((d) => d.name === '陇西县') &&
+        M.districtsOf('嘉峪关').some((d) => d.name === '雄关区') && M.districtsOf('嘉兴').some((d) => d.name === '海宁市'));
+    const hubs = db.col('hubs');
+    check('九座一级中转站全部建档且标级', hubs.length === 9 && hubs.every((h) => h.level === 1),
+        hubs.length + ' 座');
+    check('兰州/杭州跨省分拣中心在册', hubs.some((h) => h.name === '兰州跨省分拣中心') && hubs.some((h) => h.name === '杭州跨省分拣中心'));
+    check('定西/嘉峪关归口兰州、嘉兴归口杭州',
+        M.hubOfCity('定西').id === 'HB0008' && M.hubOfCity('嘉峪关').id === 'HB0008' && M.hubOfCity('嘉兴').id === 'HB0009',
+        M.hubOfCity('定西').name + ' / ' + M.hubOfCity('嘉兴').name);
+    check('县/县级市才设三级中转场', M.isCountyDistrict('陇西县') && M.isCountyDistrict('海宁市') &&
+        !M.isCountyDistrict('南湖区') && !M.isCountyDistrict('新城镇'));
+    check('二三级中转站是派生节点不落 hubs 表', !hubs.some((h) => /中转站$|中转场$/.test(h.name)) &&
+        M.cityStation('定西').level === 2 && M.countyStation('定西', '陇西县').level === 3);
+
+    /* 示例一：定西陇西县 → 嘉峪关雄关区，省内经兰州一级枢纽 */
+    const p1 = N.planOptions('定西', '嘉峪关', '标准', { originDistrict: '陇西县', destDistrict: '雄关区' });
+    const c1 = p1 ? chainOf(p1.best) : [];
+    check('示例一：定西县件经兰州到嘉峪关', !!p1 && ordered(c1, ['定西陇西县中转场', '定西中转站', '兰州跨省分拣中心', '嘉峪关中转站']),
+        c1.join(' → '));
+    check('示例一网点起步含县域三级层', c1.length >= 6 && /陇西县/.test(c1[0]) && /嘉峪关/.test(c1[c1.length - 1]),
+        c1[0] + ' … ' + c1[c1.length - 1]);
+    check('示例一段次带层级标记', !!p1 && p1.best.segments.some((s) => s.fromLevel === 3) &&
+        p1.best.segments.some((s) => s.fromLevel === 1 && s.legType === 'feeder'));
+
+    /* 示例二：嘉峪关雄关区 → 嘉兴海宁市，跨省经兰州/杭州两座一级枢纽 */
+    const p2 = N.planOptions('嘉峪关', '嘉兴', '标准', { originDistrict: '雄关区', destDistrict: '海宁市' });
+    const c2 = p2 ? chainOf(p2.best) : [];
+    check('示例二：嘉峪关→嘉兴经兰州/杭州双枢纽', !!p2 && ordered(c2, ['嘉峪关中转站', '兰州跨省分拣中心', '杭州跨省分拣中心', '嘉兴中转站', '嘉兴海宁市中转场']),
+        c2.join(' → '));
+    check('示例二目的县件落到三级中转场再派送', /海宁市中转场$/.test(c2[c2.length - 2] || '') && /网点|营业部/.test(c2[c2.length - 1] || ''),
+        c2.slice(-2).join(' → '));
+    const ops2 = p2 ? p2.best.transfers : [];
+    check('示例二装卸计划覆盖兰州/杭州且标一级', ops2.some((o) => o.city === '兰州' && o.level === 1) &&
+        ops2.some((o) => o.city === '杭州' && o.level === 1), ops2.map((o) => o.hub).join(' / '));
+    check('示例二装卸计划班次衔接不断链', ops2.length > 0 && ops2.every((o) => o.prevTripCode && o.nextTripCode),
+        ops2.length ? ops2[0].prevTripCode + ' → ' + ops2[0].nextTripCode : '无');
+
+    /* 共享出省枢纽的两城：省域支线直连二级，不绕出省再绕回来（南京/合肥同归杭州） */
+    const p3 = N.planOptions('南京', '合肥', '标准', {});
+    const c3 = p3 ? chainOf(p3.best) : [];
+    check('南京→合肥不绕杭州枢纽', !!p3 && c3.indexOf('南京中转站') > -1 && c3.indexOf('合肥中转站') > -1 &&
+        !c3.some((n) => /分拣中心|分拨中心/.test(n)), c3.join(' → '));
+
+    /* 规划台选中区县后链路条/段次分级徽标要渲染出来 */
+    const def = TMS.pages.get('route');
+    const rst = TMS.ui.state('route');
+    const keepPl = rst.pl;
+    rst.pl = { origin: '嘉峪关', destination: '嘉兴', originDistrict: '雄关区', destDistrict: '海宁市', service: '标准', strategy: '', maxTransfers: '2', mode: '', picked: 0 };
+    try {
+        const rctx = { shell: TMS.shell, session: { username: 'admin', name: '冒烟', role: 'admin', permissions: [] }, params: {}, days: 7, layout: 'full', pageId: 'route', role: 'admin', state: rst };
+        const html = String(def.render(rctx, def.load(rctx)) || '');
+        check('规划台渲染分级链路条与层级徽标', html.indexOf('tms-chain-lv1') > -1 && html.indexOf('tms-chain-lv3') > -1 &&
+            html.indexOf('兰州跨省分拣中心') > -1 && html.indexOf('杭州跨省分拣中心') > -1);
+        /* 段次表徽标必须是中转层级短标，不是考核页的「未定级」——同名函数曾被覆盖 */
+        check('段次表起讫带中转层级短标', html.indexOf('>一级<') > -1 && html.indexOf('>三级<') > -1 && html.indexOf('未定级') < 0);
+        check('区县下拉带真实县名', html.indexOf('海宁市') > -1 && html.indexOf('雄关区') > -1);
+        check('分级规划渲染无脏值', !/undefined|NaN|\[object Object\]/.test(html));
+    } finally {
+        rst.pl = keepPl;
+    }
+
+    /* v13 迁移只增不改：老订单/老路由/老班次一个字不动，新枢纽/网点/班线/示例路由补齐 */
+    const oldRoute = { id: 'RT0001', origin: '上海', destination: '成都', segments: [{ seq: 1, from: '上海网点', to: '上海分拨中心', legType: 'collect', km: 12, stdHours: 3 }], totalStdHours: 30, status: 'active' };
+    const oldOrder = { id: 'HL0001', origin: '上海', destination: '成都', hubFrom: 'HB0001', status: 'signed' };
+    const oldTrip = { id: 'TRP0001', fromHub: 'HB0001', toHub: 'HB0002', mode: '陆运', status: 'active' };
+    const raw = {
+        schema: 12, createdAt: '', seededAt: '', counters: {}, auditAnchor: '',
+        data: {
+            hubs: [{ id: 'HB0001', name: '上海分拨中心', city: '上海', zone: '华东', role: '区域枢纽', status: 'active' }],
+            branches: [
+                { id: 'BR0001', name: '上海青浦营业部', city: '上海', hubId: 'HB0001', hubName: '上海分拨中心', status: 'active' },
+                { id: 'BR0002', name: '南京城中营业部', city: '南京', hubId: 'HB0001', hubName: '上海分拨中心', status: 'active' }
+            ],
+            trips: [util.clone(oldTrip)], routes: [util.clone(oldRoute)], orders: [util.clone(oldOrder)]
+        }
+    };
+    TMS.migrations[13](raw, TMS);
+    check('v13 补齐九枢纽且老枢纽补标级', raw.data.hubs.length === 9 && raw.data.hubs[0].level === 1);
+    check('v13 新开四网点且编号续 max 不撞号', raw.data.branches.length === 6 &&
+        raw.data.branches.some((b) => b.city === '定西' && /陇西县/.test(b.name)) &&
+        raw.data.branches.some((b) => b.city === '嘉兴' && /海宁市/.test(b.name)) &&
+        new Set(raw.data.branches.map((b) => b.id)).size === 6);
+    check('v13 网点归口随最近一级枢纽刷新', raw.data.branches[1].hubId === 'HB0009' && raw.data.branches[0].hubId === 'HB0001');
+    check('v13 老订单/老路由/老班次原样保留', JSON.stringify(raw.data.orders[0]) === JSON.stringify(oldOrder) &&
+        JSON.stringify(raw.data.routes[0]) === JSON.stringify(oldRoute) &&
+        JSON.stringify(raw.data.trips[0]) === JSON.stringify(oldTrip));
+    check('v13 示例四路由落表且经分级链路', raw.data.routes.length === 5 &&
+        raw.data.routes.some((r) => r.origin === '定西' && r.destination === '嘉峪关' &&
+            (r.segments || []).some((s) => s.from === '兰州跨省分拣中心' || s.to === '兰州跨省分拣中心')) &&
+        raw.data.routes.some((r) => r.origin === '嘉峪关' && r.destination === '嘉兴' &&
+            (r.segments || []).some((s) => s.to === '杭州跨省分拣中心')));
+    check('v13 新枢纽班线双向补齐', raw.data.trips.some((t) => t.fromHub === 'HB0008' && t.toHub === 'HB0009') &&
+        raw.data.trips.some((t) => t.fromHub === 'HB0009' && t.toHub === 'HB0008'),
+        raw.data.trips.length + ' 条班次');
+})();
+
 section('派送地址审核闭环');
 (() => {
     const AD = TMS.address;
@@ -928,7 +1131,7 @@ section('只读统计 API');
         'operation.tripStats': () => TMS.operation.tripStats(7),
         'operation.costView': () => TMS.operation.costView(transports[0]),
         'network.loadPlan': () => TMS.network.loadPlan(orders.slice(0, 12), TMS.master.vehicleType('MID')),
-        'network.deviates': () => TMS.network.deviates(TMS.network.planOf(orders[0]), '上海', '哈尔滨'),
+        'network.deviates': () => TMS.network.deviates(TMS.network.planRoute('上海', '成都', '标准', { noCache: true }), '上海', '哈尔滨'),
         'audit.actionOptions': () => TMS.audit.actionOptions(),
         'people.roster': () => TMS.people.roster(day),
         'audit.list': () => TMS.audit.list(5),
@@ -956,7 +1159,9 @@ section('只读统计 API');
     check('绩效账期唯一且走关账规则', perfPeriods.length === 1 && perfMonth === TMS.people.defaultPeriod(), perfPeriods.join(' '));
     check('绩效账期不落进刚开头的月份', perfMonth !== util.monthKey(util.now()) || dayOfToday >= 14,
         perfMonth + ' · 今日 ' + util.dateKey(util.now()));
-    check('绩效档位分布不是一边倒', perfRows.length > 0 && dCount / perfRows.length < 0.6,
+    /* 种子单量有随机抖动，D 档占比常态贴着 59%–60%：阈值卡 0.6 会把正常抖动误判成塌档，
+       0.65 仍能抓住「账期落进月初、全员塌 D」这类真一边倒 */
+    check('绩效档位分布不是一边倒', perfRows.length > 0 && dCount / perfRows.length < 0.65,
         perfMonth + ' · ' + perfRows.length + ' 人 · 均分 ' + avgScore + ' · D 档 ' + dCount + ' 人 · 覆盖 ' +
         TMS.people.computeMetrics(db.get('employees', db.col('performances')[0].employeeId), perfMonth).windowDays + ' 天');
     check('考核留有未定级草稿', db.col('evaluations').some((e) => e.status === 'pending'),
@@ -992,6 +1197,24 @@ check('外壳与注册器已装配', !!(TMS.ui && TMS.charts && TMS.shell && TMS
     check('ui.confirm 先定结论再关弹窗', iYes > -1 && iClose > -1 && iYes < iClose,
         'finish@' + iYes + ' / close@' + iClose);
 })();
+/* 环形图图例每项两行（名称 + 数值·占比）：行距小于两行全高时，
+   数值行会被下一项名称压住——渲染字符串看不出重叠，只能按几何坐标钉死 */
+(() => {
+    const data = Array.from({ length: 8 }, (_, i) => ({ label: '类目' + (i + 1), value: (i + 1) * 137 }));
+    const html = TMS.charts.donut({ data: data, height: 210, fmt: (v) => v + ' 条' });
+    const vh = Number((html.match(/viewBox="0 0 720 ([\d.]+)"/) || [])[1]);
+    const ys = [...html.matchAll(/<text x="([\d.]+)" y="([\d.]+)"/g)]
+        .filter((m) => Number(m[1]) > 220).map((m) => Number(m[2]));
+    check('环形图 8 项图例画布自适应加高', vh >= 8 * 28 + 26, 'viewBox 高 ' + vh);
+    check('环形图图例名称/数值两行互不遮挡',
+        ys.length === 16 && ys.every((y, i) => i % 2 ? y - ys[i - 1] === 13 : (i === 0 || y - ys[i - 1] >= 15)),
+        ys.length + ' 行文字 / 相邻基线距 ' + (ys[2] - ys[1]));
+    check('环形图图例不出画布上下边', ys.length > 0 && ys[0] > 10 && ys[ys.length - 1] + 3 <= vh,
+        '首行 ' + ys[0] + ' / 末行 ' + ys[ys.length - 1] + ' / 画布 ' + vh);
+    const few = TMS.charts.donut({ data: data.slice(0, 2), height: 230 });
+    const fewH = Number((few.match(/viewBox="0 0 720 ([\d.]+)"/) || [])[1]);
+    check('环形图少项时不强行加高', fewH === 230, 'viewBox 高 ' + fewH);
+})();
 /* bundle 文件写了却没进 boot.js 的 MODULES，浏览器里就是「页面尚未注册」的空白，
    而冒烟脚本自己 import 全量模块，永远测不出来——所以这里直接比对目录与 boot 的清单 */
 (() => {
@@ -1010,11 +1233,14 @@ check('外壳与注册器已装配', !!(TMS.ui && TMS.charts && TMS.shell && TMS
     check('boot 登记的模块文件都在', ghost.length === 0, ghost.join('、') || declared.length + ' 个');
     const notInSmoke = declared.filter((m) => MODULES.indexOf(m) === -1);
     check('冒烟与 boot 加载同一组模块', notInSmoke.length === 0, notInSmoke.join('、') || declared.length + ' 个');
+    /* 冒烟直接 require 模块、不执行 boot.js，所以 TMS.boot 这份装配事实得由冒烟补上：
+       架构页的「落地核对」读的就是它，缺了会把十个服务的模块映射全判成漂移 */
+    TMS.boot = { modules: declared };
     /* 模块清单是站点根相对路径，注入前必须乘上从 boot.js 自身 src 反推的基准；
-       少了这一步，角色目录下的页面会去加载 admin/js/core/config.js 然后白屏 */
+       少了这一步，角色目录下的页面会去加载 tms/js/core/config.js 然后白屏 */
     check('boot 按自身 src 反推站点基准', /TMS\.base\s*=\s*BASE/.test(bootSrc) && /BASE \+ path/.test(bootSrc));
 })();
-check('注册表与菜单文件同源', TMS.pages.MENU_FILE['overview'] === 'admin/index.html' && TMS.pages.MENU_FILE['b-home'] === 'branch/index.html');
+check('注册表与菜单文件同源', TMS.pages.MENU_FILE['overview'] === 'tms/index.html' && TMS.pages.MENU_FILE['b-home'] === 'branch/index.html');
 
 /* 目录布局契约：菜单里的 file 同时回答「这页归哪个角色」和「文件在哪个目录」，
    两边错一处就是登录跳错端、侧栏 404，所以逐条核对磁盘，而不是只看内存里的清单 */
@@ -1035,8 +1261,8 @@ check('注册表与菜单文件同源', TMS.pages.MENU_FILE['overview'] === 'adm
     const absent = menuFiles.filter((f) => !fs.existsSync(path.join(ROOT, f)));
     check('菜单登记的页面文件都在磁盘上', absent.length === 0, absent.join('、') || menuFiles.length + ' 个文件');
 
-    const stray = fs.readdirSync(ROOT).filter((n) => /\.html$/.test(n) && n !== 'index.html');
-    check('站点根只留登录入口，业务页全部进目录', stray.length === 0, stray.join('、') || 'index.html');
+    const stray = fs.readdirSync(ROOT).filter((n) => /\.html$/.test(n) && n !== 'index.html' && n !== 'architecture.html');
+    check('站点根只留登录入口与公开架构页，业务页全部进目录', stray.length === 0, stray.join('、') || 'index.html + architecture.html');
 
     /* 深一层的页面必须把资源引用也降一层，否则 ../css/app.css 写成 css/app.css 就是 404 空壳 */
     const flat = menuFiles.filter((f) => {
@@ -1382,7 +1608,7 @@ const LOOP_AUDIT = argv.includes('--loop');
    文本匹配把「内部复用」误判成「没入口」，反之页面拼了个同名局部变量又能骗过去。
    这里只认运行时：页面 load/render/actions 期间真正被执行到的，就是接进了界面；
    一次都没被碰到的导出函数，才是业务链条上缺的最后一米——功能写完了，界面上按不出来 */
-const DOMAIN_MODS = ['order', 'operation', 'finance', 'service', 'people', 'pricing', 'network', 'stats', 'master', 'jobs', 'audit'];
+const DOMAIN_MODS = ['order', 'operation', 'finance', 'service', 'people', 'pricing', 'network', 'stats', 'master', 'jobs', 'audit', 'architecture'];
 const apiHits = new Set();
 const apiTotal = new Set();
 const apiRestore = [];
@@ -1407,7 +1633,11 @@ if (LOOP_AUDIT) {
    只读动作（开抽屉、导出、跳转、筛选）写进 READ_ONLY 白名单，
    白名单之外一律算缺陷，这样以后加按钮忘了落库会被当场抓住 */
 const READ_ONLY_ACT = new Set([
-    'ui:close', 'ui:back', 'ui:toast', 'ui:filter', 'ui:sort', 'ui:reset'
+    'ui:close', 'ui:back', 'ui:toast', 'ui:filter', 'ui:sort', 'ui:reset',
+    /* 架构页的图纸控件：只改 ui.state 里的视图参数（连线/聚焦/动画/流速/缩放/标注/底色/播放头），
+       业务库一行都不该动——它们是真交互，但不是写操作，别混进「点了不落库」的参考名单 */
+    'arch:lines', 'arch:focus', 'arch:theme', 'arch:anim', 'arch:metrics', 'arch:grid', 'arch:glow',
+    'arch:speed', 'arch:zoom', 'arch:reset', 'arch:play', 'arch:step', 'arch:prev', 'arch:next', 'arch:flowsof'
 ]);
 /* 判定「点了没反应」看函数体，不看写库次数。
    冒烟给不出每个动作需要的主键——动作拿不到合法 id 就在 if (!row) return 处提前退出，
@@ -1541,6 +1771,485 @@ const readWrite = () => { const w = writes; writes = {}; return w; };
     check('六端菜单页面渲染干净且动作可响应', dirty === 0, dirty ? dirty + ' 页有问题' : drawn + ' 页通过');
 })();
 
+/* 架构设计是一份说明书，而说明书写错一个表名、一个函数名、一条链路，
+   比页面脏值更难发现——它看起来永远是对的。所以这里把目录当代码验：
+   编号连续、每张表恰好一个写入者、同步依赖不成环、映射到的模块/接口/页面/集合全部真实存在、
+   拓扑坐标不出画布也不互相压盖、走线槽不穿过节点、链路与定时清单跟真实 handler 对齐 */
+(() => {
+    section('架构设计目录');
+    const arch = TMS.architecture;
+    const svcs = arch.services();
+    const WANT = ['gateway', 'bff', 'order', 'branch', 'dispatch', 'billing', 'tms', 'kpi', 'job', 'search'];
+    check('十个服务且编号 1–10 连续',
+        svcs.length === 10 && svcs.every((s, i) => s.no === i + 1) && WANT.every((id) => !!arch.service(id)),
+        svcs.map((s) => s.no + ' ' + s.id).join(' · '));
+
+    const layerIds = arch.layers().map((l) => l.id);
+    const hues = svcs.map((s) => s.hue);
+    const thin = svcs.filter((s) => !s.mission || !s.tag || !s.en || !s.icon ||
+        !(s.duty || []).length || !(s.boundary || []).length || !(s.apis || []).length ||
+        !s.consistency || !s.capacity || layerIds.indexOf(s.layer) < 0);
+    check('每个服务职责/边界/契约/一致性/容量齐全且色号不撞',
+        thin.length === 0 && new Set(hues).size === hues.length,
+        thin.length ? thin.map((s) => s.id).join('、') : new Set(hues).size + ' 个可分辨色号');
+    /* BFF 与检索不拥有主表，本来就不该有领域事件契约；拥有表的服务必须说清谁订阅它的变更 */
+    const mute = svcs.filter((s) => (s.owns || []).length && !(s.events || []).length);
+    check('拥有数据的服务都声明了事件契约', mute.length === 0,
+        mute.map((s) => s.id).join('、') || svcs.filter((s) => (s.events || []).length).length + ' 个服务有事件');
+
+    const badDep = [];
+    const badPeer = [];
+    svcs.forEach((s) => {
+        (s.deps || []).forEach((d) => { if (!arch.service(d)) badDep.push(s.id + '→' + d); });
+        (s.events || []).forEach((e) => {
+            if (['in', 'out'].indexOf(e.dir) < 0 || !e.name || !e.d) badPeer.push(s.id + '/' + e.name);
+            /* peer 允许写「全部服务」这类散文，只有长得像服务 id 的才拿去对目录 */
+            String(e.peer || '').split(/\s*\/\s*/).forEach((p) => {
+                if (/^[a-z][a-z0-9]*$/.test(p) && !arch.service(p)) badPeer.push(s.id + '→' + p);
+            });
+        });
+        (s.apis || []).forEach((a) => {
+            if (!a.m || !a.p || !a.d || ['sync', 'event', 'job', 'read'].indexOf(a.kind) < 0) badPeer.push(s.id + '/' + a.p);
+        });
+    });
+    check('依赖与事件对端全部指向真实服务', badDep.length === 0 && badPeer.length === 0,
+        badDep.concat(badPeer).join('、') || svcs.reduce((a, s) => a + (s.deps || []).length, 0) + ' 条依赖');
+    check('同步依赖图无环（拆分成立）', arch.syncCycle().length === 0, arch.syncCycle().join('→') || 'DAG');
+
+    const st = arch.stats();
+    const mx = arch.matrix();
+    const own = arch.ownership();
+    const ownerCount = {};
+    mx.forEach((r) => { if (r.owner) ownerCount[r.owner] = (ownerCount[r.owner] || 0) + 1; });
+    const dup = svcs.filter((s) => {
+        const declared = (s.owns || []).filter((c, i, a) => a.indexOf(c) !== i);
+        return declared.length;
+    });
+    check('每张集合恰好一个写入者，无主表为 0',
+        mx.length === st.collections && st.orphan.length === 0 && dup.length === 0 &&
+        Object.keys(ownerCount).length === svcs.filter((s) => (s.owns || []).length).length,
+        mx.length + ' 张 / 无主 ' + st.orphan.length + ' 张' + (st.orphan.length ? '：' + st.orphan.join('、') : ''));
+    check('归属分布与矩阵、统计三处同源',
+        own.reduce((a, r) => a + r.tables, 0) === st.collections &&
+        own.reduce((a, r) => a + r.rows, 0) === st.rows &&
+        own.every((r) => r.tables === (arch.service(r.id).owns || []).length),
+        st.rows + ' 行分布在 ' + own.filter((r) => r.tables).length + ' 个写入者');
+
+    const drift = [];
+    svcs.forEach((s) => {
+        const c = arch.coverage(s.id);
+        ['missingModules', 'missingPages', 'missingApis', 'missingCollections'].forEach((k) => {
+            if (c[k].length) drift.push(s.id + '.' + k + '=' + c[k].join(','));
+        });
+    });
+    check('落地映射全部命中真实模块/页面/接口/集合', drift.length === 0,
+        drift.join(' | ') || svcs.reduce((a, s) => a + arch.coverage(s.id).apis.length, 0) + ' 个接口可解析');
+
+    const fl = arch.flows();
+    const badStep = [];
+    fl.forEach((f) => f.steps.forEach((x) => {
+        if (x.missing || ['sync', 'event', 'job', 'self'].indexOf(x.kind) < 0 || !x.api || !x.payload || !x.note) {
+            badStep.push(f.id + '#' + x.seq);
+        }
+    }));
+    check('端到端链路每一步两端有效且载荷齐全',
+        fl.length >= 6 && badStep.length === 0 && fl.every((f) => f.participants.length >= 2 && f.trigger && f.outcome && f.sla) &&
+        fl.reduce((a, f) => a + f.steps.length, 0) === st.steps && st.syncSteps + st.asyncSteps === st.steps,
+        badStep.join('、') || fl.length + ' 条 / ' + st.steps + ' 步（异步 ' + st.asyncSteps + '）');
+    check('链路可按 id 取回且参与方去重',
+        fl.every((f) => arch.flow(f.id).id === f.id && new Set(f.participants.map((p) => p.id)).size === f.participants.length),
+        fl.map((f) => f.id + '(' + f.participants.length + ')').join(' '));
+
+    const jp = arch.jobPlan();
+    const ruleKeys = TMS.jobs.RULES.map((r) => r.key);
+    check('定时清单覆盖全部真实 handler 且都登记了 cron',
+        jp.length === ruleKeys.length && jp.every((r) => r.planned && r.cron && r.target && r.note) &&
+        ruleKeys.every((k) => jp.some((r) => r.key === k)),
+        jp.length + ' 个 handler / 未登记 ' + jp.filter((r) => !r.planned).length);
+
+    const topo = arch.topology();
+    const outside = topo.nodes.filter((n) => n.x < 0 || n.y < 0 || n.x + n.w > topo.width || n.y + n.h > topo.height);
+    const overlap = [];
+    topo.nodes.forEach((a, i) => topo.nodes.slice(i + 1).forEach((b) => {
+        if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) overlap.push(a.id + '×' + b.id);
+    }));
+    check('拓扑十个节点都在画布内且互不压盖',
+        topo.nodes.length === 10 && outside.length === 0 && overlap.length === 0,
+        outside.map((n) => n.id).concat(overlap).join('、') || topo.width + '×' + topo.height);
+    const bandBad = topo.bands.filter((b, i) => b.y < 0 || b.y + b.h > topo.height ||
+        (i && b.y < topo.bands[i - 1].y + topo.bands[i - 1].h));
+    const nodeOutBand = topo.nodes.filter((n) => !topo.bands.some((b) => b.id === n.layer && n.y >= b.y && n.y + n.h <= b.y + b.h));
+    check('分层色带不重叠且每个节点落在自己的层里', bandBad.length === 0 && nodeOutBand.length === 0,
+        bandBad.map((b) => b.id).concat(nodeOutBand.map((n) => n.id)).join('、') || topo.bands.length + ' 层色带');
+    const pathBad = topo.edges.filter((e) => !/^M\s/.test(e.path) || /NaN|undefined/.test(e.path) || !e.hue);
+    const cnt = topo.counts;
+    check('走线路径可绘制且四种线型计数自洽',
+        pathBad.length === 0 && cnt.sync + cnt.event + cnt.job + cnt.read === topo.edges.length,
+        pathBad.map((e) => e.from + '→' + e.to).join('、') ||
+        '同步 ' + cnt.sync + ' / 事件 ' + cnt.event + ' / 定时 ' + cnt.job + ' / 只读 ' + cnt.read);
+    const sy = arch.topology({ lines: 'sync' }), asy = arch.topology({ lines: 'async' });
+    check('连线过滤三档互斥且并集等于全量',
+        sy.edges.every((e) => e.kind === 'sync') && asy.edges.every((e) => e.kind !== 'sync') &&
+        sy.edges.length + asy.edges.length === topo.edges.length,
+        sy.edges.length + ' + ' + asy.edges.length + ' = ' + topo.edges.length);
+    /* 领域层内部走线槽：同步走节点下方、事件走节点上方，槽位一旦落进节点矩形就会被盖住 */
+    const domainNodes = topo.nodes.filter((n) => n.layer === 'domain');
+    const gutters = [410, 276];
+    const gutterHit = gutters.filter((g) => domainNodes.some((n) => g >= n.y && g <= n.y + n.h));
+    check('领域层走线槽不穿过节点', gutterHit.length === 0,
+        gutterHit.length ? '槽位 ' + gutterHit.join('、') + ' 压在节点上' : '同步槽 410 / 事件槽 276');
+
+    /* 治理与运维轨：四件横切组件坐标合法、连线可绘制、显隐开关改变画布宽 */
+    const ops = topo.ops;
+    const opsOutside = ops.nodes.filter((n) => n.x < 0 || n.y < 0 || n.x + n.w > topo.width || n.y + n.h > topo.height);
+    const opsOverlap = [];
+    ops.nodes.forEach((a, i) => ops.nodes.slice(i + 1).concat(topo.nodes).forEach((b) => {
+        if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) opsOverlap.push(a.id + '×' + b.id);
+    }));
+    check('治理运维四组件在画布内且与服务节点互不压盖',
+        ops.nodes.length === 4 && ['nginx', 'nacos', 'skywalking', 'k8s'].every((id) => ops.nodes.some((n) => n.id === id)) &&
+        opsOutside.length === 0 && opsOverlap.length === 0 && ops.nodes.every((n) => !!arch.distTech(n.tech)),
+        opsOutside.map((n) => n.id).concat(opsOverlap).join('、') || ops.nodes.map((n) => n.id).join(' · '));
+    const opsPathBad = ops.links.filter((e) => !/^M\s/.test(e.path) || /NaN|undefined/.test(e.path) || !e.hue || !e.label);
+    const ingress = ops.links.filter((e) => e.kind === 'ingress');
+    check('入口流量走向完整：五端汇入 Nginx 再转发网关',
+        opsPathBad.length === 0 && ingress.length === 6 &&
+        ingress.slice(0, 5).every((e) => e.to === 'nginx') &&
+        ingress.some((e) => e.from === 'nginx' && e.to === 'gateway'),
+        opsPathBad.map((e) => e.id).join('、') || ingress.length + ' 条入口线 / 共 ' + ops.links.length + ' 条横切线');
+    const govIds = ops.links.filter((e) => e.arrow && e.kind !== 'ingress').map((e) => e.id).sort().join(',');
+    check('治理总线双向注册与上报/调度走向齐全',
+        govIds === 'apm,push,reg,sched' && ops.links.some((e) => e.id === 'bus' && !e.arrow) &&
+        ops.links.filter((e) => e.id.indexOf('tick-') === 0).length === 4,
+        govIds + ' · 总线 + 四层挂接');
+    const noOps = arch.topology({ ops: false });
+    check('治理运维开关收起后画布回到主宽且无横切件',
+        noOps.ops === null && noOps.width === noOps.mainW && topo.width > topo.mainW,
+        noOps.width + ' / ' + topo.width);
+    check('基础设施 chips 与治理轨去重（Nacos/SkyWalking 不再重复出现）',
+        topo.infra.length === 8 && !topo.infra.some((x) => x.id === 'nacos') &&
+        topo.infra.some((x) => /Prometheus/.test(x.name)),
+        topo.infra.map((x) => x.name).join(' · '));
+
+    /* 架构说明书是公开页：不进任何角色菜单（运营仪表盘也不放入口），
+       注册表显式登记根文件、裸页无权限点，访客从登录首页直接进 */
+    const archDef = TMS.pages.get('architecture');
+    check('架构页公开裸注册且不住在角色菜单里',
+        !!archDef && archDef.file === 'architecture.html' && archDef.bare === true && !archDef.perm &&
+        !TMS.rbac.ADMIN_MENU.some((g) => g.items.some((i) => i.id === 'architecture')) &&
+        Object.keys(TMS.rbac.PORTAL_MENU).every((r) => !TMS.rbac.PORTAL_MENU[r].some((i) => i.id === 'architecture')),
+        'architecture.html · bare · 无权限点');
+    const shellHtml = fs.readFileSync(path.join(ROOT, 'architecture.html'), 'utf8');
+    const homeHtml = fs.readFileSync(path.join(ROOT, 'tms/index.html'), 'utf8');
+    const loginHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const tokOf = (h) => (h.match(/boot\.js\?v=([\w-]+)/) || [])[1] || '';
+    check('公开架构页走 startPublic 且 token 与全站一致',
+        /TMS\.boot\.startPublic\('architecture'\)/.test(shellHtml) &&
+        /css\/architecture\.css\?v=/.test(shellHtml) && tokOf(shellHtml) &&
+        tokOf(shellHtml) === tokOf(homeHtml) && tokOf(shellHtml) === tokOf(loginHtml),
+        'v=' + tokOf(shellHtml));
+    check('boot 提供公开启动且角色目录能解析回角色 key',
+        /function startPublic/.test(fs.readFileSync(path.join(ROOT, 'js/boot.js'), 'utf8')) &&
+        TMS.cfg.roleOf('tms') === 'admin' && TMS.cfg.roleOf('admin') === 'admin' &&
+        TMS.cfg.roleOf('branch') === 'branch' && TMS.cfg.roleOf('nope') === null,
+        'tms→admin');
+    check('两个架构模块已进 boot 装配清单',
+        TMS.boot.modules.indexOf('js/domain/architecture.js') > -1 &&
+        TMS.boot.modules.indexOf('js/pages/architecture.js') > -1 &&
+        TMS.boot.modules.indexOf('js/domain/architecture.js') < TMS.boot.modules.indexOf('js/ui/kit.js'),
+        TMS.boot.modules.length + ' 个模块');
+
+    /* 分布式与运维目录同样当代码验：十件组件逐件有契约，引用的服务/表/链路全部真实存在 */
+    const techs = arch.distributed();
+    const WANT_TECH = ['sharding', 'nacos', 'sentinel', 'skywalking', 'seata', 'redis', 'prometheus', 'cicd', 'lb', 'snowflake'];
+    check('十件分布式组件齐全且编号 1–10 连续',
+        techs.length === 10 && techs.every((t, i) => t.no === i + 1) && WANT_TECH.every((id) => !!arch.distTech(id)),
+        techs.map((t) => t.no + ' ' + t.id).join(' · '));
+    const techHues = techs.map((t) => t.hue);
+    const thinTech = techs.filter((t) => !t.name || !t.product || !t.version || !t.role || !t.why || !t.scenario ||
+        !t.fallback || !(t.points || []).length || (t.metrics || []).length !== 3 ||
+        t.metrics.some((m) => !m.k || !m.v) || !arch.distCats().some((c) => c.id === t.cat));
+    check('每件组件契约完整且色号不撞', thinTech.length === 0 && new Set(techHues).size === techHues.length,
+        thinTech.length ? thinTech.map((t) => t.id).join('、') : new Set(techHues).size + ' 个可分辨色号 · ' +
+        techs.reduce((a, t) => a + t.points.length, 0) + ' 条设计要点');
+    const techDrift = [];
+    techs.forEach((t) => {
+        t.services.forEach((sid) => { if (!arch.service(sid)) techDrift.push(t.id + '→svc:' + sid); });
+        (t.tables || []).forEach((n) => { if (!db.meta(n).label) techDrift.push(t.id + '→tbl:' + n); });
+        (t.flows || []).forEach((fid) => { if (!arch.flow(fid)) techDrift.push(t.id + '→flow:' + fid); });
+    });
+    check('组件覆盖的服务/表/链路全部命中真实目录', techDrift.length === 0,
+        techDrift.join('、') || techs.reduce((a, t) => a + t.services.length, 0) + ' 条覆盖连接');
+    const dmx = arch.distMatrix();
+    check('覆盖矩阵与组件目录同源',
+        dmx.length === techs.length && dmx.every((r) => r.cells.length === 10 &&
+            r.count === r.cells.filter(Boolean).length && r.count === arch.distTech(r.id).services.length),
+        dmx.length + ' 行 × 10 服务');
+    const dcats = arch.distCats();
+    const dst = arch.distStats();
+    check('分类计数与统计三处同源',
+        dcats.length === 5 && dcats.reduce((a, c) => a + c.count, 0) === 10 &&
+        dst.techs === 10 && dst.cats === 5 && dst.links === techs.reduce((a, t) => a + t.services.length, 0) &&
+        dst.full === techs.filter((t) => t.services.length === 10).length &&
+        dst.points === techs.reduce((a, t) => a + t.points.length, 0),
+        '连接 ' + dst.links + ' / 全量覆盖 ' + dst.full + ' 件 / 要点 ' + dst.points + ' 条');
+    const stages = arch.cicd();
+    check('CI/CD 八阶段出口条件与失败处置齐全',
+        stages.length === 8 && stages.every((s, i) => s.no === i + 1 && s.name && s.tool && s.dur && s.hue && s.action && s.exit && s.fail) &&
+        dst.stages === 8,
+        stages.map((s) => s.id).join(' → '));
+    const lb = arch.lbPath();
+    check('负载均衡五跳接力且 Nacos 供名单',
+        lb.hops.length === 5 && lb.hops.every((h) => h.name && h.hue && h.icon) &&
+        /Nacos/.test(lb.registry.name) && lb.hops.some((h) => /Feign/.test(h.name)) && lb.hops.some((h) => /Nginx/.test(h.name)),
+        lb.hops.map((h) => h.name).join(' → '));
+})();
+
+/* 图纸是「可操纵的对象」，控件必须常驻且真的改画面：
+   这里逐个 tab 渲染架构页，数控件数量、数 SVG 状态类、数时序图步数，
+   再把每个视图开关拨一遍，确认导出的 SVG 跟着当前状态走而不是永远一张默认图 */
+(() => {
+    section('架构页图纸与控件');
+    const def = TMS.pages.get('architecture');
+    const session = SESSION_BY_ROLE.admin;
+    TMS.auth.write(session);
+    TMS.shell.state.session = session;
+    TMS.shell.state.portal = 'admin';
+    TMS.shell.state.pageId = 'architecture';
+    const uiState = TMS.ui.state('architecture');
+    const ctx = {
+        shell: TMS.shell, session, params: {}, days: 7, layout: 'bare', pageId: 'architecture',
+        role: 'admin', go: () => {}, refresh: () => {}, toast: () => {}, confirm: () => autoYes,
+        modal: () => ({ close() {} }), drawer: () => ({ close() {} }), formModal: () => ({ close() {} }),
+        state: uiState, data: {}
+    };
+    const TABS = ['topo', 'services', 'flows', 'data', 'dist', 'deploy'];
+    const htmlByTab = {};
+    let bad = 0;
+    TABS.forEach((t) => {
+        uiState.tab = t;
+        try {
+            const d = def.load(ctx);
+            ctx.data = d;
+            const html = String(def.render(ctx, d) || '');
+            htmlByTab[t] = html;
+            if (/undefined|NaN|\[object Object\]/.test(html) || html.length < 400) {
+                bad++;
+                const m = html.match(/.{0,60}(undefined|NaN|\[object Object\]).{0,60}/);
+                console.error('  ✗ 架构页 ' + t + ' 渲染有问题：' + (m ? m[0] : html.length + ' 字符'));
+            }
+            if (unclosedTagQuotes(html).length) { bad++; console.error('  ✗ 架构页 ' + t + ' 标签引号未闭合'); }
+        } catch (err) {
+            bad++;
+            console.error('  ✗ 架构页 ' + t + ' 渲染抛错：' + err.message);
+        }
+    });
+    check('架构页六个页签全部渲染干净', bad === 0 && TABS.every((t) => htmlByTab[t]), bad ? bad + ' 个页签有问题' : TABS.join(' / '));
+    check('公开页 masthead 常驻且已登录会话给进入系统',
+        /class="ar-mast"/.test(htmlByTab.topo) && /进入系统/.test(htmlByTab.topo) &&
+        /tms\/index\.html/.test(htmlByTab.topo) && /class="ar-public-body"/.test(htmlByTab.topo),
+        'masthead + 收宽正文');
+    const guestCtx = Object.assign({}, ctx, {
+        session: { username: 'guest', name: '访客', role: 'guest', guest: true, permissions: [] }, role: 'guest'
+    });
+    uiState.tab = 'topo';
+    const guestHtml = String(def.render(guestCtx, def.load(guestCtx)) || '');
+    check('访客视角 masthead 给返回登录且页面照常渲染',
+        /返回登录/.test(guestHtml) && guestHtml.indexOf('进入系统') === -1 &&
+        /class="ar-controls"/.test(guestHtml) && !/undefined|NaN/.test(guestHtml),
+        'guest → 返回登录');
+
+    const topoHtml = htmlByTab.topo || '';
+    const switches = (topoHtml.match(/class="ar-switch"/g) || []).length;
+    const ranges = (topoHtml.match(/type="range"/g) || []).length;
+    const selects = (topoHtml.match(/<select/g) || []).length;
+    const ctlBtns = (topoHtml.match(/data-act="arch:(reset|svg|csv)"/g) || []).length;
+    check('图纸控件区常驻且不少于七件',
+        /class="ar-controls"/.test(topoHtml) && switches + ranges + selects + ctlBtns >= 7,
+        '开关 ' + switches + ' / 滑杆 ' + ranges + ' / 下拉 ' + selects + ' / 按钮 ' + ctlBtns);
+    check('拓扑 SVG 自带样式与 viewBox（导出即自包含）',
+        /<svg[^>]*viewBox="0 0 1408 620"/.test(topoHtml) && /<style>/.test(topoHtml) &&
+        /data-act="arch:open"/.test(topoHtml) && /--arch-speed/.test(topoHtml),
+        (topoHtml.match(/data-act="arch:open"/g) || []).length + ' 个可点节点');
+    check('拓扑总图含四件治理运维组件与关系走向',
+        ['Nginx', 'Nacos', 'SkyWalking', 'Docker + K8s'].every((n) => topoHtml.indexOf(n) > -1) &&
+        /治理与运维/.test(topoHtml) && /服务注册 · 心跳 5s/.test(topoHtml) &&
+        /K8s 调度 · 探针自愈 · 滚动发布/.test(topoHtml) && /全部服务 · 横切接入/.test(topoHtml),
+        'Nginx 入口 + 右侧治理轨');
+    /* 入口从运营仪表盘挪到登录首页：仪表盘不再出现任何架构块，
+       登录页的入口脚本必须读同一份领域目录、十枚胶囊深链聚焦对应服务 */
+    check('运营仪表盘不再带架构入口', (() => {
+        const ovDef = TMS.pages.get('overview');
+        const ovCtx = Object.assign({}, ctx, { pageId: 'overview', state: TMS.ui.state('overview') });
+        const html = String(ovDef.render(ovCtx, ovDef.load(ovCtx)) || '');
+        return !/tms-arch-entry|tms-arch-pill|ov:arch/.test(html) && !ovDef.actions['ov:arch'];
+    })(), 'overview 无架构块');
+    check('登录首页架构入口读领域目录且十枚胶囊深链', (() => {
+        const src = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+        const svcs = TMS.architecture.services();
+        return /id="login-arch"/.test(src) && /TMS\.architecture\.services\(\)/.test(src) &&
+            /architecture\.html#architecture\?service=/.test(src) && svcs.length === 10 &&
+            /renderArch\(\);/.test(src) && /tms-login-arch-pill/.test(src);
+    })(), '10 枚胶囊 → 公开架构页聚焦');
+
+    const flowHtml = htmlByTab.flows || '';
+    const curFlow = TMS.architecture.flow(uiState.seg);
+    check('时序图步数与链路目录一致且带播放头',
+        (flowHtml.match(/data-act="arch:step"/g) || []).length >= curFlow.steps.length &&
+        /ar-playhead/.test(flowHtml) && /data-act="arch:play"/.test(flowHtml) &&
+        /data-act="arch:next"/.test(flowHtml) && /data-act="arch:prev"/.test(flowHtml),
+        curFlow.name + ' ' + curFlow.steps.length + ' 步');
+
+    /* 开关拨一遍：SVG 根上的状态类必须跟着变，否则「导出当前状态」就是假的 */
+    uiState.tab = 'topo';
+    uiState.arch = {};
+    const base = String(def.render(ctx, def.load(ctx)) || '');
+    def.actions['arch:anim']('');
+    def.actions['arch:grid']('');
+    def.actions['arch:glow']('');
+    def.actions['arch:theme']('light');
+    def.actions['arch:metrics']('');
+    def.actions['arch:lines']('async');
+    def.actions['arch:speed']('2');
+    def.actions['arch:zoom']('1.4');
+    const tuned = String(def.render(ctx, def.load(ctx)) || '');
+    /* 状态类只能认 <svg> 根上的 class：内联 <style> 里本来就写着 .no-anim/.no-grid 选择器，
+       拿裸词去 test 会永远命中，开关拨没拨都看不出来 */
+    const clsHas = (h, c) => new RegExp('class="ar-svg[^"]*\\b' + c + '\\b').test(h);
+    const tunedFlags = {
+        '动画关': clsHas(tuned, 'no-anim') && !clsHas(base, 'no-anim'),
+        '网格关': clsHas(tuned, 'no-grid') && !clsHas(base, 'no-grid'),
+        '流速2×': /--arch-speed:2/.test(tuned),
+        '缩放1.4×': /--arch-zoom:1\.4/.test(tuned),
+        '图纸变了': tuned !== base,
+        '底色转浅': /fill="#080e1c"/.test(base) && /fill="#f6f9fd"/.test(tuned),
+        '辉光关': /filter="url\(#arGlowF\)"/.test(base) && !/filter="url\(#arGlowF\)"/.test(tuned)
+    };
+    check('视图开关真的改图纸（动画/网格/辉光/底色/标注/连线/流速/缩放）',
+        Object.keys(tunedFlags).every((k) => tunedFlags[k]),
+        Object.keys(tunedFlags).filter((k) => !tunedFlags[k]).join('、') || '八项全部跟着状态走');
+    def.actions['arch:reset']('');
+    const reset = String(def.render(ctx, def.load(ctx)) || '');
+    check('重置视图回到出厂态', !clsHas(reset, 'no-anim') && !clsHas(reset, 'no-grid') && /--arch-speed:1"/.test(reset),
+        'anim/grid/glow/metrics 全开 · 流速 1 · 缩放 1');
+    def.actions['arch:focus']('billing');
+    const focused = String(def.render(ctx, def.load(ctx)) || '');
+    const nodeTags = focused.match(/<g class="ar-node(?: ar-focus)?" data-act="arch:open"[^>]*>/g) || [];
+    const opsTags = focused.match(/<g class="ar-node" data-act="arch:dist-tech"[^>]*>/g) || [];
+    check('聚焦高亮邻接且不压暗任何服务', uiState.arch.focus === 'billing' &&
+        nodeTags.length === 10 && nodeTags.every((t) => /opacity="1"/.test(t)) && opsTags.length === 4 &&
+        /ar-node ar-focus" data-act="arch:open" data-arg="billing"/.test(focused) &&
+        /ar-focus-bar/.test(focused) && /退出聚焦/.test(focused) && /opacity="\.16"/.test(focused),
+        '结算/计费服务 · 十节点全亮 · 四件横切件可点 · 无关线淡出');
+    def.actions['arch:ops']('');
+    const noOpsHtml = String(def.render(ctx, def.load(ctx)) || '');
+    check('治理运维开关收起横切轨并还原主画布宽',
+        /viewBox="0 0 1180 620"/.test(noOpsHtml) && !/data-arg="skywalking"/.test(noOpsHtml) &&
+        !/治理运维轨/.test(noOpsHtml),
+        'ops off → 1180 主画布');
+    def.actions['arch:ops']('');
+    def.actions['arch:step']('3');
+    uiState.tab = 'flows';
+    const stepped = String(def.render(ctx, def.load(ctx)) || '');
+    check('单步播放头落到指定步且暂停自动播放',
+        uiState.arch.step === 3 && uiState.arch.play === 0 && /ar-row on/.test(stepped),
+        '第 3 步');
+
+    /* 分布式页签：三张自包含 SVG + 常驻控制台 + 雪花发号器全流程 */
+    const distHtml = htmlByTab.dist || '';
+    const distSvgs = (distHtml.match(/<svg/g) || []).length;
+    const distCtl = (distHtml.match(/data-(?:act|change)="arch:(?:dist-focus|theme|anim|grid|glow|speed|zoom|reset|dist-svg)"/g) || []).length;
+    const snowCtl = (distHtml.match(/data-(?:act|change)="arch:snow-(?:dc|worker|count|clock|gen|copy|csv|reset|pick)"/g) || []).length;
+    check('分布式页签三张图纸且两块控制台各不少于七件',
+        distSvgs >= 3 && /ar-dist-cards/.test(distHtml) && /ar-mx-row/.test(distHtml) && /class="ar-snow"/.test(distHtml) &&
+        /ar-dist-controls/.test(distHtml) && distCtl >= 7 && snowCtl >= 7,
+        'SVG ' + distSvgs + ' / 全景旋钮 ' + distCtl + ' / 发号旋钮 ' + snowCtl);
+    check('三张图纸 SVG 标识符互不撞且自带样式',
+        /id="arDGridP"/.test(distHtml) && /id="ar-ca-rb"/.test(distHtml) && /id="arLGlowF"/.test(distHtml) &&
+        (distHtml.match(/<style>/g) || []).length >= 3 && !/id="arGlowF"/.test(distHtml),
+        'dist / cicd / lb 各自前缀');
+
+    const snowOf = () => TMS.ui.state('architecture').snow;
+    def.actions['arch:snow-reset']('');
+    def.actions['arch:snow-gen']('');
+    let batch = snowOf().ids.slice();
+    const decBig = (x) => BigInt('0b' + x.bin);
+    check('雪花一批八个：64 位、十进制换算精确、字段可解码、批内递增',
+        batch.length === 8 && batch.every((x) => x.bin.length === 64 && x.bin.charAt(0) === '0' &&
+            decBig(x).toString() === x.dec &&
+            parseInt(x.bin.substr(42, 5), 2) === x.dc && parseInt(x.bin.substr(47, 5), 2) === x.worker &&
+            parseInt(x.bin.substr(52, 12), 2) === x.seq) &&
+        batch.every((x, i) => i === 0 || decBig(x) > decBig(batch[i - 1])) &&
+        new Set(batch.map((x) => x.dec)).size === 8,
+        (batch[0] || {}).dec + ' … ' + (batch[7] || {}).dec);
+    def.actions['arch:snow-gen']('');
+    const batch2 = snowOf().ids.slice();
+    check('跨批次不重号（同毫秒序列续增）',
+        batch2.every((x) => !batch.some((y) => y.dec === x.dec)),
+        '第二批 ' + batch2.length + ' 个全新');
+    def.actions['arch:snow-clock']('reject');
+    def.actions['arch:snow-gen']('');
+    check('回拨 12ms 超容忍：整批拒发且告警',
+        snowOf().alert && snowOf().alert.tone === 'danger' &&
+        snowOf().ids.length === batch2.length && snowOf().ids.every((x, i) => x.dec === batch2[i].dec),
+        '拒发 ' + snowOf().snowCount + ' 个 · 旧批原样保留');
+    def.actions['arch:snow-clock']('wait');
+    def.actions['arch:snow-gen']('');
+    check('回拨 3ms 容忍内：等待追平继续发号',
+        snowOf().alert && snowOf().alert.tone === 'warn' && snowOf().ids.length === 8 &&
+        snowOf().ids.every((x) => !batch2.some((y) => y.dec === x.dec)),
+        '追平后新批 ' + snowOf().ids.length + ' 个');
+    def.actions['arch:snow-clock']('ok');
+    def.actions['arch:snow-pick']('3');
+    check('点选批次行切换解剖对象', snowOf().picked === '3', 'picked = 3');
+    def.actions['arch:snow-dc']('99');
+    def.actions['arch:snow-worker']('7');
+    def.actions['arch:snow-count']('99');
+    def.actions['arch:snow-gen']('');
+    check('旋钮越界钳制且新批用新节点位',
+        snowOf().snowDc === 31 && snowOf().snowWorker === 7 && snowOf().snowCount === 24 &&
+        snowOf().ids.length === 24 && snowOf().ids.every((x) => x.dc === 31 && x.worker === 7),
+        '机房 31 · 节点 7 · 批量 24');
+    def.actions['arch:snow-copy']('');
+    def.actions['arch:snow-csv']('');
+    def.actions['arch:snow-reset']('');
+    check('发号器复位回出厂态', snowOf().ids.length === 0 && snowOf().snowDc === 1 && snowOf().snowClock === 'ok',
+        '机房 1 · 节点 1 · 每批 8');
+    def.actions['arch:snow-copy']('');
+    def.actions['arch:snow-csv']('');
+
+    uiState.tab = 'dist';
+    def.actions['arch:dist-focus']('sharding');
+    const distFocused = String(def.render(ctx, def.load(ctx)) || '');
+    const distOnly = distFocused.split('</svg>')[0];
+    const distNodeTags = distOnly.match(/<g class="ar-node(?: ar-focus)?"[^>]*>/g) || [];
+    check('全景聚焦画覆盖连线且不压暗任何节点',
+        uiState.arch.distFocus === 'sharding' && /ar-focus-bar/.test(distFocused) &&
+        /id="ar-dah"/.test(distFocused) && (distFocused.match(/marker-end="url\(#ar-dah\)"/g) || []).length === 4 &&
+        distNodeTags.length === 20 && distNodeTags.every((t) => /opacity="1"/.test(t)),
+        '分库分表 → 4 服务连线 · 20 节点全亮');
+    def.actions['arch:dist-cat']('data');
+    const distData = String(def.render(ctx, def.load(ctx)) || '');
+    check('目录分类筛选只留数据与一致性四件',
+        (distData.match(/class="ar-dist-card"/g) || []).length === 4 &&
+        /ShardingSphere/.test(distData) && /Seata/.test(distData) && /Redisson/.test(distData) && /Snowflake/.test(distData),
+        '4 / 10 件');
+    def.actions['arch:dist-cat']('');
+    def.actions['arch:dist-tech']('sharding');
+    TMS.ui.closeTop();
+    def.actions['arch:dist-stage']('canary');
+    TMS.ui.closeTop();
+    def.actions['arch:dist-svg']('');
+    def.actions['arch:dist-csv']('');
+    def.actions['arch:dist-flow']('trunk');
+    check('技术抽屉/阶段弹窗/导出/链路跳转全部可达',
+        uiState.tab === 'flows' && uiState.seg === 'trunk',
+        'dist-flow → 干线链路');
+    def.actions['arch:reset']('');
+    uiState.tab = 'topo';
+    uiState.arch = {};
+})();
+
 if (EMPTY_AUDIT) {
     section('空态体检（--empty）');
     let last = '';
@@ -1550,7 +2259,8 @@ if (EMPTY_AUDIT) {
         log('      区块「' + (h.card || '未命名') + '」空：' + h.text + (h.sub ? '｜' + h.sub : ''));
     });
     const pages = new Set(emptyHits.map((h) => h.role + '/' + h.pageId));
-    log(`\n  共 ${emptyHits.length} 处空态，分布在 ${pages.size} 个页面（渲染 ${ROLE_TARGETS.length} 端 / 71 页）`);
+    const menuTotal = ROLE_TARGETS.reduce((a, r) => a + menuIdsOf(r).length, 0);
+    log(`\n  共 ${emptyHits.length} 处空态，分布在 ${pages.size} 个页面（渲染 ${ROLE_TARGETS.length} 端 / ${menuTotal} 页）`);
 }
 
 /* 动作与弹窗是真写入的入口，光渲染通过不算数：

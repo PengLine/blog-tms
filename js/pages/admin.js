@@ -1742,10 +1742,43 @@
         return TMS.network.scopeOf(TMS.network.endLevels(r.origin, ''), TMS.network.endLevels(r.destination, ''));
     }
 
+    /* 通用字典把 active 译成「在职」，路由与班次是物不是人 */
+    var ROUTE_STATUS = { active: '生效', inactive: '已停用', disabled: '已停用' };
+
     function routeChain(r) {
         var a = TMS.network.endLevels(r.origin, ''), b = TMS.network.endLevels(r.destination, '');
         var pr = a.province === b.province ? a.province : a.province + ' → ' + b.province;
         return '<div>' + esc(pr) + '</div><div class="tms-dim tms-mono">' + esc(r.origin) + ' → ' + esc(r.destination) + '</div>';
+    }
+
+    /* 节点分级：新段次自带 fromLevel/toLevel；老路由行没有分级字段时按站名后缀认 */
+    function nodeLevelOf(name, level) {
+        if (level != null) return level;
+        var n = String(name || '');
+        if (/中转场$/.test(n)) return 3;
+        if (/中转站$/.test(n)) return 2;
+        if (/分拣中心$|分拨中心$/.test(n)) return 1;
+        return 0;
+    }
+
+    var NODE_LEVEL = { 0: '网点', 1: '一级中转站', 2: '二级中转站', 3: '三级中转站' };
+    var NODE_TONE = { 1: 'brand', 2: 'info', 3: 'warn' };
+
+    function nodeLevelBadge(level, short) {
+        if (!level) return '';
+        return ui.badge(short ? NODE_LEVEL[level].slice(0, 2) : NODE_LEVEL[level], NODE_TONE[level] || 'muted');
+    }
+
+    /* 分级链路条：把段次还原成节点链，一级枢纽/二级市站/三级县场一眼分层 */
+    function chainStrip(segs) {
+        if (!segs || !segs.length) return '';
+        var nodes = [{ name: segs[0].from, level: nodeLevelOf(segs[0].from, segs[0].fromLevel) }];
+        segs.forEach(function (s) { nodes.push({ name: s.to, level: nodeLevelOf(s.to, s.toLevel) }); });
+        return '<div class="tms-chain">' + nodes.map(function (n, i) {
+            return (i ? '<i class="tms-chain-arrow">→</i>' : '') +
+                '<div class="tms-chain-node tms-chain-lv' + n.level + '">' +
+                '<b>' + esc(n.name) + '</b><span>' + (NODE_LEVEL[n.level] || '网点') + '</span></div>';
+        }).join('') + '</div>';
     }
 
     /* 段次表：routes.segments 与订单路由计划面板同构，列定义只写一次 */
@@ -1754,13 +1787,26 @@
             dense: true, keyName: 'seq', rows: segs || [], emptyText: '该路由没有段次明细',
             columns: [
                 { key: 'seq', label: '段次', width: '58px', sortable: false, render: function (s) { return ui.rank(s.seq); } },
-                { key: 'legType', label: '环节', width: '92px', render: function (s) { return ui.badge(pg.LEG_TYPE[s.legType] || s.legType, s.legType === 'trunk' ? 'brand' : 'muted'); } },
+                { key: 'legType', label: '环节', width: '92px', render: function (s) { return ui.badge(pg.LEG_TYPE[s.legType] || s.legType, s.legType === 'trunk' ? 'brand' : (s.legType === 'feeder' ? 'info' : 'muted')); } },
                 { key: 'scopeName', label: '跨度', width: '86px', sortable: false, render: function (s) { var sc = TMS.network.segmentScope(s); return ui.badge(sc.name, sc.tone); } },
-                { key: 'from', label: '起点' },
-                { key: 'to', label: '终点' },
+                { key: 'from', label: '起点', render: function (s) { return nodeLevelBadge(nodeLevelOf(s.from, s.fromLevel), true) + ' ' + esc(s.from); } },
+                { key: 'to', label: '终点', render: function (s) { return nodeLevelBadge(nodeLevelOf(s.to, s.toLevel), true) + ' ' + esc(s.to); } },
                 { key: 'mode', label: '方式', width: '70px' },
+                { key: 'tripCode', label: '班次 / 车型', width: '150px', sortable: false, render: function (s) {
+                    if (s.legType === 'feeder') return '<span class="tms-dim">区域支线班车</span>';
+                    if (s.legType !== 'trunk') return '<span class="tms-dim">—</span>';
+                    if (!s.tripCode) return '<span class="tms-dim">估算干线</span>';
+                    var v = s.vehicleType && s.vehicleType !== '-' ? TMS.master.vehicleType(s.vehicleType).name : (s.mode === '空运' ? '航空舱位' : '');
+                    return '<div class="tms-mono" style="font-size:12px">' + esc(s.tripCode) + '</div>' +
+                        (v ? '<div class="tms-dim" style="font-size:11px">' + esc(v) + ' · 核载 ' + fmt.number(s.capacityKg || 0) + 'kg</div>' : '');
+                } },
                 { key: 'km', label: '里程', align: 'right', width: '84px', render: function (s) { return fmt.km(s.km); } },
-                { key: 'stdHours', label: '标准时长', align: 'right', width: '92px', render: function (s) { return fmt.duration(s.stdHours); } }
+                { key: 'stdHours', label: '标准时长', align: 'right', width: '110px', render: function (s) {
+                    var sub = (s.legType === 'trunk' || s.legType === 'feeder') && s.transitHours != null
+                        ? '在途' + s.transitHours + 'h' + (s.transferHours ? ' +装卸' + s.transferHours + 'h' : '') + (s.waitHours ? ' +候车' + s.waitHours + 'h' : '')
+                        : '';
+                    return fmt.duration(s.stdHours) + (sub ? '<div class="tms-dim" style="font-size:11px">' + sub + '</div>' : '');
+                } }
             ]
         });
     }
@@ -1782,25 +1828,34 @@
         var trunk = segs.filter(function (s) { return s.legType === 'trunk'; });
         var byHub = util.round(util.sum(trunk, 'stdHours'), 1);
         var sc = routeScope(r);
+        var xfer = TMS.network.transferOps({ segments: segs });
         ui.modal({
             title: esc(r.origin) + ' → ' + esc(r.destination),
             size: 'wide',
             sub: esc(r.id) + ' · ' + esc(r.originZone) + ' → ' + esc(r.destinationZone) + ' · ' +
-                esc(r.mode) + ' · ' + (r.isFallback ? '全国兜底路由' : '由班次表推导'),
+                esc(r.mode) + ' · ' + (r.isFallback ? '全国兜底路由' : (r.planner === 'smart2' ? '智能规划（含中转装卸）' : '由班次表推导')),
             body: ui.stack([
                 ui.desc([
                     { label: '范围分级', value: ui.badge(esc(sc.name), sc.tone, { dot: true }) + (sc.sub ? ' <span class="tms-dim">' + esc(sc.sub) + '</span>' : '') + '<div class="tms-dim">' + esc(sc.hint) + '</div>' },
                     { label: '三级链路', value: routeChain(r) },
                     { label: '标准时长', value: fmt.duration(r.totalStdHours) },
                     { label: '总里程', value: fmt.km(r.distanceKm) },
-                    { label: '段数', value: segs.length + ' 段（干线 ' + trunk.length + ' 段）' },
+                    { label: '段数', value: segs.length + ' 段（干线 ' + trunk.length + ' 段' + (xfer.length ? ' · 中途装卸 ' + xfer.length + ' 次' : '') + '）' },
                     { label: '干线占比', value: r.totalStdHours ? fmt.percent(util.round(byHub / r.totalStdHours * 100, 1)) : '—' },
                     { label: '优先级', value: ui.badge(esc(r.priority), r.priority === '高' ? 'warn' : 'muted') },
                     { label: '偏离轨迹', value: (r.deviationCount || 0) + ' 条' },
-                    { label: '状态', value: statusBadge(r.status) },
+                    { label: '状态', value: statusBadge(r.status, ROUTE_STATUS) },
                     { label: '最近重算', value: fmt.dateTime(r.updatedAt) }
                 ], { inline: true }),
-                ui.card({ title: '段次明细', sub: '揽收/干线/派送三段的时长与里程决定承诺时效', flat: true, body: segmentTable(segs) }),
+                segs.length ? ui.card({
+                    title: '分级中转链路', sub: '网点 → 三级中转场（县域） → 二级中转站（城市） → 一级中转站（跨省枢纽），逐层上行再下行', flat: true,
+                    body: chainStrip(segs)
+                }) : '',
+                ui.card({ title: '段次明细', sub: '揽收/支线/干线/派送的时长与里程决定承诺时效，干线与支线时长含中转装卸与候车', flat: true, body: segmentTable(segs) }),
+                xfer.length ? ui.card({
+                    title: '中途枢纽装卸计划', sub: xfer.length + ' 个中转枢纽 · 卸货→分拣→装货→候车，月台按班次稳定分配', flat: true,
+                    body: pg.transferPanel(xfer)
+                }) : '',
                 trips.length
                     ? ui.card({
                         title: '挂靠班次', sub: trips.length + ' 条（干线段按分拨对搜索班次表）', flat: true,
@@ -1824,35 +1879,170 @@
         });
     }
 
-    /* 重算：用当前班次表重新推导段次，把漂移写回路由表并留审计。
+    /* 智能规划的段次事实写回路由行：页面重算与规划台采纳共用同一组字段 */
+    function smartRoutePatch(plan) {
+        return {
+            mode: plan.mode, priority: plan.priority, segments: plan.segments,
+            totalStdHours: plan.totalStdHours, distanceKm: plan.distanceKm,
+            planner: plan.planner || 'smart2', strategy: plan.strategy || '',
+            transfers: plan.transfers || 0, trunkLegs: plan.trunkLegs || 0,
+            trunkCost: plan.trunkCost || 0, reliability: plan.reliability || 0,
+            status: 'active'
+        };
+    }
+
+    /* 重算：用当前班次图重新推导段次，把漂移写回路由表并留审计。
        班次调整后不重算，路由上的标准时长就是过期承诺，时效看板会集体失真 */
     function recomputeRoute(id) {
         var r = db.get('routes', id);
         if (!r) { ui.toast('路由不存在', 'warn'); return; }
         var plan = TMS.master.planSegments(
-            { city: r.origin, zone: r.originZone }, { city: r.destination, zone: r.destinationZone }, r.mode);
-        if (!plan) { ui.toast('起讫城市不在主数据内，无法重算', 'warn'); return; }
+            { city: r.origin, zone: r.originZone }, { city: r.destination, zone: r.destinationZone },
+            r.mode === '空运' ? '空运' : (r.mode === '联运' ? '不限' : '陆运'), { strategy: r.strategy || '均衡', originDistrict: r.originDistrict, destDistrict: r.destDistrict });
+        if (!plan) { ui.toast('起讫城市不在主数据内或空运通道已关闭，无法重算', 'warn'); return; }
         var dHours = util.round((plan.totalStdHours || 0) - (r.totalStdHours || 0), 1);
         var dKm = Math.round((plan.distanceKm || 0) - (r.distanceKm || 0));
         var dSegs = (plan.segments || []).length - (r.segments || []).length;
-        if (!dHours && !dKm && !dSegs) { ui.toast(r.id + ' 与当前班次表一致，无需重算', 'success'); return; }
+        if (!dHours && !dKm && !dSegs && r.planner === 'smart2') { ui.toast(r.id + ' 与当前班次图一致，无需重算', 'success'); return; }
         ui.confirm({
             title: '重算路由 ' + r.id,
             message: '标准时长 ' + fmt.duration(r.totalStdHours) + ' → ' + fmt.duration(plan.totalStdHours),
             detail: '里程 ' + fmt.km(r.distanceKm) + ' → ' + fmt.km(plan.distanceKm) +
                 ' · 段数 ' + (r.segments || []).length + ' → ' + (plan.segments || []).length +
+                ' · 干线 ' + (plan.trunkLegs || 0) + ' 段 / 中转装卸 ' + (plan.transfers || 0) + ' 次' +
                 '<br>改的是「后续新单的承诺」，已生成运单的时间承诺随单快照，不受影响。',
             okText: '确认重算'
         }).then(function (yes) {
             if (!yes) return;
-            db.update('routes', r.id, {
-                mode: plan.mode, priority: plan.priority, segments: plan.segments,
-                totalStdHours: plan.totalStdHours, distanceKm: plan.distanceKm, status: 'active'
-            });
+            db.update('routes', r.id, smartRoutePatch(plan));
             saveRow('routes', r, '路由重算');
+            TMS.network.invalidateCache();
             TMS.audit.log('network.update', 'routes', r.id,
                 r.origin + '→' + r.destination + ' 标准时长 ' + fmt.duration(r.totalStdHours) + '→' + fmt.duration(plan.totalStdHours), actor());
             ui.toast(r.id + ' 已重算：时长 ' + (dHours >= 0 ? '+' : '') + dHours + 'h / 里程 ' + (dKm >= 0 ? '+' : '') + dKm + 'km', 'success');
+        });
+    }
+
+    /* ---------- 智能路由规划台 ----------
+       条件改动即重算（data-change 直挂动作），候选方案同场评分；
+       选中方案展开段次与中途装卸时间线，采纳后写路由表并留审计 */
+
+    function plannerState(ctx) {
+        var st = ctx.state;
+        if (!st.pl) st.pl = { origin: '上海', destination: '成都', originDistrict: '', destDistrict: '', service: '标准', strategy: '', maxTransfers: '2', mode: '', picked: 0 };
+        return st.pl;
+    }
+
+    function plannerOptions(pl) {
+        return {
+            strategy: pl.strategy || undefined,
+            maxTransfers: pl.maxTransfers === '' ? undefined : Number(pl.maxTransfers),
+            mode: pl.mode || undefined,
+            originDistrict: pl.originDistrict || undefined,
+            destDistrict: pl.destDistrict || undefined
+        };
+    }
+
+    function plannerResult(pl) {
+        return TMS.network.planOptions(pl.origin, pl.destination, pl.service, plannerOptions(pl));
+    }
+
+    function plannerPicked(res, pl) {
+        if (!res || !res.candidates.length) return null;
+        return res.candidates[Math.max(0, Math.min(Number(pl.picked) || 0, res.candidates.length - 1))];
+    }
+
+    /* 全节点链：网点→三级→二级→一级…→网点，分级中转的完整走向一行可读 */
+    function planChainText(p) {
+        var segs = p.segments || [];
+        if (!segs.length) return '';
+        return [segs[0].from].concat(segs.map(function (s) { return s.to; })).join(' → ');
+    }
+
+    function districtOptions(city) {
+        return [{ value: '', label: '全市（按网点）' }].concat(TMS.master.districtsOf(city).map(function (d) { return d.name; }));
+    }
+
+    function plannerCard(ctx, d) {
+        var pl = d.pl, res = d.plRes;
+        var cities = TMS.master.CITIES.map(function (c) { return c.name; });
+        var form = ui.form({
+            className: 'tms-planner',
+            values: pl,
+            fields: [
+                { key: 'origin', label: '始发城市', type: 'select', options: cities, placeholder: false, change: 'rt:pl-set' },
+                { key: 'originDistrict', label: '始发区县', type: 'select', options: districtOptions(pl.origin), placeholder: false, change: 'rt:pl-set' },
+                { key: 'destination', label: '目的城市', type: 'select', options: cities, placeholder: false, change: 'rt:pl-set' },
+                { key: 'destDistrict', label: '目的区县', type: 'select', options: districtOptions(pl.destination), placeholder: false, change: 'rt:pl-set' },
+                { key: 'service', label: '服务产品', type: 'select', options: TMS.master.SERVICES.map(function (s) { return s.name; }), placeholder: false, change: 'rt:pl-set' },
+                { key: 'strategy', label: '规划策略', type: 'select', placeholder: '跟随产品（' + (TMS.network.SERVICE_STRATEGY[pl.service] || '均衡') + '）',
+                  options: Object.keys(TMS.network.STRATEGIES).map(function (k) { return { value: k, label: TMS.network.STRATEGIES[k].name }; }), change: 'rt:pl-set' },
+                { key: 'maxTransfers', label: '最多中转', type: 'select', placeholder: false,
+                  options: [{ value: '0', label: '0 次（仅直达）' }, { value: '1', label: '1 次中转' }, { value: '2', label: '2 次中转' }], change: 'rt:pl-set' },
+                { key: 'mode', label: '干线方式', type: 'select', placeholder: '跟随产品（' + (pl.service === '加急' ? '空运优先' : '陆运') + '）',
+                  options: [{ value: '陆运', label: '陆运（含铁路）' }, { value: '空运', label: '空运优先（可联运）' }, { value: '不限', label: '不限方式' }], change: 'rt:pl-set' }
+            ],
+            actions: ui.btn('重新规划', { tone: 'primary', act: 'rt:pl-run', icon: '⇄' }) +
+                ui.btn('采纳选中方案', { tone: 'primary', act: 'rt:pl-adopt', icon: '✓', disabled: !res }) +
+                ui.btn('导出方案对比', { act: 'rt:pl-csv', icon: '⤓', disabled: !res }) +
+                ui.btn('导出选中段次', { act: 'rt:pl-seg-csv', icon: '⤓', disabled: !res })
+        });
+        var body = [form];
+        if (d.plErr) {
+            body.push(ui.notice('规划失败：' + esc(d.plErr), 'error'));
+        } else if (!res) {
+            body.push(ui.notice('当前条件下没有可行方案：起讫分拨之间在最多 ' + esc(pl.maxTransfers) + ' 次中转内够不到，试着放宽中转次数或改用不限方式', 'warn'));
+        } else {
+            var best = res.best;
+            body.push(ui.notice(
+                '共 ' + res.candidates.length + ' 个可行方案 · 策略「' + esc((TMS.network.STRATEGIES[res.strategy] || {}).name || res.strategy) + '」· ' +
+                '推荐 ' + esc(best.label) + '（' + best.score + ' 分）' +
+                (res.airFallback ? ' · 本 OD 无空运通道，已按陆运时效优先规划' : ''), 'info'));
+            var rows = res.candidates.slice(0, 8).map(function (c, i) { c.cid = i; return c; });
+            body.push(ui.table({
+                dense: true, keyName: 'cid', rows: rows, selected: Number(pl.picked) || 0, zebra: true,
+                columns: [
+                    { key: 'label', label: '方案', sortable: false, render: function (c) {
+                        return '<b>' + esc(c.label) + '</b>' + (c.cid === 0 ? ' ' + ui.badge('推荐', 'success') : '') +
+                            (c.mode === '联运' ? ' ' + ui.badge('空陆联运', 'brand') : '') +
+                            '<div class="tms-dim" style="font-size:11px">' + esc(planChainText(c)) + '</div>';
+                    } },
+                    { key: 'trunkLegs', label: '干线/中转', width: '92px', sortable: false, render: function (c) { return c.trunkLegs + ' 段 / ' + (c.transfers || []).length + ' 次'; } },
+                    { key: 'totalStdHours', label: '标准时长', align: 'right', width: '128px', sortable: false, render: function (c) {
+                        return fmt.duration(c.totalStdHours) + '<div class="tms-dim" style="font-size:11px">在途' + c.transitHours + ' +装卸' + c.transferHours + ' +候车' + c.waitHours + '</div>';
+                    } },
+                    { key: 'distanceKm', label: '里程', align: 'right', width: '86px', sortable: false, render: function (c) { return fmt.km(c.distanceKm); } },
+                    { key: 'trunkCost', label: '车次成本', align: 'right', width: '96px', sortable: false, render: function (c) { return fmt.money(c.trunkCost); } },
+                    { key: 'reliability', label: '准点率', align: 'right', width: '80px', sortable: false, render: function (c) { return fmt.percent(c.reliability); } },
+                    { key: 'score', label: '综合得分', align: 'right', width: '110px', sortable: false, render: function (c) {
+                        return ui.progress(c.score, { thin: true, tone: c.cid === 0 ? 'success' : 'brand' }) +
+                            '<span class="tms-dim" style="font-size:11px"> ' + c.score + '</span>';
+                    } },
+                    { key: 'ops', label: '选用', width: '72px', sortable: false, render: function (c) {
+                        return Number(pl.picked) === c.cid ? ui.badge('已选', 'brand', { dot: true }) : ui.link('选用', 'rt:pl-pick', String(c.cid), { tone: 'ghost' });
+                    } }
+                ]
+            }));
+            if (res.candidates.length > 8) body.push('<div class="tms-dim" style="font-size:12px">仅展示得分前 8 的方案，其余 ' + (res.candidates.length - 8) + ' 个已参与评分未列出</div>');
+            var picked = plannerPicked(res, pl);
+            if (picked) {
+                body.push(ui.card({
+                    title: '选中方案 · ' + picked.label + (picked.mode === '联运' ? '（空陆联运）' : ''),
+                    sub: planChainText(picked) + ' · ' + fmt.duration(picked.totalStdHours) + ' · ' + fmt.km(picked.distanceKm) + ' · 车次成本 ' + fmt.money(picked.trunkCost),
+                    flat: true,
+                    body: ui.stack([
+                        chainStrip(picked.segments),
+                        segmentTable(picked.segments),
+                        (picked.transfers || []).length ? pg.transferPanel(picked.transfers) :
+                            ui.notice('该方案无需中途枢纽装卸：支线直达或干线一程到达', 'info')
+                    ])
+                }));
+            }
+        }
+        return ui.card({
+            title: '智能路由规划台',
+            sub: '分级中转：网点 → 三级中转场（县） → 二级中转站（市） → 一级中转站（跨省枢纽），班次图全路径枚举同场评分，改动条件即时重算',
+            flat: true, body: ui.stack(body)
         });
     }
 
@@ -1861,8 +2051,19 @@
         load: function (ctx) {
             var rs = TMS.stats.routeStats();
             var rows = db.col('routes');
+            var pl = plannerState(ctx);
+            var plRes = null, plErr = '';
+            try { plRes = plannerResult(pl); } catch (err) { plErr = err && err.message ? err.message : String(err); }
+            var multi = rows.filter(function (r) {
+                return (r.segments || []).filter(function (s) { return s.legType === 'trunk'; }).length >= 2;
+            });
             return {
                 rs: rs, rows: rows, scopes: TMS.network.scopeStats(rows),
+                pl: pl, plRes: plRes, plErr: plErr,
+                multiTrunk: multi.length,
+                xferTotal: multi.reduce(function (n, r) {
+                    return n + (r.segments || []).filter(function (s) { return s.legType === 'trunk'; }).length - 1;
+                }, 0),
                 provs: (function () {
                     var m = {};
                     rows.forEach(function (r) {
@@ -1888,8 +2089,9 @@
         render: function (ctx, d) {
             var kpi = ui.kpis([
                 { label: '路由总数', value: d.rs.total, unit: '条', tone: 'brand', icon: '⇄', sub: '生效 ' + d.rs.active + ' 条' },
+                { label: '多干线串联', value: d.multiTrunk, unit: '条', tone: d.multiTrunk ? 'info' : 'muted', icon: '⛓', sub: '中途枢纽装卸 ' + d.xferTotal + ' 次' },
                 { label: '跨省路由', value: d.scopes.by.cross, unit: '条', tone: 'danger', icon: '⤨', sub: '占 ' + fmt.percent(d.scopes.total ? util.round(d.scopes.by.cross / d.scopes.total * 100, 1) : 0) + ' · 内含跨大区' },
-                { label: '平均标准时长', value: util.round(d.rs.avgStdHours, 1), unit: '小时', icon: '◷', sub: '含揽收与派送支线' },
+                { label: '平均标准时长', value: util.round(d.rs.avgStdHours, 1), unit: '小时', icon: '◷', sub: '含揽收派送与中转装卸' },
                 { label: '平均里程', value: fmt.number(d.rs.avgDistance), unit: 'km', icon: '⤳', sub: '全网路由均值' },
                 { label: '偏离轨迹', value: d.rs.deviationTraces, unit: '条', tone: d.rs.deviationTraces ? 'warn' : 'muted', icon: '⚠', sub: '涉及 ' + d.rs.deviationOrders + ' 单' }
             ]);
@@ -1935,8 +2137,9 @@
                 })
             });
             return wrap(ctx, {
-                actions: ui.btn('导出路由', { size: 'sm', act: 'rt:export', icon: '⤓' }),
-                body: [kpi, ui.split('2', [modeCard, distCard]), ui.split('2', [scopeCard, provCard]), devCard, grid(ctx, {
+                actions: ui.btn('全部按班次重算', { size: 'sm', act: 'rt:recompute-all', icon: '↻' }) +
+                    ui.btn('导出路由', { size: 'sm', act: 'rt:export', icon: '⤓' }),
+                body: [kpi, plannerCard(ctx, d), ui.split('2', [modeCard, distCard]), ui.split('2', [scopeCard, provCard]), devCard, grid(ctx, {
                     rows: d.rows, keyName: 'id', onRow: 'rt:open', searchKey: 'q',
                     search: function (r) {
                         /* 省份也进搜索串：按「浙江省」筛路由是规划时的第一反应，
@@ -1973,7 +2176,7 @@
                         { key: 'totalStdHours', label: '标准时长', align: 'right', width: '92px', render: function (r) { return fmt.duration(r.totalStdHours); } },
                         { key: 'distanceKm', label: '里程', align: 'right', width: '84px', render: function (r) { return fmt.km(r.distanceKm); } },
                         { key: 'deviationCount', label: '偏离', align: 'right', width: '68px', render: function (r) { return r.deviationCount ? ui.badge(r.deviationCount, 'warn') : '<span class="tms-dim">0</span>'; } },
-                        { key: 'status', label: '状态', width: '80px', render: function (r) { return statusBadge(r.status); } },
+                        { key: 'status', label: '状态', width: '80px', render: function (r) { return statusBadge(r.status, ROUTE_STATUS); } },
                         { key: 'ops', label: '操作', width: '112px', sortable: false, render: function (r) { return ui.link('重算', 'rt:check', r.id, { tone: 'ghost' }); } }
                     ]
                 })]
@@ -1982,6 +2185,104 @@
         actions: {
             'rt:open': function (id) { routeModal(id); },
             'rt:check': function (id) { ui.closeTop(); recomputeRoute(id); },
+            'rt:pl-set': function (v, el) {
+                if (!el || !el.name) return;
+                var st = curCtx().state;
+                var pl = plannerState({ state: st });
+                pl[el.name] = v;
+                /* 换城市后旧区县不再属于该城市，清掉避免拿着「陇西县」去规划嘉兴 */
+                if (el.name === 'origin') pl.originDistrict = '';
+                if (el.name === 'destination') pl.destDistrict = '';
+                pl.picked = 0;
+                TMS.shell.refresh();
+            },
+            'rt:pl-run': function () { TMS.shell.refresh(); },
+            'rt:pl-pick': function (i) {
+                var st = curCtx().state;
+                plannerState({ state: st }).picked = Number(i) || 0;
+                TMS.shell.refresh();
+            },
+            'rt:pl-adopt': function () {
+                var st = curCtx().state, pl = plannerState({ state: st });
+                var res = plannerResult(pl), picked = plannerPicked(res, pl);
+                if (!picked) { ui.toast('当前条件没有可采纳的方案', 'warn'); return; }
+                var xfer = (picked.transfers || []).length;
+                ui.confirm({
+                    title: '采纳方案 · ' + picked.origin + ' → ' + picked.destination,
+                    message: picked.label + '：' + (picked.trunkLegs || 0) + ' 段干线 / ' + xfer + ' 次中途装卸',
+                    detail: '标准时长 ' + fmt.duration(picked.totalStdHours) + ' · 里程 ' + fmt.km(picked.distanceKm) +
+                        ' · 车次成本 ' + fmt.money(picked.trunkCost) + ' · 准点率 ' + fmt.percent(picked.reliability) +
+                        '<br>同起讫已有路由则更新段次，否则建档；已生成运单的时间承诺随单快照，不受影响。',
+                    okText: '确认采纳'
+                }).then(function (yes) {
+                    if (!yes) return;
+                    var r = TMS.network.adoptRoutePlan(picked, actor());
+                    if (!r.ok) { ui.toast(r.message, 'warn'); return; }
+                    ui.toast((r.created ? '已建档 ' : '已更新 ') + r.id + '：' + picked.label, 'success');
+                    TMS.shell.refresh();
+                });
+            },
+            'rt:pl-csv': function () {
+                var pl = plannerState({ state: curCtx().state });
+                var res = plannerResult(pl);
+                if (!res || !res.candidates.length) { ui.toast('当前条件没有可行方案', 'warn'); return; }
+                download('路由方案对比-' + pl.origin + '至' + pl.destination + '.csv', toCsv([
+                    { label: '方案', key: 'label' },
+                    { label: '链路', value: function (c) { return planChainText(c); } },
+                    { label: '方式', key: 'mode' },
+                    { label: '干线段', key: 'trunkLegs' },
+                    { label: '中转次数', value: function (c) { return (c.transfers || []).length; } },
+                    { label: '标准时长h', key: 'totalStdHours' },
+                    { label: '在途h', key: 'transitHours' }, { label: '装卸h', key: 'transferHours' }, { label: '候车h', key: 'waitHours' },
+                    { label: '里程km', key: 'distanceKm' }, { label: '车次成本', key: 'trunkCost' },
+                    { label: '准点率%', key: 'reliability' }, { label: '综合得分', key: 'score' }
+                ], res.candidates));
+            },
+            'rt:pl-seg-csv': function () {
+                var pl = plannerState({ state: curCtx().state });
+                var picked = plannerPicked(plannerResult(pl), pl);
+                if (!picked) { ui.toast('当前条件没有选中方案', 'warn'); return; }
+                download('路由段次-' + picked.origin + '至' + picked.destination + '.csv', toCsv([
+                    { label: '段次', key: 'seq' },
+                    { label: '环节', value: function (s) { return pg.LEG_TYPE[s.legType] || s.legType; } },
+                    { label: '起点', key: 'from' }, { label: '终点', key: 'to' }, { label: '方式', key: 'mode' },
+                    { label: '班次', value: function (s) { return s.tripCode || (s.legType === 'trunk' ? '估算干线' : ''); } },
+                    { label: '车型', value: function (s) { return s.vehicleType && s.vehicleType !== '-' ? TMS.master.vehicleType(s.vehicleType).name : (s.mode === '空运' ? '航空舱位' : ''); } },
+                    { label: '里程km', key: 'km' }, { label: '标准时长h', key: 'stdHours' },
+                    { label: '在途h', value: function (s) { return s.transitHours == null ? '' : s.transitHours; } },
+                    { label: '装卸h', value: function (s) { return s.transferIn ? s.transferIn.unloadHours + s.transferIn.sortHours + s.transferIn.loadHours : ''; } },
+                    { label: '候车h', value: function (s) { return s.waitHours == null ? '' : s.waitHours; } }
+                ], picked.segments));
+            },
+            'rt:recompute-all': function () {
+                var rows = db.col('routes').filter(function (r) { return !r.isFallback; });
+                ui.confirm({
+                    title: '全部按班次重算',
+                    message: '用当前班次图重算 ' + rows.length + ' 条路由（不含全国兜底）',
+                    detail: '沿用各路由原规划策略（缺省均衡）；与班次图一致的智能路由自动跳过。<br>改的是「后续新单的承诺」，已生成运单的时间承诺随单快照，不受影响。',
+                    okText: '开始重算'
+                }).then(function (yes) {
+                    if (!yes) return;
+                    var changed = 0, multi = 0;
+                    rows.forEach(function (r) {
+                        var plan = TMS.master.planSegments(
+                            { city: r.origin, zone: r.originZone }, { city: r.destination, zone: r.destinationZone },
+                            r.mode === '空运' ? '空运' : (r.mode === '联运' ? '不限' : '陆运'), { strategy: r.strategy || '均衡', originDistrict: r.originDistrict, destDistrict: r.destDistrict });
+                        if (!plan) return;
+                        if ((plan.trunkLegs || 0) >= 2) multi++;
+                        var same = plan.totalStdHours === r.totalStdHours && plan.distanceKm === r.distanceKm &&
+                            (plan.segments || []).length === (r.segments || []).length && r.planner === 'smart2';
+                        if (same) return;
+                        db.update('routes', r.id, smartRoutePatch(plan));
+                        changed++;
+                    });
+                    saveRow('routes', null, '路由全部重算');
+                    TMS.network.invalidateCache();
+                    TMS.audit.log('network.update', 'routes', '', '按班次图重算 ' + rows.length + ' 条路由，变更 ' + changed + ' 条', actor());
+                    ui.toast('重算完成：变更 ' + changed + ' 条，其中多干线串联 ' + multi + ' 条', 'success');
+                    TMS.shell.refresh();
+                });
+            },
             'rt:export': function () {
                 exportGrid({
                     rows: db.col('routes'), name: '路由清单.csv',

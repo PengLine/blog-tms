@@ -293,7 +293,7 @@
     }
 
     /* 站点根相对路径 → 当前页面能用的地址。
-       页面按角色分了目录，登录页在根、业务页在 admin/ branch/ … 之下，
+       页面按角色分了目录，登录页在根、业务页在 tms/ branch/ … 之下，
        同一个 'index.html' 在两边指向完全不同的文件，只有带上 boot.js 反推出的基准才说得清 */
     function url(path) {
         return (TMS.base || '') + String(path == null ? '' : path);

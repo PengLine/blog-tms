@@ -387,12 +387,15 @@
 
     function orderPlanPanel(order, plan) {
         if (!plan || !plan.segments) return ui.empty('暂无路由计划');
+        var trunkLegs = plan.trunkLegs || (plan.segments || []).filter(function (s) { return s.legType === 'trunk'; }).length;
+        var xfer = plan.transfers || [];
         return ui.stack([
             ui.desc([
                 { label: '路由', value: ui.idCell(plan.routeId || '', '') + ' · ' + esc(plan.serviceName || order.service) },
                 { label: '范围分级', value: scopeCell(plan) },
                 { label: '三级链路', value: chainCell(plan) },
                 { label: '运输方式', value: ui.badge(esc(plan.mode || '陆运'), plan.mode === '陆运' ? 'info' : 'brand') },
+                { label: '干线串联', value: trunkLegs + ' 段干线' + (xfer.length ? ' · 中途装卸 ' + xfer.length + ' 次' : ' · 直达无中转') },
                 { label: '总里程 / 标准时长', value: fmt.km(plan.distanceKm) + ' · ' + fmt.duration(plan.stdHours) },
                 { label: '承诺时效', value: fmt.duration(plan.slaHours) + '（含分拣与派送冗余）' }
             ], { inline: true }),
@@ -409,8 +412,43 @@
                     { key: 'stdHours', label: '标准时长', align: 'right', render: function (s) { return fmt.duration(s.stdHours); } }
                 ],
                 rows: plan.segments
-            })
+            }),
+            xfer.length ? ui.card({
+                title: '中途枢纽装卸计划', sub: '货到中转枢纽先卸后装，分拣与候车时长已计入承诺', flat: true,
+                body: transferPanel(xfer)
+            }) : ''
         ]);
+    }
+
+    /* 中转装卸时间线：卸货 → 分拣转运 → 装货 → 候车四步，月台与班次都落到具体值。
+       运营端路由详情与订单路由面板共用这一份，口径不再各写各的 */
+    function transferPanel(ops) {
+        if (!ops || !ops.length) return '';
+        return '<div class="tms-xfer">' + ops.map(function (op) {
+            return '<div class="tms-xfer-hub">' +
+                '<div class="tms-xfer-head">' +
+                '<span class="tms-xfer-seq">中转 ' + op.seq + '</span>' +
+                '<b>' + esc(op.hub) + '</b>' +
+                '<span class="tms-dim">' + esc(op.city ? op.city + ' · ' : '') + '作业 + 候车 共 ' + fmt.duration(op.totalHours) + '</span>' +
+                '<span class="tms-xfer-trips tms-mono">' + esc(op.prevTripCode || '到达班次') + (op.arriveAt ? ' ' + esc(op.arriveAt) + ' 到' : '') +
+                ' → ' + esc(op.nextTripCode || '接续班次') + (op.departAt ? ' ' + esc(op.departAt) + ' 发' : '') + '</span>' +
+                '</div>' +
+                '<div class="tms-xfer-steps">' +
+                xferStep('in', '⬇', '卸货', op.unloadHours, '月台 ' + op.dockIn) +
+                '<i class="tms-xfer-arrow">→</i>' +
+                xferStep('mid', '⇄', '分拣转运', op.sortHours, '分拣线') +
+                '<i class="tms-xfer-arrow">→</i>' +
+                xferStep('out', '⬆', '装货', op.loadHours, '月台 ' + op.dockOut) +
+                '<i class="tms-xfer-arrow">→</i>' +
+                xferStep('wait', '◷', '候车', op.waitHours, op.departAt ? op.departAt + ' 发班' : '等接续班次') +
+                '</div></div>';
+        }).join('') + '</div>';
+    }
+
+    function xferStep(tone, icon, name, hours, sub) {
+        return '<div class="tms-xfer-step ' + tone + '"><i>' + icon + '</i>' +
+            '<div><b>' + esc(name) + ' <span class="tms-xfer-hours">' + fmt.duration(hours) + '</span></b>' +
+            '<span>' + esc(sub) + '</span></div></div>';
     }
 
     /* 分级徽标 + 一句为什么：只写「区内直送」的话，使用者看不出它和「市内跨区」差在哪，
@@ -1042,6 +1080,7 @@
         /* 订单共用视图 */
         statusSteps: statusSteps, traceTimeline: traceTimeline, orderInfo: orderInfo,
         orderFeePanel: orderFeePanel, orderCostPanel: orderCostPanel, orderPlanPanel: orderPlanPanel,
+        transferPanel: transferPanel,
         orderWorkPanel: orderWorkPanel, orderDocPanel: orderDocPanel, orderTaskList: orderTaskList,
         orderColumns: orderColumns, orderFields: orderFields, orderFilter: orderFilter, orderScopeCell: orderScopeCell, regionCell: regionCell,
         addressDrawer: addressDrawer,

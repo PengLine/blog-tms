@@ -466,8 +466,16 @@
         document.body.appendChild(wrap);
         var handle = {
             el: wrap, body: wrap.querySelector('.tms-drawer-body'),
-            close: function () { if (wrap.parentNode) wrap.parentNode.removeChild(wrap); if (o.onClose) o.onClose(); }
+            close: function () {
+                if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+                var i = modalStack.indexOf(handle);
+                if (i > -1) modalStack.splice(i, 1);
+                if (o.onClose) o.onClose();
+            }
         };
+        /* 抽屉也要进弹层栈：不进的话 closeTop() 与 Esc 都关不掉它，
+           抽屉脚上的「跳过去看」会把自己的出处留在屏幕上盖住新页面 */
+        modalStack.push(handle);
         wrap.querySelector('[data-close]').addEventListener('click', handle.close);
         wrap.addEventListener('click', function (e) { if (e.target === wrap && o.dismiss !== false) handle.close(); });
         return handle;
@@ -854,10 +862,13 @@
         optionsOf: optionsOf, statusOptions: statusOptions,
         delta: delta, moneyCell: moneyCell, timeCell: timeCell, idCell: idCell,
         actions: {},
-        /* 页面状态机：列表页的 页码/排序/筛选 统一由 kit 保管，跨渲染不丢 */
+        /* 页面状态机：列表页的 页码/排序/筛选 统一由 kit 保管，跨渲染不丢。
+           这里不预填 pageSize：paginate 优先读 state.pageSize，预填全站默认 12 会让
+           卡片上声明的 pageSize:20 永远不生效，每页下拉还会选中一个不在选项里的值。
+           用户真选过每页条数时由 page:size 写进来，此后一直沿用 */
         state: function (key, init) {
             ui.state.map = ui.state.map || {};
-            if (!ui.state.map[key]) ui.state.map[key] = init || { page: 1, pageSize: TMS.cfg.pageSize, sort: null, dir: 'desc', filters: {} };
+            if (!ui.state.map[key]) ui.state.map[key] = init || { page: 1, sort: null, dir: 'desc', filters: {} };
             return ui.state.map[key];
         },
         /* 同一个状态对象挂到多个键上：页面自己持有的 ctx.state 与列表卡片上的 data-sk

@@ -17,7 +17,7 @@
             key: 'tmsDB_v7',
             userKey: 'tmsSession',
             profileKey: 'tmsProfile',
-            schema: 12,
+            schema: 13,
             /* localStorage 配额按 UTF-16 计，浏览器约 5MB（≈250 万字符）：
                建库设计点控制在 ~1.8M 字符（3.6MB）以内，留出运行期写入余量；
                超软阈值先按天裁剪流水，仍超硬阈值才按集合优先级归档最旧记录，保证写入不会整库失败 */
@@ -167,14 +167,16 @@
             defaultRadiusM: 3000
         },
 
-        /* 每个角色一个目录，页面文件名不再重复角色前缀（admin/order.html 就是运营端订单页）。
+        /* 每个角色一个目录，页面文件名不再重复角色前缀（tms/order.html 就是运营端订单页）。
            dir 是登录门户与跨角色跳转的路径来源，菜单里的 file 必须落在同一个目录下，
            对不上的话 gen_pages.py 会生成到别处、guard 也会把人弹回首页。
            layout 决定外壳骨架：desktop＝侧栏+顶栏的桌面后台，mobile＝一线作业的手感，
            portal＝客户的网页门户——网点管理员做的是订单、库存、客服、经营报表，
-           本质是后台管理，不是举着手机的作业岗，所以和运营端共用桌面壳 */
+           本质是后台管理，不是举着手机的作业岗，所以和运营端共用桌面壳。
+           目录名与角色 key 允许不同（运营端目录叫 tms、角色 key 仍是 admin），
+           外壳装配一律经 roleOf 解析，不要拿目录名直接当角色查 */
         roles: {
-            admin: { name: '运营管理员', dir: 'admin', home: 'overview', layout: 'desktop' },
+            admin: { name: '运营管理员', dir: 'tms', home: 'overview', layout: 'desktop' },
             branch: { name: '网点管理员', dir: 'branch', home: 'b-home', layout: 'desktop' },
             sorter: { name: '分拣员', dir: 'sorter', home: 's-home', layout: 'mobile' },
             transporter: { name: '运输员', dir: 'transporter', home: 't-home', layout: 'mobile' },
@@ -207,12 +209,24 @@
         return nodeMap[code] || { code: code, name: code, stdHours: 8, stage: '' };
     };
 
-    /* 门户文件由目录派生：目录名就是角色 key，登录跳转与守卫只需要读 roles[x].portal 一处 */
+    /* 门户文件由目录派生：登录跳转与守卫只需要读 roles[x].portal 一处 */
     Object.keys(cfg.roles).forEach(function (key) {
         var r = cfg.roles[key];
         r.key = key;
         r.portal = r.dir + '/index.html';
     });
+
+    /* 外壳传进来的可能是角色 key（admin）也可能是目录名（tms）：
+       先按 key 命中，再按 dir 反查；都查不到返回 null，交给调用方决定回退 */
+    cfg.roleOf = function (keyOrDir) {
+        if (!keyOrDir) return null;
+        if (cfg.roles[keyOrDir]) return keyOrDir;
+        var keys = Object.keys(cfg.roles);
+        for (var i = 0; i < keys.length; i++) {
+            if (cfg.roles[keys[i]].dir === keyOrDir) return keys[i];
+        }
+        return null;
+    };
 
     TMS.cfg = cfg;
 })(window);
