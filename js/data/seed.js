@@ -115,9 +115,10 @@
             var own = util.sortBy(db.col('vehicles').filter(function (v) {
                 return v.driverId === tailDriver.id && v.status === 'available';
             }), 'loadKg', 'asc');
-            var vehs = own.length ? own : (allowAnyVehicle ? util.sortBy(db.col('vehicles').filter(function (v) {
+            var hubVehs = allowAnyVehicle ? util.sortBy(db.col('vehicles').filter(function (v) {
                 return v.hubId === tailHub && v.status === 'available';
-            }), 'loadKg', 'asc') : []);
+            }), 'loadKg', 'asc') : [];
+            var vehs = own.length ? own : hubVehs;
             if (!rows.length || !vehs.length) return null;
             var group = util.groupBy(rows, function (o) { return o.hubFrom === o.hubTo ? 'C|' + o.destination : 'H|' + o.hubTo; });
             var kg = function (list) { return util.sum(list, function (o) { return Number(o.chargeableWeight) || 0; }); };
@@ -145,7 +146,10 @@
             });
             for (var i = 0; i < cand.length; i++) {
                 var picked = cand[i];
-                var veh = util.sortBy(vehs.filter(function (v) { return v.loadKg >= picked.kg; }), 'loadKg', 'asc')[0];
+                var fit = function (pool) { return util.sortBy(pool.filter(function (v) { return v.loadKg >= picked.kg; }), 'loadKg', 'asc')[0]; };
+                /* 司机名下的车装不下这票货时也要能借本场车：只按「有没有 own 车」决定借不借，
+                   名下两台小面包面对一吨货就永远建不出留尾班次 */
+                var veh = fit(vehs) || fit(hubVehs);
                 if (!veh) continue;
                 var first = picked.list[0];
                 var res = TMS.operation.createTrip({

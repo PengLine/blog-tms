@@ -167,6 +167,134 @@
                 r.updatedAt = TMS.util.iso(TMS.util.now());
                 r.actor = 'v12 派送员维护地址';
             });
+        },
+        /* v13：中转站分级（一级跨省分拣中心/二级城市中转站/三级县域中转场）。
+           兰州/杭州升为一级枢纽，定西/嘉峪关/嘉兴开城补网点；只增不改业务单——
+           已有订单的 hubFrom/hubTo 是随单快照，已有路由段次照旧，重算才走新链路。
+           网点归口随最近一级枢纽刷新（乌鲁木齐/宁波/南京/合肥/福州/厦门改挂兰州/杭州），
+           这是「路由是班次派生物」的既定口径，不算动用户数据 */
+        13: function (db, TMS) {
+            var util = TMS.util, master = TMS.master;
+            var rand = util.rng(20261108);
+            var data = db.data;
+            data.cities = util.clone(master.CITIES);
+
+            /* 一级枢纽补齐：老 7 座补 level 字段，兰州/杭州建档 */
+            var hubs = data.hubs || (data.hubs = []);
+            hubs.forEach(function (h) { if (!h.level) { h.level = 1; h.levelName = '一级中转站'; } });
+            master.HUBS.forEach(function (seed) {
+                if (hubs.some(function (h) { return h.id === seed.id; })) return;
+                var c = master.cityByName(seed.city);
+                hubs.push({
+                    id: seed.id, name: seed.name, city: seed.city, zone: seed.zone, role: seed.role,
+                    level: 1, levelName: '一级中转站',
+                    address: seed.city + '市' + master.districtsOf(seed.city)[0].name + '物流大道 1 号',
+                    lat: c.lat, lng: c.lng, areaM2: seed.area, capacityPieces: seed.capacity,
+                    usedPieces: Math.floor(seed.capacity * (0.28 + rand() * 0.5)),
+                    manager: seed.city + '主管', phone: master.phone(rand),
+                    status: 'active', sortLines: 4 + Math.floor(rand() * 8),
+                    updatedAt: util.iso(util.now())
+                });
+            });
+
+            /* 新城市开网点：定西/嘉峪关各 1、嘉兴 2，区县刻意落在真实县/县级市上，
+               三级中转场在真实数据里就有样本（定西陇西县、嘉兴海宁市） */
+            var branches = data.branches || (data.branches = []);
+            var brSeq = branches.reduce(function (m, b) { return Math.max(m, parseInt(String(b.id).replace(/\D/g, ''), 10) || 0); }, 0);
+            var openings = [
+                { city: '定西', districts: ['陇西县'] },
+                { city: '嘉峪关', districts: ['雄关区'] },
+                { city: '嘉兴', districts: ['南湖区', '海宁市'] }
+            ];
+            openings.forEach(function (op) {
+                var c = master.cityByName(op.city);
+                op.districts.forEach(function (d, i) {
+                    if (branches.some(function (b) { return b.city === op.city && (b.name || '').indexOf(d) > -1; })) return;
+                    var hub = master.hubOfCity(c);
+                    brSeq++;
+                    branches.push({
+                        id: 'BR' + util.pad(brSeq, 4), name: op.city + d + '营业部',
+                        city: c.name, province: c.prov, zone: c.zone, code: c.code,
+                        lat: c.lat, lng: c.lng, hubId: hub.id, hubName: hub.name,
+                        type: i === 0 ? '直营枢纽网点' : '直营网点',
+                        manager: master.personName(rand, {}), phone: master.phone(rand),
+                        address: c.name + '市' + d + '物流大道' + util.randomDigits(3) + '号',
+                        area: util.round(200 + rand() * 800, 0), staffCount: 3 + Math.floor(rand() * 12),
+                        status: 'active', openAt: '08:00', closeAt: '19:00',
+                        dailyCapacity: 400 + Math.floor(rand() * 1600)
+                    });
+                });
+            });
+            /* 归口刷新：一级枢纽变了的城市，网点跟着改挂（乌鲁木齐→兰州、宁波/南京/合肥/福州/厦门→杭州） */
+            branches.forEach(function (b) {
+                var hub = master.hubOfCity(b.city);
+                if (hub && b.hubId !== hub.id) { b.hubId = hub.id; b.hubName = hub.name; }
+            });
+
+            /* 新枢纽班线：只补涉及兰州/杭州的_lane，老 7 座之间的班次与用户改过的行一律不动 */
+            var trips = data.trips || (data.trips = []);
+            var trSeq = trips.reduce(function (m, t) { return Math.max(m, parseInt(String(t.id).replace(/\D/g, ''), 10) || 0); }, 0);
+            function addTrip(a, b, mode, freq) {
+                var km = util.distanceKm(master.cityByName(a.city), master.cityByName(b.city));
+                if (!km) return;
+                if (trips.some(function (t) { return t.fromHub === a.id && t.toHub === b.id && t.mode === mode; })) return;
+                var depart = 18 + Math.floor(rand() * 5);
+                var hours = master.transitHours(km, mode);
+                trSeq++;
+                trips.push({
+                    id: 'TRP' + util.pad(trSeq, 4),
+                    code: a.city + '—' + b.city + ' ' + (mode === '陆运' ? '干线' : mode),
+                    fromHub: a.id, fromHubName: a.name, fromCity: a.city,
+                    toHub: b.id, toHubName: b.name, toCity: b.city,
+                    mode: mode, distanceKm: km, transitHours: hours,
+                    departAt: util.pad(depart % 24) + ':' + util.pick(['00', '30'], rand),
+                    arriveAt: util.pad(((depart % 24) + hours) % 24) + ':' + util.pick(['00', '30'], rand),
+                    days: freq, vehicleType: mode === '空运' ? '-' : (km > 900 ? 'TRL' : (km > 400 ? 'MAX' : 'MID')),
+                    capacityKg: mode === '空运' ? 4000 : (km > 900 ? 25000 : 12000),
+                    onTimeRate: util.round(0.9 + rand() * 0.08, 3), status: 'active'
+                });
+            }
+            var newHubs = master.HUBS.filter(function (h) { return h.id === 'HB0008' || h.id === 'HB0009'; });
+            newHubs.forEach(function (nh) {
+                master.HUBS.forEach(function (other) {
+                    if (other.id === nh.id) return;
+                    var km = util.distanceKm(master.cityByName(nh.city), master.cityByName(other.city));
+                    if (km < 120) return;
+                    var freq = nh.zone === other.zone || km <= 1100 ? '每天' : (km <= 2000 ? '周二/四/六' : '周一/三/五');
+                    var mode = nh.zone !== other.zone && km > 2000 ? '铁路' : '陆运';
+                    addTrip(nh, other, mode, freq);
+                    addTrip(other, nh, mode, freq);
+                });
+            });
+            ['上海', '广州', '北京', '成都', '武汉', '兰州', '杭州'].forEach(function (fromCity) {
+                var from = master.hubByNameOrId(fromCity);
+                master.HUBS.forEach(function (to) {
+                    if (to.id === from.id) return;
+                    if (from.id !== 'HB0008' && from.id !== 'HB0009' && to.id !== 'HB0008' && to.id !== 'HB0009') return;
+                    if (util.distanceKm(master.cityByName(from.city), master.cityByName(to.city)) > 1200) addTrip(from, to, '空运', '每天');
+                });
+            });
+
+            /* 示例链路落路由表：定西↔嘉峪关（省内经兰州）、嘉峪关↔嘉兴（跨省经兰州/杭州）。
+               段次按当前班次图规划，层级中转站完整可见；同 OD 已有路由则不覆盖 */
+            var routes = data.routes || (data.routes = []);
+            var rtSeq = routes.reduce(function (m, r) { return Math.max(m, parseInt(String(r.id).replace(/\D/g, ''), 10) || 0); }, 0);
+            [['定西', '嘉峪关'], ['嘉峪关', '定西'], ['嘉峪关', '嘉兴'], ['嘉兴', '嘉峪关']].forEach(function (od) {
+                if (routes.some(function (r) { return r.origin === od[0] && r.destination === od[1]; })) return;
+                var oc = master.cityByName(od[0]), dc = master.cityByName(od[1]);
+                var plan = master.planSegments({ city: od[0], name: od[0] + '网点' }, { city: od[1], name: od[1] + '网点' }, '陆运', { strategy: '均衡' });
+                if (!plan) return;
+                rtSeq++;
+                routes.push({
+                    id: 'RT' + util.pad(rtSeq, 4), origin: od[0], destination: od[1],
+                    originZone: oc.zone, destinationZone: dc.zone,
+                    mode: plan.mode, priority: plan.priority, segments: plan.segments,
+                    totalStdHours: plan.totalStdHours, distanceKm: plan.distanceKm,
+                    planner: 'smart2', strategy: '均衡', transfers: (plan.segments || []).filter(function (s) { return s.transferIn; }).length,
+                    trunkLegs: plan.trunkLegs, trunkCost: plan.trunkCost, reliability: plan.reliability,
+                    deviationCount: 0, status: 'active', updatedAt: util.iso(util.now())
+                });
+            });
         }
     };
 })(window);

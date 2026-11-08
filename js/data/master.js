@@ -14,6 +14,7 @@
     var CITIES = [
         { name: '上海', prov: '上海市', code: 'SH', zone: '华东', lat: 31.230, lng: 121.474, tier: 1 },
         { name: '杭州', prov: '浙江省', code: 'ZJ', zone: '华东', lat: 30.274, lng: 120.155, tier: 1 },
+        { name: '嘉兴', prov: '浙江省', code: 'ZJ', zone: '华东', lat: 30.746, lng: 120.755, tier: 2 },
         { name: '宁波', prov: '浙江省', code: 'ZJ', zone: '华东', lat: 29.868, lng: 118.786, tier: 2 },
         { name: '南京', prov: '江苏省', code: 'JS', zone: '华东', lat: 32.060, lng: 118.797, tier: 2 },
         { name: '苏州', prov: '江苏省', code: 'JS', zone: '华东', lat: 31.299, lng: 120.585, tier: 2 },
@@ -44,6 +45,8 @@
         { name: '贵阳', prov: '贵州省', code: 'GZ', zone: '西南', lat: 26.647, lng: 106.630, tier: 3 },
         { name: '西安', prov: '陕西省', code: 'SN', zone: '西北', lat: 34.341, lng: 108.940, tier: 2 },
         { name: '兰州', prov: '甘肃省', code: 'GS', zone: '西北', lat: 36.061, lng: 103.834, tier: 3 },
+        { name: '定西', prov: '甘肃省', code: 'GS', zone: '西北', lat: 35.580, lng: 104.626, tier: 3 },
+        { name: '嘉峪关', prov: '甘肃省', code: 'GS', zone: '西北', lat: 39.772, lng: 98.290, tier: 3 },
         { name: '乌鲁木齐', prov: '新疆', code: 'XJ', zone: '西北', lat: 43.826, lng: 87.617, tier: 3 },
         { name: '沈阳', prov: '辽宁省', code: 'LN', zone: '东北', lat: 41.806, lng: 123.432, tier: 2 },
         { name: '大连', prov: '辽宁省', code: 'LN', zone: '东北', lat: 38.914, lng: 121.615, tier: 3 },
@@ -54,17 +57,19 @@
     // 偏远/高成本目的地（加收偏远费、时效更长）
     var REMOTE = ['乌鲁木齐', '兰州', '昆明', '贵阳', '海口', '呼和浩特', '哈尔滨', '拉萨'];
 
-    /* 干线只跑大区枢纽：杭州/深圳/郑州这类二级分拨在干支分离网络里不承担跨区班线，
-       其货量按 zone 归口到上海/广州/武汉， lanes 从 90 条收到 42 条，
-       单条班线才有密度——否则一天一车、一车一单，装载率与干线成本都会失真 */
+    /* 干线只跑一级中转站（跨省/区域分拣中心）：杭州/深圳/郑州这类二级城市在干支分离网络里
+       不承担跨区班线，其货量按 zone 归口到一级枢纽。兰州/杭州是省级分拣中心，
+       甘肃/浙江的省内跨市与跨省件都归口到它们， lanes 随 9 座一级枢纽两两直发 */
     var HUB_SEEDS = [
-        { id: 'HB0001', name: '上海分拨中心', city: '上海', zone: '华东', role: '区域枢纽', area: 46000, capacity: 180000 },
-        { id: 'HB0002', name: '广州分拨中心', city: '广州', zone: '华南', role: '区域枢纽', area: 38000, capacity: 150000 },
-        { id: 'HB0003', name: '北京分拨中心', city: '北京', zone: '华北', role: '区域枢纽', area: 42000, capacity: 160000 },
-        { id: 'HB0004', name: '武汉分拨中心', city: '武汉', zone: '华中', role: '中心枢纽', area: 52000, capacity: 200000 },
-        { id: 'HB0005', name: '成都分拨中心', city: '成都', zone: '西南', role: '区域枢纽', area: 30000, capacity: 110000 },
-        { id: 'HB0006', name: '西安分拨中心', city: '西安', zone: '西北', role: '区域枢纽', area: 22000, capacity: 80000 },
-        { id: 'HB0007', name: '沈阳分拨中心', city: '沈阳', zone: '东北', role: '区域枢纽', area: 20000, capacity: 70000 }
+        { id: 'HB0001', name: '上海分拨中心', city: '上海', zone: '华东', role: '区域枢纽', level: 1, area: 46000, capacity: 180000 },
+        { id: 'HB0002', name: '广州分拨中心', city: '广州', zone: '华南', role: '区域枢纽', level: 1, area: 38000, capacity: 150000 },
+        { id: 'HB0003', name: '北京分拨中心', city: '北京', zone: '华北', role: '区域枢纽', level: 1, area: 42000, capacity: 160000 },
+        { id: 'HB0004', name: '武汉分拨中心', city: '武汉', zone: '华中', role: '中心枢纽', level: 1, area: 52000, capacity: 200000 },
+        { id: 'HB0005', name: '成都分拨中心', city: '成都', zone: '西南', role: '区域枢纽', level: 1, area: 30000, capacity: 110000 },
+        { id: 'HB0006', name: '西安分拨中心', city: '西安', zone: '西北', role: '区域枢纽', level: 1, area: 22000, capacity: 80000 },
+        { id: 'HB0007', name: '沈阳分拨中心', city: '沈阳', zone: '东北', role: '区域枢纽', level: 1, area: 20000, capacity: 70000 },
+        { id: 'HB0008', name: '兰州跨省分拣中心', city: '兰州', zone: '西北', role: '区域枢纽', level: 1, area: 26000, capacity: 90000 },
+        { id: 'HB0009', name: '杭州跨省分拣中心', city: '杭州', zone: '华东', role: '区域枢纽', level: 1, area: 34000, capacity: 130000 }
     ];
 
     /* ---------- 行政区划三级：省 → 市 → 区 ----------
@@ -77,6 +82,7 @@
     var CITY_DISTRICTS = {
         '上海': ['浦东新区', '闵行区', '嘉定区', '松江区', '宝山区', '青浦区', '杨浦区'],
         '杭州': ['西湖区', '拱墅区', '滨江区', '萧山区', '余杭区', '临平区', '钱塘区'],
+        '嘉兴': ['南湖区', '秀洲区', '嘉善县', '海盐县', '海宁市', '平湖市', '桐乡市'],
         '宁波': ['海曙区', '江北区', '鄞州区', '镇海区', '北仑区', '奉化区', '余姚市'],
         '南京': ['玄武区', '秦淮区', '建邺区', '鼓楼区', '栖霞区', '江宁区', '浦口区'],
         '苏州': ['姑苏区', '吴中区', '相城区', '昆山市', '太仓市', '吴江区', '工业园区'],
@@ -109,6 +115,9 @@
         '贵阳': ['南明区', '云岩区', '观山湖区', '花溪区', '乌当区', '白云区'],
         '西安': ['雁塔区', '碑林区', '莲湖区', '未央区', '高新区', '灞桥区', '长安区'],
         '兰州': ['城关区', '七里河区', '安宁区', '西固区', '红古区'],
+        '定西': ['安定区', '通渭县', '陇西县', '渭源县', '临洮县', '漳县', '岷县'],
+        /* 嘉峪关是直筒子市：三个行政管理区加三个镇，不设市辖区 */
+        '嘉峪关': ['雄关区', '长城区', '镜铁区', '新城镇', '峪泉镇', '文殊镇'],
         '乌鲁木齐': ['天山区', '沙依巴克区', '新市区', '水磨沟区', '米东区'],
         '沈阳': ['和平区', '沈河区', '铁西区', '皇姑区', '浑南区', '大东区', '于洪区'],
         '大连': ['中山区', '西岗区', '沙河口区', '甘井子区', '高新区', '金州区'],
@@ -544,8 +553,8 @@
                 else add(a, b, '铁路', '周一/三/五');
             }
         }
-        // 高价值件空运班次
-        ['上海', '广州', '北京', '成都', '武汉'].forEach(function (c) {
+        // 高价值件空运班次（兰州/杭州升为一级分拣中心后也开航空口岸）
+        ['上海', '广州', '北京', '成都', '武汉', '兰州', '杭州'].forEach(function (c) {
             var from = hubByNameOrId(c);
             HUB_SEEDS.forEach(function (to) {
                 if (to.id === from.id) return;
@@ -825,6 +834,7 @@
             var c = cityByName(h.city);
             return {
                 id: h.id, name: h.name, city: h.city, zone: h.zone, role: h.role,
+                level: h.level || 1, levelName: '一级中转站',
                 address: h.city + '市' + districtName(h.city, rand) + '物流大道 1 号',
                 lat: c.lat, lng: c.lng, areaM2: h.area, capacityPieces: h.capacity,
                 usedPieces: Math.floor(h.capacity * (0.28 + rand() * 0.5)),
@@ -1144,58 +1154,181 @@
         });
     }
 
-    /* 由一条路径装配完整段次：揽收支线 + 干线（含中转装卸/候车）+ 派送支线。
-       legs 为 null 是班次图够不到时的直线估算兜底，[] 是同城无干线 */
-    function buildPlan(oc, dc, fromHub, toHub, legs, strategy, originBranch, destBranch) {
-        var segments = [];
-        var seq = 1;
-        var collectKm = util.distanceKm(oc, cityByName(fromHub.city)) || 20;
-        segments.push({
-            seq: seq++, from: originBranch.name || (oc.name + '揽收'), to: fromHub.name,
-            mode: '陆运', stdHours: Math.max(3, Math.round(collectKm / 45) + 2), legType: 'collect', km: Math.round(collectKm)
-        });
+    /* ---------- 中转站分级：一级跨省分拣中心 / 二级城市中转站 / 三级县域中转场 ----------
+       一级就是班次图上的枢纽（hubs 表）；二三级是派生节点，不落 hubs 表——
+       它们只承担路由链路与装卸口径，不配车不配人，落表反而要养活一套假组织。
+       链路按范围分级装配：市内跨区回本城二级，省内跨市归省一级，
+       跨省在两个一级之间走干线；县域网点先经三级中转场再上二级 */
+
+    var HUB_LEVELS = { 1: '一级中转站', 2: '二级中转站', 3: '三级中转站' };
+
+    /* 县/县级市才算县域：市辖区与镇街道没有三级中转场这一层 */
+    function isCountyDistrict(name) { return /(县|市)$/.test(String(name || '')); }
+
+    function hubNode(h) {
+        var c = cityByName(h.city) || {};
+        return { name: h.name, level: 1, city: h.city, district: '', lat: c.lat, lng: c.lng, hubId: h.id, role: h.role || '' };
+    }
+
+    /* 本城节点：枢纽城市本身就是一级，其余城市派生二级中转站 */
+    function cityStation(city) {
+        var c = typeof city === 'string' ? cityByName(city) : city;
+        if (!c) return null;
+        var same = HUB_SEEDS.filter(function (h) { return h.city === c.name; })[0];
+        if (same) return hubNode(same);
+        return { name: c.name + '中转站', level: 2, city: c.name, district: '', lat: c.lat, lng: c.lng, hubId: '', role: '二级中转站' };
+    }
+
+    function countyStation(city, district) {
+        var c = typeof city === 'string' ? cityByName(city) : city;
+        if (!c || !district) return null;
+        var p = districtPoint(c.name, district) || c;
+        return { name: c.name + district + '中转场', level: 3, city: c.name, district: district, lat: p.lat, lng: p.lng, hubId: '', role: '三级中转站' };
+    }
+
+    /* 一端的中转链（网点起步）：term='hub' 收到一级分拣中心，term='city' 只收到本城节点。
+       区县优先级：显式指定的区县 > 网点名里认出的区县；县级才插三级中转场 */
+    function endChain(c, branch, hub, district, term) {
+        var d = district || (branch ? (matchDistrict(c.name, branch.name || '') || {}).name : '') || '';
+        var chain = [{
+            name: (branch && branch.name) || (c.name + '网点'), level: 0, city: c.name, district: d,
+            lat: c.lat, lng: c.lng, hubId: '', role: ''
+        }];
+        if (d && isCountyDistrict(d)) chain.push(countyStation(c, d));
+        var cs = cityStation(c);
+        if (term === 'hub') {
+            if (cs.level === 2) chain.push(cs);
+            chain.push(hubNode(hub));
+        } else {
+            chain.push(cs);
+        }
+        return chain;
+    }
+
+    /* 由一条路径装配完整段次：层级支线 + 干线（含中转装卸/候车）+ 层级派送链。
+       legs 为 null 是班次图够不到时的直线估算兜底，[] 是同城/同枢纽无干线 */
+    function buildPlan(oc, dc, fromHub, toHub, legs, strategy, originBranch, destBranch, opts) {
+        var o = opts || {};
+        var sameHub = fromHub.id === toHub.id;
+        var sameCity = oc.name === dc.name;
+        var hubProv = (cityByName(fromHub.city) || {}).prov;
+        /* 共享枢纽但枢纽不在本省：省域支线直连两城二级（南京→苏州不绕上海） */
+        var viaHub = sameHub && (sameCity || oc.name === fromHub.city || dc.name === toHub.city || hubProv === oc.prov);
+        var term = (sameCity || (sameHub && !viaHub)) ? 'city' : 'hub';
+        var oChain = endChain(oc, originBranch, fromHub, o.originDistrict, term);
+        var dChain = endChain(dc, destBranch, toHub, o.destDistrict, term).reverse();
+
+        var segments = [], seq = 1, prev = null;
+        function push(seg) { seg.seq = seq++; segments.push(seg); prev = seg; }
+        function kmOf(a, b) { return Math.round(util.distanceKm(a, b) || 0); }
+        function driveHours(km) { return km <= 120 ? Math.max(2, Math.round(km / 45) + 1) : transitHours(km, '陆运'); }
+        function xferSum(t) { return t.unloadHours + t.sortHours + t.loadHours + t.waitHours; }
+        function xferOf(node, wait) {
+            return {
+                hubId: node.hubId || '', hubName: node.name, city: node.city, level: node.level,
+                unloadHours: TRANSFER_OPS.unload,
+                sortHours: node.level === 1 ? (node.role === '中心枢纽' ? TRANSFER_SORT_FAST : TRANSFER_OPS.sort) : 1,
+                loadHours: TRANSFER_OPS.load, waitHours: wait,
+                prevTripId: '', prevTripCode: '', prevArriveAt: ''
+            };
+        }
+        /* 链上相邻节点一段：网点起步是揽收、落到网点是派送，中间全是区域支线。
+           站间装卸/候车计入出发段；揽收入仓与派送分拣已含在两端支线时长里，不再重复计 */
+        function chainLegs(chain) {
+            for (var i = 1; i < chain.length; i++) {
+                var a = chain[i - 1], b = chain[i], km = kmOf(a, b);
+                var seg = { from: a.name, to: b.name, fromLevel: a.level, toLevel: b.level, mode: '陆运', km: km };
+                if (a.level === 0) {
+                    seg.legType = 'collect';
+                    seg.stdHours = Math.max(3, Math.round(km / 45) + 2);
+                } else if (b.level === 0) {
+                    seg.legType = 'deliver';
+                    seg.stdHours = Math.max(4, Math.round(km / 45) + 6);
+                } else {
+                    seg.legType = 'feeder';
+                    var h = driveHours(km);
+                    seg.transitHours = h;
+                    if (prev && prev.legType !== 'collect') {
+                        seg.transferIn = xferOf(a, 2);
+                        seg.waitHours = 2;
+                        seg.transferHours = xferSum(seg.transferIn) - 2;
+                        h += xferSum(seg.transferIn);
+                    }
+                    seg.stdHours = h;
+                }
+                push(seg);
+            }
+        }
+
+        chainLegs(oChain);
         var m;
         if (legs === null) {
             var km0 = Math.round(util.distanceKm(oc, dc));
             var h0 = transitHours(km0, '陆运');
             m = { transitHours: h0, km: km0, waitHours: 0, transferHours: 0, transfers: 0, trunkCost: Math.round(km0 * vehicleType('MAX').costPerKm), reliability: 90, stdHours: h0 };
-            segments.push({ seq: seq++, from: fromHub.name, to: toHub.name, mode: '陆运', stdHours: h0, legType: 'trunk', km: km0, estimated: true });
-        } else {
+            push({ from: fromHub.name, to: toHub.name, fromLevel: 1, toLevel: 1, mode: '陆运', stdHours: h0, legType: 'trunk', km: km0, estimated: true });
+        } else if (legs.length) {
             m = pathMetrics(legs);
             legs.forEach(function (t, i) {
                 var from = hubOfTrip(t, 'from'), to = hubOfTrip(t, 'to');
                 var wait = waitHoursOf(t);
-                var xfer = i > 0 ? transferHoursOf(from) : 0;
+                /* 支线喂进枢纽的货也要卸货分拣再装干线——第一段干线不再因为「干线直达」免掉装卸 */
+                var arrived = prev && prev.legType !== 'collect';
+                var xfer = arrived ? transferHoursOf(from) : 0;
                 var seg = {
-                    seq: seq++, from: from.name, to: to.name, mode: t.mode, legType: 'trunk',
+                    from: from.name, to: to.name, fromLevel: 1, toLevel: 1, mode: t.mode, legType: 'trunk',
                     km: Math.round(t.distanceKm || 0),
                     stdHours: t.transitHours + wait + xfer,
                     transitHours: t.transitHours, waitHours: wait, transferHours: xfer,
                     tripId: t.id, tripCode: t.code, departAt: t.departAt, arriveAt: t.arriveAt, days: t.days,
                     vehicleType: t.vehicleType, capacityKg: t.capacityKg, onTimeRate: t.onTimeRate
                 };
-                if (i > 0) {
+                if (arrived) {
                     seg.transferIn = {
-                        hubId: from.id, hubName: from.name, city: from.city,
+                        hubId: from.id, hubName: from.name, city: from.city, level: 1,
                         unloadHours: TRANSFER_OPS.unload,
                         sortHours: from.role === '中心枢纽' ? TRANSFER_SORT_FAST : TRANSFER_OPS.sort,
                         loadHours: TRANSFER_OPS.load, waitHours: wait,
-                        prevTripId: legs[i - 1].id, prevTripCode: legs[i - 1].code, prevArriveAt: legs[i - 1].arriveAt
+                        prevTripId: i > 0 ? legs[i - 1].id : '', prevTripCode: i > 0 ? legs[i - 1].code : '', prevArriveAt: i > 0 ? legs[i - 1].arriveAt : ''
                     };
                 }
-                segments.push(seg);
+                push(seg);
             });
+        } else {
+            /* 无干线：同城/同枢纽件。两城二级直连时补一段省域支线 */
+            m = { transitHours: 0, km: 0, waitHours: 0, transferHours: 0, transfers: 0, trunkCost: 0, reliability: 100, stdHours: 0 };
+            if (sameHub && !viaHub) {
+                var a = oChain[oChain.length - 1], b = dChain[0], km = kmOf(a, b);
+                var h = driveHours(km);
+                var mid = { from: a.name, to: b.name, fromLevel: a.level, toLevel: b.level, mode: '陆运', legType: 'feeder', km: km, transitHours: h };
+                if (prev && prev.legType !== 'collect') {
+                    mid.transferIn = xferOf(a, 2);
+                    mid.waitHours = 2;
+                    mid.transferHours = xferSum(mid.transferIn) - 2;
+                    h += xferSum(mid.transferIn);
+                }
+                mid.stdHours = h;
+                push(mid);
+            }
         }
-        var lastKm = util.distanceKm(cityByName(toHub.city), dc) || 25;
-        segments.push({
-            seq: seq++, from: toHub.name, to: destBranch.name || (dc.name + '派送'),
-            mode: '陆运', stdHours: Math.max(4, Math.round(lastKm / 45) + 6), legType: 'deliver', km: Math.round(lastKm)
-        });
+        chainLegs(dChain);
+        if (legs !== null && !legs.length) {
+            /* 纯支线方案的在途/装卸/成本按支线段汇总，不能交白卷——规划台要拿这些数评分 */
+            var feeders = segments.filter(function (s) { return s.legType === 'feeder'; });
+            m.transitHours = util.sum(feeders, 'transitHours');
+            m.km = util.sum(feeders, 'km');
+            m.waitHours = util.sum(feeders, 'waitHours');
+            m.transferHours = util.sum(feeders, 'transferHours');
+            m.trunkCost = Math.round(m.km * vehicleType('MID').costPerKm);
+            m.reliability = 98;
+            m.stdHours = util.sum(feeders, 'stdHours');
+        }
         var totalKm = util.sum(segments, 'km');
         var total = util.sum(segments, 'stdHours');
         var modes = {};
         (legs || []).forEach(function (t) { modes[t.mode] = 1; });
         var modeKeys = Object.keys(modes);
+        var stationXfers = segments.filter(function (s) { return s.transferIn; }).length;
         return {
             segments: segments, totalStdHours: total, distanceKm: totalKm,
             // 同区件没有干线班次，运输方式按分拨发车的陆运支线计；空陆混跑记联运
@@ -1205,7 +1338,8 @@
             transitHours: m.transitHours, waitHours: m.waitHours, transferHours: m.transferHours,
             transfers: m.transfers, trunkLegs: legs === null ? 1 : legs.length,
             trunkCost: m.trunkCost, reliability: m.reliability,
-            label: m.transfers === 0 ? '直达' : (m.transfers === 1 ? '一经中转' : '两经中转')
+            label: legs !== null && !legs.length ? (stationXfers ? '省域中转' : '支线直达')
+                : (m.transfers === 0 ? '直达' : (m.transfers === 1 ? '一经中转' : '两经中转'))
         };
     }
 
@@ -1220,15 +1354,15 @@
            省掉这段还去班线表找「A→A」——班线表按设计不存在同城直发，
            中转搜索会绕出一条 A→B→A 的环形假干线（0 公里却背上一整天的标准时长） */
         if (fromHub.id === toHub.id) {
-            candidates.push(buildPlan(oc, dc, fromHub, toHub, [], strategy, originBranch, destBranch));
+            candidates.push(buildPlan(oc, dc, fromHub, toHub, [], strategy, originBranch, destBranch, o));
         } else {
             trunkPaths(trips, fromHub, toHub, mode, o.maxTransfers).forEach(function (legs) {
-                candidates.push(buildPlan(oc, dc, fromHub, toHub, legs, strategy, originBranch, destBranch));
+                candidates.push(buildPlan(oc, dc, fromHub, toHub, legs, strategy, originBranch, destBranch, o));
             });
             if (!candidates.length) {
                 // 空运通道够不到就交给调用方回退陆运，不在这里拿陆运冒充空运
                 if (mode === '空运') return null;
-                candidates.push(buildPlan(oc, dc, fromHub, toHub, null, strategy, originBranch, destBranch));
+                candidates.push(buildPlan(oc, dc, fromHub, toHub, null, strategy, originBranch, destBranch, o));
             }
         }
         scoreCandidates(candidates, strategy);
@@ -1248,6 +1382,8 @@
         SURNAMES: SURNAMES, GIVEN: GIVEN,
         cityByName: cityByName, hubOfCity: hubOfCity, nearestHub: nearestHub,
         hubByNameOrId: hubByNameOrId, vehicleType: vehicleType,
+        HUB_LEVELS: HUB_LEVELS, isCountyDistrict: isCountyDistrict,
+        cityStation: cityStation, countyStation: countyStation,
         transitHours: transitHours, distanceKm: util.distanceKm, zoneRoadKm: zoneRoadKm,
         phone: phone, personName: personName,
         branches: function () { return BRANCH_CACHE; },

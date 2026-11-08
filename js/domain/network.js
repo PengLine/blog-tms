@@ -27,6 +27,15 @@
     /* 派送网点：目的城市的直营网点 */
     function deliverBranch(city, key) { return collectBranch(city, (key || '') + '-d'); }
 
+    /* 区县级规划网点：优先用本城区县名命中的真实网点，没有就按「城市+区县+网点」派生。
+       规划台允许从某县发往某县，网点名必须落在该县，三级中转场才挂得上 */
+    function districtBranch(city, district, key) {
+        if (!district) return collectBranch(city, key);
+        var hit = null;
+        branchesOf(city).forEach(function (b) { if (!hit && (b.name || '').indexOf(district) > -1) hit = b; });
+        return hit || { name: city + district + '网点', city: city, district: district };
+    }
+
     function trips() { return TMS.db.col('trips'); }
 
 
@@ -181,11 +190,12 @@
             var ob = collectBranch(origin, key), db2 = collectBranch(destination, key);
             var wantMode = service === '加急' ? '空运' : '陆运';
             var strategy = opts.strategy || SERVICE_STRATEGY[service] || '均衡';
-            var segs = master.planSegments(ob, db2, wantMode, { strategy: strategy, maxTransfers: opts.maxTransfers });
+            var segOpts = { strategy: strategy, maxTransfers: opts.maxTransfers, originDistrict: levels.from.district, destDistrict: levels.to.district };
+            var segs = master.planSegments(ob, db2, wantMode, segOpts);
             /* 空运通道不是条条线都有：没有含空运段的路径就用陆运时效优先重出一遍，
                否则整条路由退化成直线估时，标准时长会比真实班线松一大截 */
             if (!segs && wantMode === '空运') {
-                segs = master.planSegments(ob, db2, '陆运', { strategy: '时效', maxTransfers: opts.maxTransfers });
+                segs = master.planSegments(ob, db2, '陆运', { strategy: '时效', maxTransfers: opts.maxTransfers, originDistrict: segOpts.originDistrict, destDistrict: segOpts.destDistrict });
             }
             if (!segs) return null;
             plan = {
@@ -228,15 +238,17 @@
         return plan;
     }
 
-    /* 中途枢纽装卸计划：从相邻干线段的衔接点派生。
+    /* 中途枢纽装卸计划：从相邻段的衔接点派生（干线与区域支线同口径）。
        新规划的段次自带 transferIn 与班次事实；老路由段没有这些字段，
-       按分拨名回查班次表补齐——装卸/候车时长不能因为路由是旧规划就凭空消失 */
+       按分拨名回查班次表补齐——装卸/候车时长不能因为路由是旧规划就凭空消失。
+       支线段只在自带 transferIn 时才出装卸计划：揽收后的第一段支线，入仓作业已含在揽收时长里 */
     function transferOps(plan) {
-        var segs = ((plan && plan.segments) || []).filter(function (s) { return s.legType === 'trunk'; });
+        var segs = ((plan && plan.segments) || []).filter(function (s) { return s.legType === 'trunk' || s.legType === 'feeder'; });
         var ops = [];
         for (var i = 1; i < segs.length; i++) {
             var prev = segs[i - 1], cur = segs[i];
             if (prev.to !== cur.from) continue;   // 段不衔接（估算/旧数据）就不编造装卸
+            if (cur.legType === 'feeder' && !cur.transferIn) continue;
             var t = cur.transferIn || {};
             var hub = master.hubByNameOrId(cur.from);
             var trip = cur.tripId ? TMS.db.get('trips', cur.tripId) : TMS.db.findOne('trips', function (x) {
@@ -249,12 +261,13 @@
             var sort = t.sortHours || (hub && hub.role === '中心枢纽' ? 1 : 2);
             var load = t.loadHours || 1;
             var wait = t.waitHours != null ? t.waitHours :
-                (cur.waitHours != null ? cur.waitHours : (trip ? master.waitHoursOf(trip) : 12));
+                (cur.waitHours != null ? cur.waitHours : (trip ? master.waitHoursOf(trip) : (cur.legType === 'feeder' ? 2 : 12)));
             ops.push({
                 seq: ops.length + 1, hub: cur.from, hubId: t.hubId || (hub && hub.id) || '',
-                city: t.city || (hub && hub.city) || '',
-                prevTripCode: t.prevTripCode || prev.tripCode || (prevTrip && prevTrip.code) || '',
-                nextTripCode: cur.tripCode || (trip && trip.code) || '',
+                city: t.city || (hub && hub.city) || cityOfText(cur.from) || '',
+                level: t.level || (hub ? 1 : 0),
+                prevTripCode: t.prevTripCode || prev.tripCode || (prevTrip && prevTrip.code) || (prev.legType === 'feeder' ? '区域支线班车' : ''),
+                nextTripCode: cur.tripCode || (trip && trip.code) || (cur.legType === 'feeder' ? '区域支线班车' : ''),
                 arriveAt: t.prevArriveAt || prev.arriveAt || (prevTrip && prevTrip.arriveAt) || '',
                 departAt: cur.departAt || (trip && trip.departAt) || '',
                 unloadHours: unload, sortHours: sort, loadHours: load, waitHours: wait,
@@ -275,20 +288,22 @@
         var strategy = master.STRATEGIES[opts.strategy] ? opts.strategy : (SERVICE_STRATEGY[svc.name] || '均衡');
         var mode = opts.mode || (svc.code === 'EXP' ? '空运' : '陆运');
         var key = origin + '>' + destination;
-        var ob = collectBranch(origin, key), db2 = collectBranch(destination, key);
-        var mo = { strategy: strategy, maxTransfers: opts.maxTransfers, withCandidates: true };
+        var ob = districtBranch(origin, opts.originDistrict, key), db2 = districtBranch(destination, opts.destDistrict, key);
+        var mo = { strategy: strategy, maxTransfers: opts.maxTransfers, withCandidates: true, originDistrict: opts.originDistrict, destDistrict: opts.destDistrict };
         var best = master.planSegments(ob, db2, mode, mo);
         var airFallback = false;
         if (!best && mode === '空运') {
             airFallback = true;
-            best = master.planSegments(ob, db2, '陆运', { strategy: '时效', maxTransfers: opts.maxTransfers, withCandidates: true });
+            best = master.planSegments(ob, db2, '陆运', { strategy: '时效', maxTransfers: opts.maxTransfers, withCandidates: true, originDistrict: opts.originDistrict, destDistrict: opts.destDistrict });
         }
         if (!best) return null;
-        var levels = { from: endLevels(origin, ''), to: endLevels(destination, '') };
+        var levels = { from: endLevels(origin, opts.originDistrict || ''), to: endLevels(destination, opts.destDistrict || '') };
         var list = best.candidates || [best];
         list.forEach(function (p) {
             p.origin = origin;
             p.destination = destination;
+            p.originDistrict = opts.originDistrict || '';
+            p.destDistrict = opts.destDistrict || '';
             attachScope(p, levels);
         });
         return {
@@ -307,6 +322,7 @@
         var old = db.findOne('routes', function (r) { return r.origin === plan.origin && r.destination === plan.destination; });
         var patch = {
             origin: plan.origin, destination: plan.destination,
+            originDistrict: plan.originDistrict || '', destDistrict: plan.destDistrict || '',
             originZone: (master.cityByName(plan.origin) || {}).zone || '',
             destinationZone: (master.cityByName(plan.destination) || {}).zone || '',
             mode: plan.mode, priority: plan.priority, segments: util.clone(plan.segments),
