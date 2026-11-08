@@ -463,8 +463,7 @@
         { id: 'gis', name: 'PostGIS', sub: '围栏精判与坐标反查' },
         { id: 'xxl', name: 'XXL-Job', sub: '13 个 handler 统一调度' },
         { id: 'oss', name: 'OSS / MinIO', sub: 'POD 图片 · 账单附件' },
-        { id: 'nacos', name: 'Nacos', sub: '注册发现 · 配置中心 · 灰度' },
-        { id: 'obs', name: '观测三件套', sub: 'Prometheus · SkyWalking · Loki' }
+        { id: 'obs', name: 'Prometheus · Loki', sub: '指标监控 · 日志聚合' }
     ];
 
     var CLIENTS = [
@@ -1215,6 +1214,92 @@
         return null;
     }
 
+    /* ---------- 治理与运维：拓扑总图的横切组件 ----------
+       Nginx 站在网关前画清流量走向；Nacos / SkyWalking / Docker+K8s 住右侧独立轨，
+       各层以短线挂上治理总线，避免十份注册线横穿领域节点。tech 指向分布式目录契约 */
+
+    var OPS_W = 1408;
+    var OPS_BAND = { id: 'ops', name: '治理与运维', x: 1192, y: 74, w: 208, h: 438, sub: '横切 · 不改业务语义' };
+    var OPS_NODES = [
+        {
+            id: 'nginx', tech: 'lb', name: 'Nginx', en: '反向代理 · 七层负载均衡',
+            tag: 'TLS 终结 · 静态资源 · 入口限流', hue: '#46c07a', icon: '⛩',
+            x: 130, y: 84, w: 220, h: 62,
+            mission: '统一流量入口：TLS 终结、七层负载均衡、静态资源与入口限流，向后只认网关集群'
+        },
+        {
+            id: 'nacos', tech: 'nacos', name: 'Nacos', en: '注册发现 · 配置中心',
+            tag: '⇄ 注册心跳 · 名单配置', hue: '#4ecdc4', icon: '⚙',
+            x: 1208, y: 104, w: 176, h: 72,
+            mission: '十个服务统一注册发现，心跳 5s；配置中心与灰度名单实时推送到各实例'
+        },
+        {
+            id: 'skywalking', tech: 'skywalking', name: 'SkyWalking', en: '链路追踪 · 指标告警',
+            tag: '↑ Agent 上报 Trace / 指标', hue: '#2fa8e0', icon: '◉',
+            x: 1208, y: 226, w: 176, h: 72,
+            mission: 'Agent 探针无侵入上报 Trace 与指标，OAP 集群聚合分析，慢调用与错误率触发告警'
+        },
+        {
+            id: 'k8s', tech: 'cicd', name: 'Docker + K8s', en: '容器运行时 · 编排调度',
+            tag: '↓ 调度探针 · 滚动发布', hue: '#8b7cf6', icon: '⎈',
+            x: 1208, y: 348, w: 176, h: 96, note: '10 服务全部 Pod 化',
+            mission: '全部服务镜像化跑在 Kubernetes 上：调度、探针自愈、滚动发布与一键回滚'
+        }
+    ];
+
+    function opsLinks() {
+        var out = [];
+        var nginx = OPS_NODES[0];
+        var cw = (W - 18 - 110 - 8 * (CLIENTS.length - 1)) / CLIENTS.length;
+        CLIENTS.forEach(function (c, i) {
+            var cx = util.round(110 + i * (cw + 8) + cw / 2, 1);
+            var tx = util.round(nginx.x + 20 + i * ((nginx.w - 40) / (CLIENTS.length - 1)), 1);
+            out.push({
+                id: 'in-' + c.id, kind: 'ingress', from: c.id, to: 'nginx',
+                label: c.name + ' → Nginx · HTTPS 入口', hue: nginx.hue, dashed: false, arrow: true,
+                path: 'M ' + cx + ' 54 C ' + cx + ' 68, ' + tx + ' 70, ' + tx + ' 84'
+            });
+        });
+        out.push({
+            id: 'nginx-gw', kind: 'ingress', from: 'nginx', to: 'gateway',
+            label: 'Nginx → 网关 · 反向代理转发', hue: nginx.hue, dashed: false, arrow: true,
+            path: 'M ' + (nginx.x + nginx.w) + ' 115 L 388 115'
+        });
+        [115, 211, 341, 469].forEach(function (y, i) {
+            out.push({
+                id: 'tick-' + i, kind: 'bus', from: 'layer', to: 'bus',
+                label: '各层接入治理总线', hue: '#9aa7bd', dashed: true, arrow: false,
+                path: 'M 1172 ' + y + ' L 1182 ' + y
+            });
+        });
+        out.push({
+            id: 'bus', kind: 'bus', from: 'layers', to: 'rail',
+            label: '治理与运维总线 · 全部服务横切接入', hue: '#9aa7bd', dashed: true, arrow: false,
+            path: 'M 1182 115 L 1182 469'
+        });
+        out.push({
+            id: 'reg', kind: 'gov', from: 'bus', to: 'nacos',
+            label: '服务注册 · 心跳 5s', hue: '#4ecdc4', dashed: true, arrow: true,
+            path: 'M 1182 128 L 1206 128'
+        });
+        out.push({
+            id: 'push', kind: 'gov', from: 'nacos', to: 'bus',
+            label: '名单推送 · 配置下发', hue: '#4ecdc4', dashed: true, arrow: true,
+            path: 'M 1208 152 L 1184 152'
+        });
+        out.push({
+            id: 'apm', kind: 'gov', from: 'bus', to: 'skywalking',
+            label: 'Agent 上报 Trace / 指标', hue: '#2fa8e0', dashed: true, arrow: true,
+            path: 'M 1182 262 L 1206 262'
+        });
+        out.push({
+            id: 'sched', kind: 'ops', from: 'k8s', to: 'bus',
+            label: 'K8s 调度 · 探针自愈 · 滚动发布', hue: '#8b7cf6', dashed: true, arrow: true,
+            path: 'M 1208 396 L 1184 396'
+        });
+        return out.map(function (e, i) { e.delay = util.round((i % 9) * 0.42, 2); return e; });
+    }
+
     /* 走线：跨层用竖直贝塞尔，领域层内部同步走下方线槽、事件走上方线槽，
        BFF 到检索绕右侧外沿——线压在节点上就没法看了 */
     function edgePath(a, b, kind, index) {
@@ -1255,6 +1340,7 @@
     function topology(opts) {
         var o = opts || {};
         var ns = nodes();
+        var showOps = o.ops !== false;
         var lines = o.lines || 'all';
         var es = edgeList().filter(function (e) {
             if (lines === 'sync') return e.kind === 'sync';
@@ -1271,8 +1357,9 @@
             };
         });
         return {
-            width: W, height: H, nodes: ns, edges: es, bands: bands(),
+            width: showOps ? OPS_W : W, mainW: W, height: H, nodes: ns, edges: es, bands: bands(),
             clients: CLIENTS.slice(), infra: INFRA.slice(),
+            ops: showOps ? { band: OPS_BAND, nodes: OPS_NODES.slice(), links: opsLinks() } : null,
             cycle: syncCycle(),
             counts: {
                 sync: es.filter(function (e) { return e.kind === 'sync'; }).length,

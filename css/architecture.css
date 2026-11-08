@@ -1197,3 +1197,12 @@ label.ar-ctl.on .ar-ctl-name { color: #eaf2ff; }
     .ar-dist-card { animation: none; }
     .ar-dist-card:hover { transform: none; }
 }
+/* ---------- 拓扑总图：治理运维轨加宽后保住字号，窄屏内部横滚 ---------- */
+.ar-topo-card .ar-canvas svg { min-width: calc(1000px * var(--arch-zoom, 1)); }
+
+@media (max-width: 860px) {
+    .ar-topo-card .ar-canvas svg { min-width: 720px; }
+}
+
+/* 控制台比画布高时图纸垂直居中；缩放溢出时 safe 回退到顶，不裁切 */
+.ar-topo-card .ar-canvas-wrap { display: flex; flex-direction: column; justify-content: safe center; }

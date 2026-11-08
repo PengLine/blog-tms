@@ -1788,6 +1788,38 @@ const readWrite = () => { const w = writes; writes = {}; return w; };
     check('领域层走线槽不穿过节点', gutterHit.length === 0,
         gutterHit.length ? '槽位 ' + gutterHit.join('、') + ' 压在节点上' : '同步槽 410 / 事件槽 276');
 
+    /* 治理与运维轨：四件横切组件坐标合法、连线可绘制、显隐开关改变画布宽 */
+    const ops = topo.ops;
+    const opsOutside = ops.nodes.filter((n) => n.x < 0 || n.y < 0 || n.x + n.w > topo.width || n.y + n.h > topo.height);
+    const opsOverlap = [];
+    ops.nodes.forEach((a, i) => ops.nodes.slice(i + 1).concat(topo.nodes).forEach((b) => {
+        if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) opsOverlap.push(a.id + '×' + b.id);
+    }));
+    check('治理运维四组件在画布内且与服务节点互不压盖',
+        ops.nodes.length === 4 && ['nginx', 'nacos', 'skywalking', 'k8s'].every((id) => ops.nodes.some((n) => n.id === id)) &&
+        opsOutside.length === 0 && opsOverlap.length === 0 && ops.nodes.every((n) => !!arch.distTech(n.tech)),
+        opsOutside.map((n) => n.id).concat(opsOverlap).join('、') || ops.nodes.map((n) => n.id).join(' · '));
+    const opsPathBad = ops.links.filter((e) => !/^M\s/.test(e.path) || /NaN|undefined/.test(e.path) || !e.hue || !e.label);
+    const ingress = ops.links.filter((e) => e.kind === 'ingress');
+    check('入口流量走向完整：五端汇入 Nginx 再转发网关',
+        opsPathBad.length === 0 && ingress.length === 6 &&
+        ingress.slice(0, 5).every((e) => e.to === 'nginx') &&
+        ingress.some((e) => e.from === 'nginx' && e.to === 'gateway'),
+        opsPathBad.map((e) => e.id).join('、') || ingress.length + ' 条入口线 / 共 ' + ops.links.length + ' 条横切线');
+    const govIds = ops.links.filter((e) => e.arrow && e.kind !== 'ingress').map((e) => e.id).sort().join(',');
+    check('治理总线双向注册与上报/调度走向齐全',
+        govIds === 'apm,push,reg,sched' && ops.links.some((e) => e.id === 'bus' && !e.arrow) &&
+        ops.links.filter((e) => e.id.indexOf('tick-') === 0).length === 4,
+        govIds + ' · 总线 + 四层挂接');
+    const noOps = arch.topology({ ops: false });
+    check('治理运维开关收起后画布回到主宽且无横切件',
+        noOps.ops === null && noOps.width === noOps.mainW && topo.width > topo.mainW,
+        noOps.width + ' / ' + topo.width);
+    check('基础设施 chips 与治理轨去重（Nacos/SkyWalking 不再重复出现）',
+        topo.infra.length === 8 && !topo.infra.some((x) => x.id === 'nacos') &&
+        topo.infra.some((x) => /Prometheus/.test(x.name)),
+        topo.infra.map((x) => x.name).join(' · '));
+
     /* 架构说明书是公开页：不进任何角色菜单（运营仪表盘也不放入口），
        注册表显式登记根文件、裸页无权限点，访客从登录首页直接进 */
     const archDef = TMS.pages.get('architecture');
@@ -1925,9 +1957,14 @@ const readWrite = () => { const w = writes; writes = {}; return w; };
         /class="ar-controls"/.test(topoHtml) && switches + ranges + selects + ctlBtns >= 7,
         '开关 ' + switches + ' / 滑杆 ' + ranges + ' / 下拉 ' + selects + ' / 按钮 ' + ctlBtns);
     check('拓扑 SVG 自带样式与 viewBox（导出即自包含）',
-        /<svg[^>]*viewBox="0 0 1180 620"/.test(topoHtml) && /<style>/.test(topoHtml) &&
+        /<svg[^>]*viewBox="0 0 1408 620"/.test(topoHtml) && /<style>/.test(topoHtml) &&
         /data-act="arch:open"/.test(topoHtml) && /--arch-speed/.test(topoHtml),
         (topoHtml.match(/data-act="arch:open"/g) || []).length + ' 个可点节点');
+    check('拓扑总图含四件治理运维组件与关系走向',
+        ['Nginx', 'Nacos', 'SkyWalking', 'Docker + K8s'].every((n) => topoHtml.indexOf(n) > -1) &&
+        /治理与运维/.test(topoHtml) && /服务注册 · 心跳 5s/.test(topoHtml) &&
+        /K8s 调度 · 探针自愈 · 滚动发布/.test(topoHtml) && /全部服务 · 横切接入/.test(topoHtml),
+        'Nginx 入口 + 右侧治理轨');
     /* 入口从运营仪表盘挪到登录首页：仪表盘不再出现任何架构块，
        登录页的入口脚本必须读同一份领域目录、十枚胶囊深链聚焦对应服务 */
     check('运营仪表盘不再带架构入口', (() => {
@@ -1986,12 +2023,20 @@ const readWrite = () => { const w = writes; writes = {}; return w; };
         'anim/grid/glow/metrics 全开 · 流速 1 · 缩放 1');
     def.actions['arch:focus']('billing');
     const focused = String(def.render(ctx, def.load(ctx)) || '');
-    const nodeTags = focused.match(/<g class="ar-node(?: ar-focus)?"[^>]*>/g) || [];
+    const nodeTags = focused.match(/<g class="ar-node(?: ar-focus)?" data-act="arch:open"[^>]*>/g) || [];
+    const opsTags = focused.match(/<g class="ar-node" data-act="arch:dist-tech"[^>]*>/g) || [];
     check('聚焦高亮邻接且不压暗任何服务', uiState.arch.focus === 'billing' &&
-        nodeTags.length === 10 && nodeTags.every((t) => /opacity="1"/.test(t)) &&
+        nodeTags.length === 10 && nodeTags.every((t) => /opacity="1"/.test(t)) && opsTags.length === 4 &&
         /ar-node ar-focus" data-act="arch:open" data-arg="billing"/.test(focused) &&
         /ar-focus-bar/.test(focused) && /退出聚焦/.test(focused) && /opacity="\.16"/.test(focused),
-        '结算/计费服务 · 十节点全亮 · 无关线淡出');
+        '结算/计费服务 · 十节点全亮 · 四件横切件可点 · 无关线淡出');
+    def.actions['arch:ops']('');
+    const noOpsHtml = String(def.render(ctx, def.load(ctx)) || '');
+    check('治理运维开关收起横切轨并还原主画布宽',
+        /viewBox="0 0 1180 620"/.test(noOpsHtml) && !/data-arg="skywalking"/.test(noOpsHtml) &&
+        !/治理运维轨/.test(noOpsHtml),
+        'ops off → 1180 主画布');
+    def.actions['arch:ops']('');
     def.actions['arch:step']('3');
     uiState.tab = 'flows';
     const stepped = String(def.render(ctx, def.load(ctx)) || '');

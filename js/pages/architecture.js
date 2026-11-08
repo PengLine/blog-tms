@@ -23,7 +23,7 @@
     /* 视图状态与列表状态分开：翻页筛选不该把「关掉动画」这件事重置掉 */
     var VIEW_DEFAULT = {
         lines: 'all', focus: '', distFocus: '', anim: 1, speed: 1, zoom: 1,
-        metrics: 1, grid: 1, glow: 1, theme: 'dark', play: 1, step: 1
+        metrics: 1, grid: 1, glow: 1, ops: 1, theme: 'dark', play: 1, step: 1
     };
 
     function view() {
@@ -175,23 +175,25 @@
     }
 
     function topoSvg(v) {
-        var t = arch.topology({ lines: v.lines });
+        var t = arch.topology({ lines: v.lines, ops: !!v.ops });
         var C = palette(v.theme);
         var focus = v.focus && arch.service(v.focus) ? v.focus : '';
         var near = nearMap(t, focus);
         var s = [];
         var cls = 'ar-svg' + (v.anim ? '' : ' no-anim') + (v.grid ? '' : ' no-grid');
         s.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + t.width + ' ' + t.height +
-            '" class="' + cls + '" style="--arch-speed:' + esc(v.speed) + '" role="img" aria-label="汇通物流 TMS 十服务架构拓扑">');
+            '" class="' + cls + '" style="--arch-speed:' + esc(v.speed) + '" role="img" aria-label="汇通物流 TMS 十服务架构拓扑' + (t.ops ? '（含 Nginx 入口与治理运维轨）' : '') + '">');
         s.push('<style>' + SVG_STYLE + '</style>');
 
         /* 箭头按色号各建一份：marker 里取不到描边色，共用一个箭头会让十种线都长出灰脑袋 */
         var hues = [], marker = {};
-        t.edges.forEach(function (e) {
-            if (marker[e.hue]) return;
-            marker[e.hue] = 'ar-ah-' + hues.length;
-            hues.push(e.hue);
-        });
+        function hueOf(h) {
+            if (marker[h]) return;
+            marker[h] = 'ar-ah-' + hues.length;
+            hues.push(h);
+        }
+        t.edges.forEach(function (e) { hueOf(e.hue); });
+        (t.ops ? t.ops.links : []).forEach(function (e) { hueOf(e.hue); });
         s.push('<defs>');
         s.push('<pattern id="arGridP" width="26" height="26" patternUnits="userSpaceOnUse">' +
             '<path d="M26 0H0V26" fill="none" stroke="' + C.grid + '" stroke-width="1"/></pattern>');
@@ -206,20 +208,20 @@
         s.push('<rect x="0" y="0" width="' + t.width + '" height="' + t.height + '" rx="14" fill="' + C.bg + '"/>');
         s.push('<rect class="ar-grid" x="0" y="0" width="' + t.width + '" height="' + t.height + '" rx="14" fill="url(#arGridP)"/>');
 
-        /* 分层带 */
+        /* 分层带：主画布恒为 1180，右侧治理轨独立成带，不参与主带宽 */
         t.bands.forEach(function (b) {
-            s.push('<rect x="8" y="' + b.y + '" width="' + (t.width - 16) + '" height="' + b.h + '" rx="11" fill="' + C.band +
+            s.push('<rect x="8" y="' + b.y + '" width="' + (t.mainW - 16) + '" height="' + b.h + '" rx="11" fill="' + C.band +
                 '" fill-opacity="' + (v.theme === 'light' ? '.78' : '.62') + '" stroke="' + C.bandLine + '" stroke-width="1"/>');
             s.push('<text class="ar-band-name" x="18" y="' + (b.y + 15) + '" fill="' + C.dim + '">' + esc(b.name) + '</text>');
             if (b.id !== 'clients' && b.id !== 'infra') {
-                s.push('<text class="ar-band-sub" x="' + (t.width - 18) + '" y="' + (b.y + 15) + '" text-anchor="end" fill="' + C.faint + '">' +
+                s.push('<text class="ar-band-sub" x="' + (t.mainW - 18) + '" y="' + (b.y + 15) + '" text-anchor="end" fill="' + C.faint + '">' +
                     esc(fit(b.sub, 300, 9)) + '</text>');
             }
         });
 
         /* 终端与基础设施：这两排不是服务，画成 chips 免得被当成第十一个服务 */
         function chipRow(items, y, h, x0, nameSize, subSize) {
-            var gap = 8, w = (t.width - 18 - x0 - gap * (items.length - 1)) / items.length;
+            var gap = 8, w = (t.mainW - 18 - x0 - gap * (items.length - 1)) / items.length;
             return items.map(function (it, i) {
                 var x = x0 + i * (w + gap);
                 return '<g><rect x="' + util.round(x, 1) + '" y="' + y + '" width="' + util.round(w, 1) + '" height="' + h +
@@ -249,6 +251,51 @@
         });
         s.push('</g>');
         s.push('<g class="ar-flows"' + (v.glow ? ' filter="url(#arGlowF)"' : '') + '>' + flows.join('') + '</g>');
+
+        /* 治理与运维轨：Nginx 入口画流量走向，右侧横切组件经治理总线挂接各层。
+           入口线只在聚焦网关链路时保留；治理与运行时是横切能力，任何聚焦下常显 */
+        if (t.ops) {
+            var ob = t.ops.band;
+            s.push('<g class="ar-ops">');
+            s.push('<rect x="' + ob.x + '" y="' + ob.y + '" width="' + ob.w + '" height="' + ob.h + '" rx="11" fill="' + C.band +
+                '" fill-opacity="' + (v.theme === 'light' ? '.78' : '.62') + '" stroke="' + C.bandLine + '" stroke-width="1"/>');
+            s.push('<text class="ar-band-name" x="' + (ob.x + 10) + '" y="' + (ob.y + 15) + '" fill="' + C.dim + '">' + esc(ob.name) + '</text>');
+            s.push('<text class="ar-band-sub" x="' + (ob.x + ob.w - 10) + '" y="' + (ob.y + 15) + '" text-anchor="end" fill="' + C.faint + '">' + esc(ob.sub) + '</text>');
+            var opFlows = [];
+            t.ops.links.forEach(function (e) {
+                var dim = e.kind === 'ingress' && focus && !near.gateway;
+                var dash = e.dashed ? ' stroke-dasharray="5 4"' : '';
+                s.push('<g opacity="' + (dim ? '.16' : '1') + '"><path class="ar-line" d="' + e.path + '" fill="none" stroke="' + e.hue +
+                    '" stroke-width="' + (e.kind === 'bus' ? '1.2' : '1.5') + '" stroke-opacity="' + (e.dashed ? '.55' : '.7') + '"' + dash +
+                    (e.arrow ? ' marker-end="url(#' + marker[e.hue] + ')"' : '') + '/><title>' + esc(e.label) + '</title></g>');
+                if (!dim && e.arrow) {
+                    opFlows.push('<path class="ar-flow" d="' + e.path + '" fill="none" stroke="' + e.hue + '" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="7 150" style="animation-delay:-' + esc(e.delay) + 's"/>');
+                }
+            });
+            s.push('<g class="ar-flows"' + (v.glow ? ' filter="url(#arGlowF)"' : '') + '>' + opFlows.join('') + '</g>');
+            s.push('<text class="ar-band-sub" transform="rotate(-90 1177 292)" x="1177" y="292" text-anchor="middle" fill="' + C.faint + '">全部服务 · 横切接入</text>');
+            s.push('<text class="ar-tag" x="369" y="106" text-anchor="middle" fill="' + C.dim + '">转发</text>');
+            /* 横切节点：不是第十一个服务，无编号，点击直达分布式目录里的技术契约 */
+            t.ops.nodes.forEach(function (n) {
+                s.push('<g class="ar-node" data-act="arch:dist-tech" data-arg="' + esc(n.tech) + '" opacity="1">');
+                s.push('<rect class="ar-box" x="' + n.x + '" y="' + n.y + '" width="' + n.w + '" height="' + n.h + '" rx="10" fill="' + C.node +
+                    '" stroke="' + n.hue + '" stroke-width="1.4" stroke-opacity=".85"/>');
+                s.push('<rect x="' + n.x + '" y="' + (n.y + 10) + '" width="3.5" height="' + (n.h - 20) + '" rx="1.8" fill="' + n.hue + '"/>');
+                s.push('<circle class="ar-halo" cx="' + (n.x + 24) + '" cy="' + (n.y + 24) + '" r="12" fill="' + n.hue + '" fill-opacity=".16" stroke="' + n.hue + '" stroke-opacity=".45"/>');
+                s.push('<text x="' + (n.x + 24) + '" y="' + (n.y + 28) + '" text-anchor="middle" font-size="11" fill="' + n.hue + '">' + esc(n.icon) + '</text>');
+                s.push('<text class="ar-name" x="' + (n.x + 44) + '" y="' + (n.y + 22) + '" fill="' + C.ink + '">' + esc(fit(n.name, n.w - 54, 13)) + '</text>');
+                s.push('<text class="ar-en" x="' + (n.x + 44) + '" y="' + (n.y + 36) + '" fill="' + C.faint + '">' + esc(fit(n.en, n.w - 54, 8.5)) + '</text>');
+                s.push('<text class="ar-tag" x="' + (n.x + 14) + '" y="' + (n.y + 54) + '" fill="' + n.hue + '">' + esc(fit(n.tag, n.w - 26, 9.5)) + '</text>');
+                if (n.note) {
+                    s.push('<text class="ar-metric" x="' + (n.x + 14) + '" y="' + (n.y + 76) + '" fill="' + C.dim + '">' + esc(n.note) + '</text>');
+                }
+                s.push('<title>' + esc(n.name + ' — ' + n.mission) + '</title>');
+                s.push('</g>');
+            });
+            s.push('<text class="ar-tag" x="' + (ob.x + 16) + '" y="466" fill="' + C.dim + '">流量 · 治理 · 观测 · 运行时</text>');
+            s.push('<text class="ar-chip-sub" x="' + (ob.x + 16) + '" y="482" fill="' + C.faint + '">四类横切能力，业务零侵入</text>');
+            s.push('</g>');
+        }
 
         /* 服务节点 */
         s.push('<g class="ar-nodes">');
@@ -425,7 +472,7 @@
             return { value: s.id, label: s.no + ' · ' + s.name };
         }));
         return '<aside class="ar-controls" aria-label="架构图控制台">' +
-            '<header class="ar-controls-head"><b>图纸控制台</b><span>十二个旋钮，即时生效</span></header>' +
+            '<header class="ar-controls-head"><b>图纸控制台</b><span>十三个旋钮，即时生效</span></header>' +
             '<div class="ar-controls-body">' +
             selectCtl('连线过滤', 'arch:lines', v.lines, [
                 { value: 'all', label: '全部（同步 + 异步 + 调度）' },
@@ -441,6 +488,7 @@
             toggle('节点指标', 'metrics', '表 / 页 / 接口 / 行数') +
             toggle('分层参考网格', 'grid', '26px 蓝图网格') +
             toggle('光带辉光', 'glow', '异步链路更醒目') +
+            toggle('治理运维组件', 'ops', 'Nginx / Nacos / SkyWalking / K8s') +
             '<div class="ar-ctl-sep">尺度</div>' +
             slider('流速', 'speed', 0.4, 2.5, 0.1, '×') +
             slider('画布缩放', 'zoom', 0.8, 1.8, 0.05, '×') +
@@ -653,13 +701,15 @@
             { label: '领域模块', value: st.domainModules, unit: '个', tone: 'brand', icon: '⚙', sub: '全量模块 ' + st.modules + ' 个 · schema ' + st.schema }
         ]);
 
-        var t = arch.topology({ lines: v.lines });
+        var t = arch.topology({ lines: v.lines, ops: !!v.ops });
         var legend = '<div class="ar-legend">' + [
             { k: 'sync', n: t.counts.sync }, { k: 'event', n: t.counts.event },
             { k: 'job', n: t.counts.job }, { k: 'read', n: t.counts.read }
         ].map(function (x) {
             return '<span class="ar-legend-item"><i style="background:' + KIND[x.k].hue + '"></i>' + KIND[x.k].label + ' <b>' + x.n + '</b></span>';
-        }).join('') + '<span class="ar-legend-item ar-legend-hint">点节点看契约 · 滚轮区可横向拖动</span></div>';
+        }).join('') +
+        (t.ops ? '<span class="ar-legend-item"><i style="background:repeating-linear-gradient(90deg,#8b7cf6 0 3px,transparent 3px 6px)"></i>治理与运维 <b>' + t.ops.nodes.length + '</b></span>' : '') +
+        '<span class="ar-legend-item ar-legend-hint">点节点看契约 · 滚轮区可横向拖动</span></div>';
 
         /* 聚焦态必须一眼可辨、一键可退：否则访客只看到几张线淡了，不知道自己在哪 */
         var focusSvc = v.focus ? arch.service(v.focus) : null;
@@ -669,7 +719,7 @@
             focusBar = '<div class="ar-focus-bar" style="--h:' + esc(focusSvc.hue) + '">' +
                 '<i class="ar-focus-dot"></i>' +
                 '<b>聚焦 · ' + esc(focusSvc.no + ' ' + focusSvc.name) + '</b>' +
-                '<span class="ar-focus-sub">高亮 ' + linked + ' 个直接相连服务（同步 / 事件 / 调度 / 只读），无关连线已淡出</span>' +
+                '<span class="ar-focus-sub">高亮 ' + linked + ' 个直接相连服务（同步 / 事件 / 调度 / 只读），无关连线已淡出，治理运维链路常显</span>' +
                 '<span class="ar-focus-acts">' +
                 ui.btn('看服务契约', { size: 'sm', act: 'arch:open', arg: focusSvc.id }) +
                 ui.btn('退出聚焦', { size: 'sm', tone: 'primary', act: 'arch:focus', arg: '', icon: '✕' }) +
@@ -701,7 +751,7 @@
             kpi,
             healthNotices(st),
             ui.card({
-                title: '服务拓扑总图', sub: '十服务 · 五层 · ' + (t.counts.sync + t.counts.event + t.counts.job + t.counts.read) + ' 条调用关系',
+                title: '服务拓扑总图', sub: '十服务 · 五层 · ' + (t.counts.sync + t.counts.event + t.counts.job + t.counts.read) + ' 条调用关系' + (t.ops ? ' · Nginx 入口 + 治理运维轨' : ''),
                 flat: true, className: 'ar-topo-card', tools: legend, body: focusBar + stage
             }),
             ui.card({ title: '分层职责与禁区', sub: '每一层能做什么、绝不能做什么', flat: true, body: '<div class="ar-layers">' + layerCards.join('') + '</div>' }),
@@ -1738,6 +1788,7 @@
             'arch:metrics': function () { var v = view(); setView({ metrics: v.metrics ? 0 : 1 }); },
             'arch:grid': function () { var v = view(); setView({ grid: v.grid ? 0 : 1 }); },
             'arch:glow': function () { var v = view(); setView({ glow: v.glow ? 0 : 1 }); },
+            'arch:ops': function () { var v = view(); setView({ ops: v.ops ? 0 : 1 }); },
             'arch:speed': function (val) { setView({ speed: clamp(Number(val) || 1, 0.4, 2.5) }); },
             'arch:zoom': function (val) { setView({ zoom: clamp(Number(val) || 1, 0.8, 1.8) }); },
             'arch:reset': function () {
