@@ -525,6 +525,97 @@ section('行政区划三级与路由范围分级');
         })());
 })();
 
+/* 多干线路由：一票货可能 serial 经过几条干线，中途枢纽要卸货→分拣→装货→候车。
+   规划器必须在班次图上枚举全路径同场评分，而不是只找一条直发——
+   这里把「枚举得出、评分别塌、装卸派生、采纳落库」四件事钉死 */
+section('多干线智能规划与中途装卸');
+(() => {
+    const M = TMS.master, N = TMS.network;
+    const ob = (c) => ({ city: c });
+
+    const exp = N.planOptions('沈阳', '成都', '加急', {});
+    check('规划台对长线 OD 枚举出多个可行方案', !!exp && exp.candidates.length > 1,
+        exp ? exp.candidates.length + ' 个方案 / 策略 ' + exp.strategy : 'null');
+    check('加急件允许空陆联运且含多干线方案',
+        !!exp && exp.candidates.some((c) => c.mode === '联运') && exp.candidates.some((c) => c.trunkLegs >= 2),
+        exp ? exp.candidates.filter((c) => c.trunkLegs >= 2).length + ' 个多干线方案' : '');
+    check('候选按综合得分降序、推荐在首位',
+        !!exp && exp.candidates[0] === exp.best &&
+        exp.candidates.every((c, i) => i === 0 || exp.candidates[i - 1].score >= c.score),
+        exp ? exp.best.label + ' ' + exp.best.score + ' 分' : '');
+    check('候选都带起讫与分级、中转是装卸计划数组',
+        !!exp && exp.candidates.every((c) => c.origin === '沈阳' && c.destination === '成都' &&
+            c.scope && Array.isArray(c.transfers) && typeof c.trunkLegs === 'number'));
+
+    const direct = M.planSegments(ob('上海'), ob('成都'), '陆运', { strategy: '均衡', maxTransfers: 0, withCandidates: true });
+    check('最多中转 0 次时只出直达', !!direct && (direct.candidates || [direct]).every((c) => c.trunkLegs <= 1),
+        direct ? (direct.candidates || [direct]).length + ' 个候选' : 'null');
+    const multi = M.planSegments(ob('上海'), ob('成都'), '陆运', { strategy: '成本', maxTransfers: 2, withCandidates: true });
+    const directCost = ((multi && multi.candidates) || []).filter((c) => c.trunkLegs === 1).map((c) => c.trunkCost)[0];
+    check('成本策略会真的改选多干线路径（比直达便宜才选）',
+        !!multi && multi.trunkLegs >= 2 && directCost != null && multi.trunkCost <= directCost,
+        multi ? '选中 ¥' + multi.trunkCost + ' / 直达 ¥' + directCost : 'null');
+
+    const ops = exp ? N.transferOps(exp.best) : [];
+    const xferBest = exp ? exp.candidates.filter((c) => (c.transfers || []).length > 0)[0] : null;
+    const xferOps = xferBest ? xferBest.transfers : [];
+    check('多干线方案派生出中途装卸计划', xferOps.length >= 1 && xferOps.every((o) =>
+        o.hub && o.unloadHours > 0 && o.sortHours > 0 && o.loadHours > 0 && o.waitHours >= 0 &&
+        o.totalHours === o.unloadHours + o.sortHours + o.loadHours + o.waitHours &&
+        /^D[1-8]$/.test(o.dockIn) && /^D[1-8]$/.test(o.dockOut)),
+        xferOps.length ? xferOps[0].hub + ' 共 ' + xferOps[0].totalHours + 'h · 月台 ' + xferOps[0].dockIn + '→' + xferOps[0].dockOut : '无');
+    check('装卸计划带前后班次衔接', xferOps.length > 0 && xferOps.every((o) => o.prevTripCode && o.nextTripCode),
+        xferOps.length ? xferOps[0].prevTripCode + ' → ' + xferOps[0].nextTripCode : '');
+
+    const inactive = db.col('trips').filter((t) => t.status === 'inactive').map((t) => t.id);
+    const usedInactive = [];
+    ['上海', '沈阳', '广州', '哈尔滨'].forEach((o) => ['成都', '昆明', '乌鲁木齐'].forEach((d) => {
+        const r = N.planOptions(o, d, '标准', {});
+        (r ? r.candidates : []).forEach((c) => (c.segments || []).forEach((s) => {
+            if (s.tripId && inactive.indexOf(s.tripId) > -1) usedInactive.push(s.tripId);
+        }));
+    }));
+    check('停用班次不参与规划', usedInactive.length === 0,
+        inactive.length + ' 条停用班次 / 误用 ' + usedInactive.length);
+
+    /* 采纳：同 OD 建档→再采纳更新不重复；路由行存中转次数（数字），规划对象存装卸数组 */
+    const before = db.col('routes').length;
+    const pick = xferBest || (exp && exp.best);
+    const a1 = N.adoptRoutePlan(pick, '冒烟');
+    const row1 = db.get('routes', a1.id);
+    check('采纳方案建档且段次事实落库', a1.ok && a1.created && row1.planner === 'smart2' &&
+        typeof row1.transfers === 'number' && row1.trunkLegs >= 1 && (row1.segments || []).length >= 3,
+        a1.id + ' · 干线 ' + row1.trunkLegs + ' 段 / 中转 ' + row1.transfers + ' 次');
+    const a2 = N.adoptRoutePlan(pick, '冒烟');
+    check('同 OD 再采纳是更新不是重复建档', a2.ok && !a2.created && a2.id === a1.id && db.col('routes').length === before + 1);
+    check('采纳留审计', db.col('auditLogs').some((x) => x.refId === a1.id && /采纳/.test(x.detail || '')),
+        a1.id);
+    /* 采纳后 planRoute 命中路由行，装卸计划从老段次也能派生（月台/工时不凭空消失） */
+    const hit = N.planRoute('沈阳', '成都', '加急', { noCache: true });
+    check('采纳后同 OD 下单命中新路由且装卸计划可派生',
+        !!hit && hit.routeId === a1.id && (hit.transfers || []).length === row1.transfers,
+        hit ? 'source=' + hit.source + ' · 装卸 ' + (hit.transfers || []).length + ' 次' : 'null');
+
+    /* 规划台页面：六个条件控件改动即重算，对比表 + 选中方案段次/装卸可视化 */
+    const def = TMS.pages.get('route');
+    const rst = TMS.ui.state('route');
+    const keepPl = rst.pl;
+    rst.pl = { origin: '沈阳', destination: '成都', service: '加急', strategy: '', maxTransfers: '2', mode: '', picked: 1 };
+    try {
+        const rctx = { shell: TMS.shell, session: { username: 'admin', name: '冒烟', role: 'admin', permissions: [] }, params: {}, days: 7, layout: 'full', pageId: 'route', role: 'admin', state: rst };
+        const html = String(def.render(rctx, def.load(rctx)) || '');
+        check('规划台六个条件下拉改动即重算', (html.match(/data-change="rt:pl-set"/g) || []).length === 6);
+        check('规划台常驻控件 >= 7（重规划/采纳/两导出/选用/全量重算）',
+            ['rt:pl-run', 'rt:pl-adopt', 'rt:pl-csv', 'rt:pl-seg-csv', 'rt:pl-pick', 'rt:recompute-all']
+                .every((a) => html.indexOf('data-act="' + a + '"') > -1));
+        check('选中方案展开中转装卸可视化', html.indexOf('tms-xfer') > -1 && html.indexOf('卸货') > -1 &&
+            html.indexOf('分拣转运') > -1 && html.indexOf('候车') > -1 && html.indexOf('月台') > -1);
+        check('规划台渲染无脏值', !/undefined|NaN|\[object Object\]/.test(html));
+    } finally {
+        rst.pl = keepPl;
+    }
+})();
+
 section('派送地址审核闭环');
 (() => {
     const AD = TMS.address;
@@ -994,6 +1085,24 @@ check('外壳与注册器已装配', !!(TMS.ui && TMS.charts && TMS.shell && TMS
     const iClose = block.indexOf('handle.close()');
     check('ui.confirm 先定结论再关弹窗', iYes > -1 && iClose > -1 && iYes < iClose,
         'finish@' + iYes + ' / close@' + iClose);
+})();
+/* 环形图图例每项两行（名称 + 数值·占比）：行距小于两行全高时，
+   数值行会被下一项名称压住——渲染字符串看不出重叠，只能按几何坐标钉死 */
+(() => {
+    const data = Array.from({ length: 8 }, (_, i) => ({ label: '类目' + (i + 1), value: (i + 1) * 137 }));
+    const html = TMS.charts.donut({ data: data, height: 210, fmt: (v) => v + ' 条' });
+    const vh = Number((html.match(/viewBox="0 0 720 ([\d.]+)"/) || [])[1]);
+    const ys = [...html.matchAll(/<text x="([\d.]+)" y="([\d.]+)"/g)]
+        .filter((m) => Number(m[1]) > 220).map((m) => Number(m[2]));
+    check('环形图 8 项图例画布自适应加高', vh >= 8 * 28 + 26, 'viewBox 高 ' + vh);
+    check('环形图图例名称/数值两行互不遮挡',
+        ys.length === 16 && ys.every((y, i) => i % 2 ? y - ys[i - 1] === 13 : (i === 0 || y - ys[i - 1] >= 15)),
+        ys.length + ' 行文字 / 相邻基线距 ' + (ys[2] - ys[1]));
+    check('环形图图例不出画布上下边', ys.length > 0 && ys[0] > 10 && ys[ys.length - 1] + 3 <= vh,
+        '首行 ' + ys[0] + ' / 末行 ' + ys[ys.length - 1] + ' / 画布 ' + vh);
+    const few = TMS.charts.donut({ data: data.slice(0, 2), height: 230 });
+    const fewH = Number((few.match(/viewBox="0 0 720 ([\d.]+)"/) || [])[1]);
+    check('环形图少项时不强行加高', fewH === 230, 'viewBox 高 ' + fewH);
 })();
 /* bundle 文件写了却没进 boot.js 的 MODULES，浏览器里就是「页面尚未注册」的空白，
    而冒烟脚本自己 import 全量模块，永远测不出来——所以这里直接比对目录与 boot 的清单 */
@@ -1706,6 +1815,51 @@ const readWrite = () => { const w = writes; writes = {}; return w; };
         TMS.boot.modules.indexOf('js/pages/architecture.js') > -1 &&
         TMS.boot.modules.indexOf('js/domain/architecture.js') < TMS.boot.modules.indexOf('js/ui/kit.js'),
         TMS.boot.modules.length + ' 个模块');
+
+    /* 分布式与运维目录同样当代码验：十件组件逐件有契约，引用的服务/表/链路全部真实存在 */
+    const techs = arch.distributed();
+    const WANT_TECH = ['sharding', 'nacos', 'sentinel', 'skywalking', 'seata', 'redis', 'prometheus', 'cicd', 'lb', 'snowflake'];
+    check('十件分布式组件齐全且编号 1–10 连续',
+        techs.length === 10 && techs.every((t, i) => t.no === i + 1) && WANT_TECH.every((id) => !!arch.distTech(id)),
+        techs.map((t) => t.no + ' ' + t.id).join(' · '));
+    const techHues = techs.map((t) => t.hue);
+    const thinTech = techs.filter((t) => !t.name || !t.product || !t.version || !t.role || !t.why || !t.scenario ||
+        !t.fallback || !(t.points || []).length || (t.metrics || []).length !== 3 ||
+        t.metrics.some((m) => !m.k || !m.v) || !arch.distCats().some((c) => c.id === t.cat));
+    check('每件组件契约完整且色号不撞', thinTech.length === 0 && new Set(techHues).size === techHues.length,
+        thinTech.length ? thinTech.map((t) => t.id).join('、') : new Set(techHues).size + ' 个可分辨色号 · ' +
+        techs.reduce((a, t) => a + t.points.length, 0) + ' 条设计要点');
+    const techDrift = [];
+    techs.forEach((t) => {
+        t.services.forEach((sid) => { if (!arch.service(sid)) techDrift.push(t.id + '→svc:' + sid); });
+        (t.tables || []).forEach((n) => { if (!db.meta(n).label) techDrift.push(t.id + '→tbl:' + n); });
+        (t.flows || []).forEach((fid) => { if (!arch.flow(fid)) techDrift.push(t.id + '→flow:' + fid); });
+    });
+    check('组件覆盖的服务/表/链路全部命中真实目录', techDrift.length === 0,
+        techDrift.join('、') || techs.reduce((a, t) => a + t.services.length, 0) + ' 条覆盖连接');
+    const dmx = arch.distMatrix();
+    check('覆盖矩阵与组件目录同源',
+        dmx.length === techs.length && dmx.every((r) => r.cells.length === 10 &&
+            r.count === r.cells.filter(Boolean).length && r.count === arch.distTech(r.id).services.length),
+        dmx.length + ' 行 × 10 服务');
+    const dcats = arch.distCats();
+    const dst = arch.distStats();
+    check('分类计数与统计三处同源',
+        dcats.length === 5 && dcats.reduce((a, c) => a + c.count, 0) === 10 &&
+        dst.techs === 10 && dst.cats === 5 && dst.links === techs.reduce((a, t) => a + t.services.length, 0) &&
+        dst.full === techs.filter((t) => t.services.length === 10).length &&
+        dst.points === techs.reduce((a, t) => a + t.points.length, 0),
+        '连接 ' + dst.links + ' / 全量覆盖 ' + dst.full + ' 件 / 要点 ' + dst.points + ' 条');
+    const stages = arch.cicd();
+    check('CI/CD 八阶段出口条件与失败处置齐全',
+        stages.length === 8 && stages.every((s, i) => s.no === i + 1 && s.name && s.tool && s.dur && s.hue && s.action && s.exit && s.fail) &&
+        dst.stages === 8,
+        stages.map((s) => s.id).join(' → '));
+    const lb = arch.lbPath();
+    check('负载均衡五跳接力且 Nacos 供名单',
+        lb.hops.length === 5 && lb.hops.every((h) => h.name && h.hue && h.icon) &&
+        /Nacos/.test(lb.registry.name) && lb.hops.some((h) => /Feign/.test(h.name)) && lb.hops.some((h) => /Nginx/.test(h.name)),
+        lb.hops.map((h) => h.name).join(' → '));
 })();
 
 /* 图纸是「可操纵的对象」，控件必须常驻且真的改画面：
@@ -1726,7 +1880,7 @@ const readWrite = () => { const w = writes; writes = {}; return w; };
         modal: () => ({ close() {} }), drawer: () => ({ close() {} }), formModal: () => ({ close() {} }),
         state: uiState, data: {}
     };
-    const TABS = ['topo', 'services', 'flows', 'data', 'deploy'];
+    const TABS = ['topo', 'services', 'flows', 'data', 'dist', 'deploy'];
     const htmlByTab = {};
     let bad = 0;
     TABS.forEach((t) => {
@@ -1747,7 +1901,7 @@ const readWrite = () => { const w = writes; writes = {}; return w; };
             console.error('  ✗ 架构页 ' + t + ' 渲染抛错：' + err.message);
         }
     });
-    check('架构页五个页签全部渲染干净', bad === 0 && TABS.every((t) => htmlByTab[t]), bad ? bad + ' 个页签有问题' : TABS.join(' / '));
+    check('架构页六个页签全部渲染干净', bad === 0 && TABS.every((t) => htmlByTab[t]), bad ? bad + ' 个页签有问题' : TABS.join(' / '));
     check('公开页 masthead 常驻且已登录会话给进入系统',
         /class="ar-mast"/.test(htmlByTab.topo) && /进入系统/.test(htmlByTab.topo) &&
         /tms\/index\.html/.test(htmlByTab.topo) && /class="ar-public-body"/.test(htmlByTab.topo),
@@ -1832,14 +1986,109 @@ const readWrite = () => { const w = writes; writes = {}; return w; };
         'anim/grid/glow/metrics 全开 · 流速 1 · 缩放 1');
     def.actions['arch:focus']('billing');
     const focused = String(def.render(ctx, def.load(ctx)) || '');
-    check('聚焦服务只亮自己与邻居', /opacity="\.24"/.test(focused) && uiState.arch.focus === 'billing',
-        '结算/计费服务');
+    const nodeTags = focused.match(/<g class="ar-node(?: ar-focus)?"[^>]*>/g) || [];
+    check('聚焦高亮邻接且不压暗任何服务', uiState.arch.focus === 'billing' &&
+        nodeTags.length === 10 && nodeTags.every((t) => /opacity="1"/.test(t)) &&
+        /ar-node ar-focus" data-act="arch:open" data-arg="billing"/.test(focused) &&
+        /ar-focus-bar/.test(focused) && /退出聚焦/.test(focused) && /opacity="\.16"/.test(focused),
+        '结算/计费服务 · 十节点全亮 · 无关线淡出');
     def.actions['arch:step']('3');
     uiState.tab = 'flows';
     const stepped = String(def.render(ctx, def.load(ctx)) || '');
     check('单步播放头落到指定步且暂停自动播放',
         uiState.arch.step === 3 && uiState.arch.play === 0 && /ar-row on/.test(stepped),
         '第 3 步');
+
+    /* 分布式页签：三张自包含 SVG + 常驻控制台 + 雪花发号器全流程 */
+    const distHtml = htmlByTab.dist || '';
+    const distSvgs = (distHtml.match(/<svg/g) || []).length;
+    const distCtl = (distHtml.match(/data-(?:act|change)="arch:(?:dist-focus|theme|anim|grid|glow|speed|zoom|reset|dist-svg)"/g) || []).length;
+    const snowCtl = (distHtml.match(/data-(?:act|change)="arch:snow-(?:dc|worker|count|clock|gen|copy|csv|reset|pick)"/g) || []).length;
+    check('分布式页签三张图纸且两块控制台各不少于七件',
+        distSvgs >= 3 && /ar-dist-cards/.test(distHtml) && /ar-mx-row/.test(distHtml) && /class="ar-snow"/.test(distHtml) &&
+        /ar-dist-controls/.test(distHtml) && distCtl >= 7 && snowCtl >= 7,
+        'SVG ' + distSvgs + ' / 全景旋钮 ' + distCtl + ' / 发号旋钮 ' + snowCtl);
+    check('三张图纸 SVG 标识符互不撞且自带样式',
+        /id="arDGridP"/.test(distHtml) && /id="ar-ca-rb"/.test(distHtml) && /id="arLGlowF"/.test(distHtml) &&
+        (distHtml.match(/<style>/g) || []).length >= 3 && !/id="arGlowF"/.test(distHtml),
+        'dist / cicd / lb 各自前缀');
+
+    const snowOf = () => TMS.ui.state('architecture').snow;
+    def.actions['arch:snow-reset']('');
+    def.actions['arch:snow-gen']('');
+    let batch = snowOf().ids.slice();
+    const decBig = (x) => BigInt('0b' + x.bin);
+    check('雪花一批八个：64 位、十进制换算精确、字段可解码、批内递增',
+        batch.length === 8 && batch.every((x) => x.bin.length === 64 && x.bin.charAt(0) === '0' &&
+            decBig(x).toString() === x.dec &&
+            parseInt(x.bin.substr(42, 5), 2) === x.dc && parseInt(x.bin.substr(47, 5), 2) === x.worker &&
+            parseInt(x.bin.substr(52, 12), 2) === x.seq) &&
+        batch.every((x, i) => i === 0 || decBig(x) > decBig(batch[i - 1])) &&
+        new Set(batch.map((x) => x.dec)).size === 8,
+        (batch[0] || {}).dec + ' … ' + (batch[7] || {}).dec);
+    def.actions['arch:snow-gen']('');
+    const batch2 = snowOf().ids.slice();
+    check('跨批次不重号（同毫秒序列续增）',
+        batch2.every((x) => !batch.some((y) => y.dec === x.dec)),
+        '第二批 ' + batch2.length + ' 个全新');
+    def.actions['arch:snow-clock']('reject');
+    def.actions['arch:snow-gen']('');
+    check('回拨 12ms 超容忍：整批拒发且告警',
+        snowOf().alert && snowOf().alert.tone === 'danger' &&
+        snowOf().ids.length === batch2.length && snowOf().ids.every((x, i) => x.dec === batch2[i].dec),
+        '拒发 ' + snowOf().snowCount + ' 个 · 旧批原样保留');
+    def.actions['arch:snow-clock']('wait');
+    def.actions['arch:snow-gen']('');
+    check('回拨 3ms 容忍内：等待追平继续发号',
+        snowOf().alert && snowOf().alert.tone === 'warn' && snowOf().ids.length === 8 &&
+        snowOf().ids.every((x) => !batch2.some((y) => y.dec === x.dec)),
+        '追平后新批 ' + snowOf().ids.length + ' 个');
+    def.actions['arch:snow-clock']('ok');
+    def.actions['arch:snow-pick']('3');
+    check('点选批次行切换解剖对象', snowOf().picked === '3', 'picked = 3');
+    def.actions['arch:snow-dc']('99');
+    def.actions['arch:snow-worker']('7');
+    def.actions['arch:snow-count']('99');
+    def.actions['arch:snow-gen']('');
+    check('旋钮越界钳制且新批用新节点位',
+        snowOf().snowDc === 31 && snowOf().snowWorker === 7 && snowOf().snowCount === 24 &&
+        snowOf().ids.length === 24 && snowOf().ids.every((x) => x.dc === 31 && x.worker === 7),
+        '机房 31 · 节点 7 · 批量 24');
+    def.actions['arch:snow-copy']('');
+    def.actions['arch:snow-csv']('');
+    def.actions['arch:snow-reset']('');
+    check('发号器复位回出厂态', snowOf().ids.length === 0 && snowOf().snowDc === 1 && snowOf().snowClock === 'ok',
+        '机房 1 · 节点 1 · 每批 8');
+    def.actions['arch:snow-copy']('');
+    def.actions['arch:snow-csv']('');
+
+    uiState.tab = 'dist';
+    def.actions['arch:dist-focus']('sharding');
+    const distFocused = String(def.render(ctx, def.load(ctx)) || '');
+    const distOnly = distFocused.split('</svg>')[0];
+    const distNodeTags = distOnly.match(/<g class="ar-node(?: ar-focus)?"[^>]*>/g) || [];
+    check('全景聚焦画覆盖连线且不压暗任何节点',
+        uiState.arch.distFocus === 'sharding' && /ar-focus-bar/.test(distFocused) &&
+        /id="ar-dah"/.test(distFocused) && (distFocused.match(/marker-end="url\(#ar-dah\)"/g) || []).length === 4 &&
+        distNodeTags.length === 20 && distNodeTags.every((t) => /opacity="1"/.test(t)),
+        '分库分表 → 4 服务连线 · 20 节点全亮');
+    def.actions['arch:dist-cat']('data');
+    const distData = String(def.render(ctx, def.load(ctx)) || '');
+    check('目录分类筛选只留数据与一致性四件',
+        (distData.match(/class="ar-dist-card"/g) || []).length === 4 &&
+        /ShardingSphere/.test(distData) && /Seata/.test(distData) && /Redisson/.test(distData) && /Snowflake/.test(distData),
+        '4 / 10 件');
+    def.actions['arch:dist-cat']('');
+    def.actions['arch:dist-tech']('sharding');
+    TMS.ui.closeTop();
+    def.actions['arch:dist-stage']('canary');
+    TMS.ui.closeTop();
+    def.actions['arch:dist-svg']('');
+    def.actions['arch:dist-csv']('');
+    def.actions['arch:dist-flow']('trunk');
+    check('技术抽屉/阶段弹窗/导出/链路跳转全部可达',
+        uiState.tab === 'flows' && uiState.seg === 'trunk',
+        'dist-flow → 干线链路');
     def.actions['arch:reset']('');
     uiState.tab = 'topo';
     uiState.arch = {};

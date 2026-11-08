@@ -660,6 +660,54 @@ body.tms-body img { max-width: 100%; }
 @keyframes tms-out { to { opacity: 0; transform: translateX(20px); } }
 @keyframes tms-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
+/* ---------- 中转装卸时间线（多干线路由） ---------- */
+
+/* 规划台六控件：宽屏固定 3×2，避免 auto-fit 排出 5+1 的失衡行 */
+@media (min-width: 1100px) {
+    .tms-form.tms-planner { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.tms-xfer { display: flex; flex-direction: column; gap: 10px; }
+.tms-xfer-hub {
+    border: 1px solid var(--tms-line); border-radius: var(--tms-r);
+    background: linear-gradient(135deg, var(--tms-brand-soft), var(--tms-card) 55%);
+    padding: 10px 12px;
+}
+.tms-xfer-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.tms-xfer-head b { color: var(--tms-ink); }
+.tms-xfer-seq {
+    font-size: 11px; font-weight: 600; color: #fff; background: var(--tms-brand);
+    border-radius: 999px; padding: 1px 8px;
+}
+.tms-xfer-trips { margin-left: auto; font-size: 12px; color: var(--tms-ink-3); }
+.tms-xfer-steps { display: flex; align-items: stretch; gap: 6px; }
+.tms-xfer-step {
+    flex: 1 1 0; display: flex; align-items: center; gap: 8px; min-width: 0;
+    background: var(--tms-card); border: 1px solid var(--tms-line); border-radius: var(--tms-r-sm);
+    padding: 7px 10px; border-left-width: 3px;
+}
+.tms-xfer-step > i { font-style: normal; font-size: 16px; width: 22px; text-align: center; flex: none; }
+.tms-xfer-step > div { min-width: 0; display: flex; flex-direction: column; }
+.tms-xfer-step b { font-size: 12px; color: var(--tms-ink); white-space: nowrap; }
+.tms-xfer-step span { font-size: 11px; color: var(--tms-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tms-xfer-hours { color: var(--tms-brand-dark); font-family: var(--tms-mono); }
+.tms-xfer-step.in { border-left-color: var(--tms-info); }
+.tms-xfer-step.in > i { color: var(--tms-info); }
+.tms-xfer-step.mid { border-left-color: var(--tms-brand); }
+.tms-xfer-step.mid > i { color: var(--tms-brand); }
+.tms-xfer-step.out { border-left-color: var(--tms-success); }
+.tms-xfer-step.out > i { color: var(--tms-success); }
+.tms-xfer-step.wait { border-left-color: var(--tms-warn); }
+.tms-xfer-step.wait > i { color: var(--tms-warn); }
+.tms-xfer-arrow { align-self: center; font-style: normal; color: var(--tms-ink-4); flex: none; }
+
+@media (max-width: 720px) {
+    .tms-xfer-trips { margin-left: 0; width: 100%; }
+    .tms-xfer-steps { flex-wrap: wrap; }
+    .tms-xfer-step { flex: 1 1 40%; }
+    .tms-xfer-arrow { display: none; }
+}
+
 /* ---------- 响应式 ---------- */
 
 @media (max-width: 1200px) {

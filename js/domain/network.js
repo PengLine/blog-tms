@@ -151,14 +151,18 @@
         }];
     }
 
-    /* 规划路由：命中已维护路由则复用（保证路由页可统计偏差），否则按班次图临时规划 */
+    /* 服务产品 → 规划策略：加急抢时效、经济拼成本、冷链少中转少暴露，标准走均衡 */
+    var SERVICE_STRATEGY = { '加急': '时效', '经济': '成本', '冷链': '稳妥', '标准': '均衡' };
+
+    /* 规划路由：命中已维护路由则复用（保证路由页可统计偏差），否则按班次图智能规划 */
     function planRoute(origin, destination, service, options) {
         var opts = options || {};
         var levels = opts.levels || { from: endLevels(origin, ''), to: endLevels(destination, '') };
         /* 缓存键带上区级归属：区内直送与市内跨区的段结构不同，
            只按城市对缓存会让先算的那一条决定后来所有同城单长什么样 */
         var key = origin + '>' + destination + '>' + (service || '标准') +
-            '>' + (levels.from.district || '') + '~' + (levels.to.district || '');
+            '>' + (levels.from.district || '') + '~' + (levels.to.district || '') +
+            '>' + (opts.strategy || '') + '~' + (opts.maxTransfers == null ? '' : opts.maxTransfers);
         if (!opts.noCache && routeCache[key]) return routeCache[key];
 
         var stored = TMS.db.findOne('routes', function (r) {
@@ -169,22 +173,27 @@
             plan = {
                 routeId: stored.id, mode: stored.mode, priority: stored.priority,
                 segments: util.clone(stored.segments), totalStdHours: Number(stored.totalStdHours) || 0,
-                distanceKm: Number(stored.distanceKm) || sumKm(stored.segments), source: 'route'
+                distanceKm: Number(stored.distanceKm) || sumKm(stored.segments), source: 'route',
+                planner: stored.planner || '', strategy: stored.strategy || '',
+                trunkCost: Number(stored.trunkCost) || 0, reliability: Number(stored.reliability) || 0
             };
         } else {
             var ob = collectBranch(origin, key), db2 = collectBranch(destination, key);
             var wantMode = service === '加急' ? '空运' : '陆运';
-            var segs = master.planSegments(ob, db2, wantMode);
-            /* 空运班次不是条条线都有：空运落空就用陆运重出一遍，
+            var strategy = opts.strategy || SERVICE_STRATEGY[service] || '均衡';
+            var segs = master.planSegments(ob, db2, wantMode, { strategy: strategy, maxTransfers: opts.maxTransfers });
+            /* 空运通道不是条条线都有：没有含空运段的路径就用陆运时效优先重出一遍，
                否则整条路由退化成直线估时，标准时长会比真实班线松一大截 */
-            if (segs && wantMode === '空运' && segs.mode !== '空运') {
-                var land = master.planSegments(ob, db2, '陆运');
-                if (land && land.mode === '陆运') segs = land;
+            if (!segs && wantMode === '空运') {
+                segs = master.planSegments(ob, db2, '陆运', { strategy: '时效', maxTransfers: opts.maxTransfers });
             }
             if (!segs) return null;
             plan = {
                 routeId: '', mode: segs.mode, priority: segs.priority, segments: segs.segments,
-                totalStdHours: segs.totalStdHours, distanceKm: segs.distanceKm, source: 'temp'
+                totalStdHours: segs.totalStdHours, distanceKm: segs.distanceKm, source: 'temp',
+                planner: segs.planner, strategy: segs.strategy,
+                transitHours: segs.transitHours, waitHours: segs.waitHours, transferHours: segs.transferHours,
+                trunkCost: segs.trunkCost, reliability: segs.reliability
             };
         }
         var svc = master.SERVICES.filter(function (s) { return s.name === (service || '标准'); })[0] || master.SERVICES[0];
@@ -214,7 +223,113 @@
         plan.scopeSegmentCount = (plan.segments || []).filter(function (s) {
             return s.scopeCode === 'cross' || s.scopeCode === 'prov';
         }).length;
+        plan.trunkLegs = (plan.segments || []).filter(function (s) { return s.legType === 'trunk'; }).length;
+        plan.transfers = transferOps(plan);
         return plan;
+    }
+
+    /* 中途枢纽装卸计划：从相邻干线段的衔接点派生。
+       新规划的段次自带 transferIn 与班次事实；老路由段没有这些字段，
+       按分拨名回查班次表补齐——装卸/候车时长不能因为路由是旧规划就凭空消失 */
+    function transferOps(plan) {
+        var segs = ((plan && plan.segments) || []).filter(function (s) { return s.legType === 'trunk'; });
+        var ops = [];
+        for (var i = 1; i < segs.length; i++) {
+            var prev = segs[i - 1], cur = segs[i];
+            if (prev.to !== cur.from) continue;   // 段不衔接（估算/旧数据）就不编造装卸
+            var t = cur.transferIn || {};
+            var hub = master.hubByNameOrId(cur.from);
+            var trip = cur.tripId ? TMS.db.get('trips', cur.tripId) : TMS.db.findOne('trips', function (x) {
+                return x.fromHubName === cur.from && x.toHubName === cur.to;
+            });
+            var prevTrip = prev.tripId ? TMS.db.get('trips', prev.tripId) : TMS.db.findOne('trips', function (x) {
+                return x.fromHubName === prev.from && x.toHubName === prev.to;
+            });
+            var unload = t.unloadHours || 1;
+            var sort = t.sortHours || (hub && hub.role === '中心枢纽' ? 1 : 2);
+            var load = t.loadHours || 1;
+            var wait = t.waitHours != null ? t.waitHours :
+                (cur.waitHours != null ? cur.waitHours : (trip ? master.waitHoursOf(trip) : 12));
+            ops.push({
+                seq: ops.length + 1, hub: cur.from, hubId: t.hubId || (hub && hub.id) || '',
+                city: t.city || (hub && hub.city) || '',
+                prevTripCode: t.prevTripCode || prev.tripCode || (prevTrip && prevTrip.code) || '',
+                nextTripCode: cur.tripCode || (trip && trip.code) || '',
+                arriveAt: t.prevArriveAt || prev.arriveAt || (prevTrip && prevTrip.arriveAt) || '',
+                departAt: cur.departAt || (trip && trip.departAt) || '',
+                unloadHours: unload, sortHours: sort, loadHours: load, waitHours: wait,
+                totalHours: unload + sort + load + wait,
+                dockIn: 'D' + (util.hash(cur.from + '#in' + (prev.tripId || prev.seq)) % 8 + 1),
+                dockOut: 'D' + (util.hash(cur.from + '#out' + (cur.tripId || cur.seq)) % 8 + 1)
+            });
+        }
+        return ops;
+    }
+
+    /* 规划台：同一 OD 的全部可行方案同场评分，供调度对比采纳。
+       与 planRoute 的「命中已维护路由就复用」不同——这里永远看当前班次图，
+       否则班次调整后规划台还在推荐旧路由，对比就成了摆饰 */
+    function planOptions(origin, destination, service, options) {
+        var opts = options || {};
+        var svc = master.SERVICES.filter(function (s) { return s.name === (service || '标准'); })[0] || master.SERVICES[0];
+        var strategy = master.STRATEGIES[opts.strategy] ? opts.strategy : (SERVICE_STRATEGY[svc.name] || '均衡');
+        var mode = opts.mode || (svc.code === 'EXP' ? '空运' : '陆运');
+        var key = origin + '>' + destination;
+        var ob = collectBranch(origin, key), db2 = collectBranch(destination, key);
+        var mo = { strategy: strategy, maxTransfers: opts.maxTransfers, withCandidates: true };
+        var best = master.planSegments(ob, db2, mode, mo);
+        var airFallback = false;
+        if (!best && mode === '空运') {
+            airFallback = true;
+            best = master.planSegments(ob, db2, '陆运', { strategy: '时效', maxTransfers: opts.maxTransfers, withCandidates: true });
+        }
+        if (!best) return null;
+        var levels = { from: endLevels(origin, ''), to: endLevels(destination, '') };
+        var list = best.candidates || [best];
+        list.forEach(function (p) {
+            p.origin = origin;
+            p.destination = destination;
+            attachScope(p, levels);
+        });
+        return {
+            origin: origin, destination: destination, service: svc.name,
+            strategy: best.strategy || strategy, mode: mode, airFallback: airFallback,
+            candidates: list, best: best
+        };
+    }
+
+    /* 采纳方案落路由表：同 OD 已有路由就改段次（保留偏离计数），没有则建档。
+       段次克隆后落库，规划台里的候选对象不被路由行反向引用 */
+    function adoptRoutePlan(plan, actor) {
+        if (!plan || !(plan.segments || []).length) return { ok: false, message: '方案没有段次，无法采纳' };
+        if (!plan.origin || !plan.destination) return { ok: false, message: '方案缺少起讫城市' };
+        var db = TMS.db;
+        var old = db.findOne('routes', function (r) { return r.origin === plan.origin && r.destination === plan.destination; });
+        var patch = {
+            origin: plan.origin, destination: plan.destination,
+            originZone: (master.cityByName(plan.origin) || {}).zone || '',
+            destinationZone: (master.cityByName(plan.destination) || {}).zone || '',
+            mode: plan.mode, priority: plan.priority, segments: util.clone(plan.segments),
+            totalStdHours: plan.totalStdHours, distanceKm: plan.distanceKm,
+            planner: plan.planner || 'smart2', strategy: plan.strategy || '',
+            transfers: plan.transfers ? plan.transfers.length : (plan.trunkLegs > 0 ? plan.trunkLegs - 1 : 0),
+            trunkLegs: plan.trunkLegs || 0, trunkCost: plan.trunkCost || 0,
+            reliability: plan.reliability || 0, status: 'active'
+        };
+        var row;
+        if (old) {
+            db.update('routes', old.id, patch);
+            row = old;
+        } else {
+            patch.deviationCount = 0;
+            row = db.create('routes', patch);
+        }
+        db.commit('routes', row.id, '采纳智能路由');
+        TMS.audit.log(old ? 'network.update' : 'network.create', 'routes', row.id,
+            plan.origin + '→' + plan.destination + ' 采纳' + (plan.label || '') + '方案：' +
+            (plan.trunkLegs || 0) + ' 段干线 / ' + patch.transfers + ' 次中转装卸', actor);
+        invalidateCache();
+        return { ok: true, id: row.id, created: !old };
     }
 
     function sumKm(segments) {
@@ -687,6 +802,9 @@
         branchesOf: branchesOf, branch: branch, collectBranch: collectBranch, deliverBranch: deliverBranch,
         planRoute: planRoute, planOf: planOf, tripFor: tripFor, pickVehicle: pickVehicle, loadPlan: loadPlan,
         promiseAt: promiseAt, deviates: deviates, invalidateCache: invalidateCache,
+        /* 多干线智能规划：候选对比 / 中途枢纽装卸 / 采纳落库 */
+        planOptions: planOptions, transferOps: transferOps, adoptRoutePlan: adoptRoutePlan,
+        SERVICE_STRATEGY: SERVICE_STRATEGY, STRATEGIES: master.STRATEGIES,
         /* 范围分级：省市区三级归属与「这一单跨到哪一层」的唯一口径 */
         SCOPE: SCOPE, SCOPE_ORDER: SCOPE_ORDER, SEG_SCOPE: SEG_SCOPE,
         endLevels: endLevels, scopeOf: scopeOf, scopeOfOrder: scopeOfOrder,

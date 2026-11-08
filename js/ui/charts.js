@@ -263,7 +263,10 @@
     function donut(opts) {
         var o = opts || {};
         var rows = (o.data || []).filter(function (d) { return (Number(d.value) || 0) > 0; }).slice(0, o.limit || 8);
-        var h = o.height || 240;
+        /* 图例每项两行（名称 + 数值·占比），行距必须容纳下行文字的全高：
+           19px 行距下数值行被下一项名称压住；画布高度随项数自适应，不裁切 */
+        var pitch = 28;
+        var h = Math.max(o.height || 240, rows.length * pitch + 26);
         var size = Math.min(h, 210);
         var cx = size / 2 + 4, cy = h / 2, r = size / 2 - 10, r2 = o.ring === false ? r : r * 0.62;
         var total = util.sum(rows, 'value') || 1;
@@ -295,7 +298,7 @@
         /* 右侧图例带数值，小占比也能读出绝对量 */
         var lx = size + 22;
         rows.forEach(function (d, i) {
-            var y = cy - (rows.length * 19) / 2 + i * 19 + 10;
+            var y = cy - (rows.length * pitch) / 2 + i * pitch + 10;
             body += '<rect x="' + lx + '" y="' + (y - 8) + '" width="9" height="9" rx="2" fill="' + (d.color || color(i)) + '"/>';
             body += '<text x="' + (lx + 15) + '" y="' + y + '" font-size="11.5" fill="#43516a">' + esc(d.label) + '</text>';
             body += '<text x="' + (lx + 15) + '" y="' + (y + 13) + '" font-size="10.5" fill="#a4b0c2">' +

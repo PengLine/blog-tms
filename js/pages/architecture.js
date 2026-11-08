@@ -16,12 +16,13 @@
         { value: 'services', label: '服务清单' },
         { value: 'flows', label: '调用链路' },
         { value: 'data', label: '数据与一致性' },
+        { value: 'dist', label: '分布式与运维' },
         { value: 'deploy', label: '部署与演进' }
     ];
 
     /* 视图状态与列表状态分开：翻页筛选不该把「关掉动画」这件事重置掉 */
     var VIEW_DEFAULT = {
-        lines: 'all', focus: '', anim: 1, speed: 1, zoom: 1,
+        lines: 'all', focus: '', distFocus: '', anim: 1, speed: 1, zoom: 1,
         metrics: 1, grid: 1, glow: 1, theme: 'dark', play: 1, step: 1
     };
 
@@ -145,6 +146,9 @@
         '.ar-box{transition:stroke-width .18s ease,fill-opacity .18s ease}',
         '.ar-node:hover .ar-box{stroke-width:2.6}',
         '.ar-node:hover .ar-halo{fill-opacity:.3}',
+        '.ar-node.ar-focus .ar-halo{animation:arHalo 1.6s ease-in-out infinite}',
+        '@keyframes arHalo{0%,100%{fill-opacity:.16}50%{fill-opacity:.48}}',
+        '.no-anim .ar-node.ar-focus .ar-halo{animation:none}',
         '.ar-flow{animation:arDash calc(4s / var(--arch-speed,1)) linear infinite}',
         '@keyframes arDash{to{stroke-dashoffset:-157}}',
         '.no-anim .ar-flow{display:none}',
@@ -157,17 +161,24 @@
             : { bg: '#080e1c', band: '#0e1729', bandLine: '#1e2d4a', ink: '#e9effb', dim: '#93a6c4', faint: '#5f7392', grid: '#131f36', node: '#101b30', nodeOp: 1 };
     }
 
+    /* 邻接从当前可见边推导：事件 / 定时 / 只读相连的同样是邻居。
+       只按同步 deps 算会把 TMS 核心、考核、检索这些事件大户误判成「无关」 */
+    function nearMap(t, focus) {
+        var near = {};
+        if (!focus) return near;
+        near[focus] = 1;
+        t.edges.forEach(function (e) {
+            if (e.from === focus) near[e.to] = 1;
+            if (e.to === focus) near[e.from] = 1;
+        });
+        return near;
+    }
+
     function topoSvg(v) {
         var t = arch.topology({ lines: v.lines });
         var C = palette(v.theme);
         var focus = v.focus && arch.service(v.focus) ? v.focus : '';
-        var near = {};
-        if (focus) {
-            near[focus] = 1;
-            var nb = arch.neighbors(focus);
-            nb.down.forEach(function (s) { near[s.id] = 1; });
-            nb.up.forEach(function (s) { near[s.id] = 1; });
-        }
+        var near = nearMap(t, focus);
         var s = [];
         var cls = 'ar-svg' + (v.anim ? '' : ' no-anim') + (v.grid ? '' : ' no-grid');
         s.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + t.width + ' ' + t.height +
@@ -229,7 +240,7 @@
         t.edges.forEach(function (e, i) {
             var dim = focus && !(near[e.from] && near[e.to]);
             var dash = e.kind === 'sync' ? '' : e.kind === 'event' ? ' stroke-dasharray="6 5"' : e.kind === 'job' ? ' stroke-dasharray="2 4"' : ' stroke-dasharray="1 6"';
-            s.push('<g opacity="' + (dim ? '.1' : '1') + '"><path class="ar-line" d="' + e.path + '" fill="none" stroke="' + e.hue +
+            s.push('<g opacity="' + (dim ? '.16' : '1') + '"><path class="ar-line" d="' + e.path + '" fill="none" stroke="' + e.hue +
                 '" stroke-width="1.5" stroke-opacity="' + (e.kind === 'sync' ? '.62' : '.48') + '"' + dash +
                 ' marker-end="url(#' + marker[e.hue] + ')"/><title>' + esc(e.from + ' → ' + e.to + ' · ' + (KIND[e.kind] || {}).label + ' · ' + e.label) + '</title></g>');
             if (!dim) {
@@ -242,10 +253,11 @@
         /* 服务节点 */
         s.push('<g class="ar-nodes">');
         t.nodes.forEach(function (n) {
-            var dim = focus && !near[n.id];
+            /* 聚焦只淡出无关连线，服务节点永不压暗：压暗的服务看起来像坏了，
+               而且事件相连的邻居本来就不该被算成「无关」 */
             var wide = n.h < 100;
             var x = n.x, y = n.y, w = n.w, h = n.h;
-            s.push('<g class="ar-node" data-act="arch:open" data-arg="' + esc(n.id) + '" opacity="' + (dim ? '.24' : '1') + '">');
+            s.push('<g class="ar-node' + (focus === n.id ? ' ar-focus' : '') + '" data-act="arch:open" data-arg="' + esc(n.id) + '" opacity="1">');
             s.push('<rect class="ar-box" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="10" fill="' + C.node +
                 '" stroke="' + n.hue + '" stroke-width="' + (focus === n.id ? 2.6 : 1.4) + '" stroke-opacity=".85"/>');
             s.push('<rect x="' + x + '" y="' + (y + 10) + '" width="3.5" height="' + (h - 20) + '" rx="1.8" fill="' + n.hue + '"/>');
@@ -649,6 +661,21 @@
             return '<span class="ar-legend-item"><i style="background:' + KIND[x.k].hue + '"></i>' + KIND[x.k].label + ' <b>' + x.n + '</b></span>';
         }).join('') + '<span class="ar-legend-item ar-legend-hint">点节点看契约 · 滚轮区可横向拖动</span></div>';
 
+        /* 聚焦态必须一眼可辨、一键可退：否则访客只看到几张线淡了，不知道自己在哪 */
+        var focusSvc = v.focus ? arch.service(v.focus) : null;
+        var focusBar = '';
+        if (focusSvc) {
+            var linked = Object.keys(nearMap(t, focusSvc.id)).length - 1;
+            focusBar = '<div class="ar-focus-bar" style="--h:' + esc(focusSvc.hue) + '">' +
+                '<i class="ar-focus-dot"></i>' +
+                '<b>聚焦 · ' + esc(focusSvc.no + ' ' + focusSvc.name) + '</b>' +
+                '<span class="ar-focus-sub">高亮 ' + linked + ' 个直接相连服务（同步 / 事件 / 调度 / 只读），无关连线已淡出</span>' +
+                '<span class="ar-focus-acts">' +
+                ui.btn('看服务契约', { size: 'sm', act: 'arch:open', arg: focusSvc.id }) +
+                ui.btn('退出聚焦', { size: 'sm', tone: 'primary', act: 'arch:focus', arg: '', icon: '✕' }) +
+                '</span></div>';
+        }
+
         var stage = '<div class="ar-stage">' +
             '<div class="ar-canvas-wrap" style="--arch-zoom:' + esc(v.zoom) + '">' +
             '<div class="ar-canvas" data-arch-canvas>' + topoSvg(v) + '</div></div>' +
@@ -675,7 +702,7 @@
             healthNotices(st),
             ui.card({
                 title: '服务拓扑总图', sub: '十服务 · 五层 · ' + (t.counts.sync + t.counts.event + t.counts.job + t.counts.read) + ' 条调用关系',
-                flat: true, className: 'ar-topo-card', tools: legend, body: stage
+                flat: true, className: 'ar-topo-card', tools: legend, body: focusBar + stage
             }),
             ui.card({ title: '分层职责与禁区', sub: '每一层能做什么、绝不能做什么', flat: true, body: '<div class="ar-layers">' + layerCards.join('') + '</div>' }),
             ui.split('2', [
@@ -927,6 +954,635 @@
         ]);
     }
 
+    /* ---------- 分布式与运维 ---------- */
+
+    function distCatName(id) {
+        var name = id;
+        arch.distCats().forEach(function (c) { if (c.id === id) name = c.name; });
+        return name;
+    }
+
+    function distFocusBar(v) {
+        var t = v.distFocus ? arch.distTech(v.distFocus) : null;
+        if (!t) return '';
+        return '<div class="ar-focus-bar" style="--h:' + esc(t.hue) + '">' +
+            '<i class="ar-focus-dot"></i>' +
+            '<b>聚焦 · ' + esc(t.no + ' ' + t.name) + '</b>' +
+            '<span class="ar-focus-sub">' + esc(t.product) + ' —— 高亮 ' + t.services.length + ' 个覆盖服务并画出连线</span>' +
+            '<span class="ar-focus-acts">' +
+            ui.btn('看技术契约', { size: 'sm', act: 'arch:dist-tech', arg: t.id }) +
+            ui.btn('退出聚焦', { size: 'sm', tone: 'primary', act: 'arch:dist-focus', arg: '', icon: '✕' }) +
+            '</span></div>';
+    }
+
+    /* 全景控制台常驻图上方：与拓扑共用视图状态（底色/动画/流速/缩放），聚焦独立 */
+    function distControls() {
+        var v = view();
+        var opts = [{ value: '', label: '不聚焦（看全景）' }].concat(arch.distributed().map(function (t) {
+            return { value: t.id, label: t.no + ' · ' + t.name };
+        }));
+        return '<div class="ar-dist-controls" role="group" aria-label="全景图控制台">' +
+            selectCtl('聚焦技术', 'arch:dist-focus', v.distFocus, opts) +
+            selectCtl('图纸底色', 'arch:theme', v.theme, [
+                { value: 'dark', label: '深色蓝图' }, { value: 'light', label: '浅色工程图' }
+            ]) +
+            toggle('数据流', 'anim') +
+            toggle('网格', 'grid') +
+            toggle('辉光', 'glow') +
+            slider('流速', 'speed', 0.4, 2.5, 0.1, '×') +
+            slider('缩放', 'zoom', 0.8, 1.8, 0.05, '×') +
+            ui.btn('重置', { size: 'sm', act: 'arch:reset', icon: '⟲' }) +
+            ui.btn('导出全景 SVG', { size: 'sm', tone: 'primary', act: 'arch:dist-svg', icon: '⤓' }) +
+            '</div>';
+    }
+
+    /* 全景：上排五类十件，下排十个服务；聚焦才画覆盖连线，组件与服务永不压暗 */
+    function distSvg(v) {
+        var C = palette(v.theme);
+        var cats = arch.distCats(), techs = arch.distributed(), svcs = arch.services();
+        var W = 1180, H = 560;
+        var focus = v.distFocus && arch.distTech(v.distFocus) ? arch.distTech(v.distFocus) : null;
+        var bandW = (W - 32 - 4 * 10) / 5, chipW = (W - 32 - 24 - 9 * 8) / 10;
+        var nodePos = {}, chipPos = {};
+        cats.forEach(function (c, i) {
+            var items = techs.filter(function (t) { return t.cat === c.id; });
+            var totalH = items.length * 64 + (items.length - 1) * 10;
+            var oy = 58 + (364 - totalH) / 2;
+            items.forEach(function (t, j) {
+                nodePos[t.id] = { x: util.round(16 + i * (bandW + 10) + 10, 1), y: util.round(oy + j * 74, 1), w: util.round(bandW - 20, 1), h: 64 };
+            });
+        });
+        svcs.forEach(function (svc, i) {
+            chipPos[svc.id] = { x: util.round(28 + i * (chipW + 8), 1), y: 478, w: util.round(chipW, 1), h: 52 };
+        });
+        var s = [];
+        var cls = 'ar-svg' + (v.anim ? '' : ' no-anim') + (v.grid ? '' : ' no-grid');
+        s.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" class="' + cls +
+            '" style="--arch-speed:' + esc(v.speed) + '" role="img" aria-label="分布式与运维技术全景">');
+        s.push('<style>' + SVG_STYLE + '</style>');
+        s.push('<defs>');
+        s.push('<pattern id="arDGridP" width="26" height="26" patternUnits="userSpaceOnUse">' +
+            '<path d="M26 0H0V26" fill="none" stroke="' + C.grid + '" stroke-width="1"/></pattern>');
+        s.push('<filter id="arDGlowF" x="-70%" y="-70%" width="240%" height="240%">' +
+            '<feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>');
+        if (focus) {
+            s.push('<marker id="ar-dah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">' +
+                '<path d="M0 0L10 5L0 10z" fill="' + focus.hue + '"/></marker>');
+        }
+        s.push('</defs>');
+        s.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="14" fill="' + C.bg + '"/>');
+        s.push('<rect class="ar-grid" x="0" y="0" width="' + W + '" height="' + H + '" rx="14" fill="url(#arDGridP)"/>');
+
+        cats.forEach(function (c, i) {
+            var bx = util.round(16 + i * (bandW + 10), 1);
+            s.push('<rect x="' + bx + '" y="16" width="' + util.round(bandW, 1) + '" height="416" rx="11" fill="' + C.band +
+                '" fill-opacity="' + (v.theme === 'light' ? '.78' : '.62') + '" stroke="' + C.bandLine + '" stroke-width="1"/>');
+            s.push('<rect x="' + bx + '" y="16" width="' + util.round(bandW, 1) + '" height="3" rx="1.5" fill="' + c.hue + '"/>');
+            s.push('<text class="ar-band-name" x="' + (bx + 12) + '" y="34" fill="' + c.hue + '">' + esc(c.icon + ' ' + c.name) + '</text>');
+            s.push('<text class="ar-band-sub" x="' + util.round(bx + bandW - 12, 1) + '" y="34" text-anchor="end" fill="' + C.faint + '">' + c.count + ' 件</text>');
+            s.push('<text class="ar-band-sub" x="' + (bx + 12) + '" y="48" fill="' + C.faint + '">' + esc(fit(c.sub, bandW - 24, 9)) + '</text>');
+        });
+
+        s.push('<rect x="16" y="448" width="1148" height="96" rx="11" fill="' + C.band +
+            '" fill-opacity="' + (v.theme === 'light' ? '.78' : '.62') + '" stroke="' + C.bandLine + '" stroke-width="1"/>');
+        s.push('<text class="ar-band-name" x="28" y="468" fill="' + C.dim + '">领域服务 · 十件套</text>');
+        s.push('<text class="ar-band-sub" x="1152" y="468" text-anchor="end" fill="' + C.faint + '">' +
+            (focus ? '已高亮 ' + focus.services.length + ' 个覆盖服务' : '聚焦任一组件看覆盖连线') + '</text>');
+
+        var flows = [];
+        if (focus) {
+            var a = nodePos[focus.id];
+            s.push('<g class="ar-edges">');
+            focus.services.forEach(function (id, i) {
+                var b = chipPos[id], svc = arch.service(id);
+                if (!a || !b || !svc) return;
+                var sx = util.round(a.x + a.w / 2, 1), sy = a.y + a.h;
+                var ex = util.round(b.x + b.w / 2, 1), ey = b.y;
+                var dy = Math.max(20, Math.min(52, (ey - sy) * 0.5));
+                var p = 'M ' + sx + ' ' + sy + ' C ' + sx + ' ' + (sy + dy) + ', ' + ex + ' ' + (ey - dy) + ', ' + ex + ' ' + ey;
+                s.push('<path d="' + p + '" fill="none" stroke="' + focus.hue + '" stroke-width="1.6" stroke-opacity=".55" stroke-dasharray="5 4" marker-end="url(#ar-dah)">' +
+                    '<title>' + esc(focus.name + ' → ' + svc.name) + '</title></path>');
+                flows.push('<path class="ar-flow" d="' + p + '" fill="none" stroke="' + focus.hue +
+                    '" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="7 150" style="animation-delay:-' + util.round(i * 0.3, 2) + 's"/>');
+            });
+            s.push('</g>');
+            s.push('<g class="ar-flows"' + (v.glow ? ' filter="url(#arDGlowF)"' : '') + '>' + flows.join('') + '</g>');
+        }
+
+        s.push('<g class="ar-nodes">');
+        techs.forEach(function (t) {
+            var p = nodePos[t.id], isF = focus && focus.id === t.id;
+            s.push('<g class="ar-node' + (isF ? ' ar-focus' : '') + '" data-act="arch:dist-tech" data-arg="' + esc(t.id) + '" opacity="1">');
+            s.push('<rect class="ar-box" x="' + p.x + '" y="' + p.y + '" width="' + p.w + '" height="' + p.h + '" rx="10" fill="' + C.node +
+                '" stroke="' + t.hue + '" stroke-width="' + (isF ? 2.6 : 1.4) + '" stroke-opacity=".85"/>');
+            s.push('<rect x="' + p.x + '" y="' + (p.y + 8) + '" width="3.5" height="' + (p.h - 16) + '" rx="1.8" fill="' + t.hue + '"/>');
+            s.push('<circle class="ar-halo" cx="' + (p.x + 22) + '" cy="' + (p.y + 20) + '" r="12" fill="' + t.hue + '" fill-opacity=".16" stroke="' + t.hue + '" stroke-opacity=".45"/>');
+            s.push('<text class="ar-no" x="' + (p.x + 22) + '" y="' + (p.y + 24) + '" text-anchor="middle" fill="' + t.hue + '">' + t.no + '</text>');
+            s.push('<text class="ar-name" x="' + (p.x + 40) + '" y="' + (p.y + 20) + '" font-size="12.5" fill="' + C.ink + '">' + esc(fit(t.name, p.w - 52, 12.5)) + '</text>');
+            s.push('<text class="ar-en" x="' + (p.x + 40) + '" y="' + (p.y + 33) + '" fill="' + C.faint + '">' + esc(fit(t.product, p.w - 52, 8.5)) + '</text>');
+            s.push('<text class="ar-metric" x="' + (p.x + 12) + '" y="' + (p.y + 52) + '" fill="' + C.dim + '">' +
+                esc(fit('覆盖 ' + t.services.length + ' 服务' + (t.tables.length ? ' · ' + t.tables.length + ' 表' : '') +
+                    (t.flows.length ? ' · ' + t.flows.length + ' 链路' : ''), p.w - 24, 9)) + '</text>');
+            s.push('<title>' + esc(t.no + ' ' + t.name + ' · ' + t.product + ' — ' + t.role) + '</title>');
+            s.push('</g>');
+        });
+        s.push('</g>');
+
+        s.push('<g class="ar-nodes">');
+        svcs.forEach(function (svc) {
+            var p = chipPos[svc.id];
+            var hit = focus && focus.services.indexOf(svc.id) > -1;
+            s.push('<g class="ar-node" data-act="arch:open" data-arg="' + esc(svc.id) + '" opacity="1">');
+            s.push('<rect class="ar-box" x="' + p.x + '" y="' + p.y + '" width="' + p.w + '" height="' + p.h + '" rx="9" fill="' + C.bg +
+                '" stroke="' + (hit ? svc.hue : C.bandLine) + '" stroke-width="' + (hit ? 2.2 : 1) + '"/>');
+            s.push('<circle cx="' + (p.x + 14) + '" cy="' + (p.y + 17) + '" r="4" fill="' + svc.hue + '"/>');
+            s.push('<text class="ar-chip-name" x="' + (p.x + 24) + '" y="' + (p.y + 21) + '" fill="' + C.ink + '">' + esc(fit(svc.no + ' ' + svc.name, p.w - 30, 10.5)) + '</text>');
+            s.push('<text class="ar-chip-sub" x="' + (p.x + 14) + '" y="' + (p.y + 38) + '" fill="' + C.faint + '">' + esc(fit(svc.en, p.w - 24, 7.5)) + '</text>');
+            s.push('<title>' + esc(svc.name + (hit ? ' — 被 ' + focus.name + ' 覆盖' : ' — 点看服务契约')) + '</title>');
+            s.push('</g>');
+        });
+        s.push('</g>');
+        s.push('</svg>');
+        return s.join('');
+    }
+
+    /* CI/CD 八阶段：主链路顺跑，金丝雀挂一条回到仓库的回滚弧线 */
+    function cicdSvg(v) {
+        var C = palette(v.theme);
+        var stages = arch.cicd();
+        var W = 1180, H = 236, x0 = 20, gap = 12;
+        var w = (W - 40 - 7 * gap) / 8, y = 78, h = 96;
+        var s = [];
+        var cls = 'ar-svg' + (v.anim ? '' : ' no-anim');
+        s.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" class="' + cls +
+            '" style="--arch-speed:' + esc(v.speed) + '" role="img" aria-label="CI/CD 八阶段流水线">');
+        s.push('<style>' + SVG_STYLE + '</style>');
+        var hues = [], marker = {};
+        stages.forEach(function (st) {
+            if (marker[st.hue]) return;
+            marker[st.hue] = 'ar-ca-' + hues.length;
+            hues.push(st.hue);
+        });
+        s.push('<defs>');
+        hues.forEach(function (h) {
+            s.push('<marker id="' + marker[h] + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">' +
+                '<path d="M0 0L10 5L0 10z" fill="' + h + '"/></marker>');
+        });
+        s.push('<marker id="ar-ca-rb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">' +
+            '<path d="M0 0L10 5L0 10z" fill="#ff6b6b"/></marker>');
+        s.push('<filter id="arCGlowF" x="-70%" y="-70%" width="240%" height="240%">' +
+            '<feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>');
+        s.push('</defs>');
+        s.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="14" fill="' + C.bg + '"/>');
+
+        var flows = [];
+        s.push('<g class="ar-edges">');
+        for (var i = 0; i < stages.length - 1; i++) {
+            var sx = util.round(x0 + i * (w + gap) + w + 2, 1), ex = util.round(x0 + (i + 1) * (w + gap) - 3, 1);
+            var cy = y + h / 2;
+            var p = 'M ' + sx + ' ' + cy + ' L ' + ex + ' ' + cy;
+            s.push('<path d="' + p + '" fill="none" stroke="' + stages[i].hue + '" stroke-width="1.6" stroke-opacity=".6" marker-end="url(#' + marker[stages[i].hue] + ')"/>');
+            flows.push('<path class="ar-flow" d="' + p + '" fill="none" stroke="' + stages[i].hue +
+                '" stroke-width="2.6" stroke-linecap="round" stroke-dasharray="6 150" style="animation-delay:-' + util.round(i * 0.35, 2) + 's"/>');
+        }
+        var cxCanary = util.round(x0 + 5 * (w + gap) + w / 2, 1), cxHarbor = util.round(x0 + 4 * (w + gap) + w / 2, 1);
+        var rb = 'M ' + cxCanary + ' ' + y + ' C ' + cxCanary + ' 44, ' + cxHarbor + ' 44, ' + cxHarbor + ' ' + y;
+        s.push('<path d="' + rb + '" fill="none" stroke="#ff6b6b" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ar-ca-rb)">' +
+            '<title>金丝雀指标异常：自动回滚上一镜像 tag</title></path>');
+        flows.push('<path class="ar-flow" d="' + rb + '" fill="none" stroke="#ff6b6b" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="6 150"/>');
+        s.push('<text x="' + util.round((cxCanary + cxHarbor) / 2, 1) + '" y="42" text-anchor="middle" font-size="9" fill="#ff6b6b">指标异常 · 自动回滚 &lt; 2min</text>');
+        s.push('</g>');
+        s.push('<g class="ar-flows"' + (v.glow ? ' filter="url(#arCGlowF)"' : '') + '>' + flows.join('') + '</g>');
+
+        s.push('<g class="ar-nodes">');
+        stages.forEach(function (st, i) {
+            var x = util.round(x0 + i * (w + gap), 1);
+            s.push('<g class="ar-node" data-act="arch:dist-stage" data-arg="' + esc(st.id) + '" opacity="1">');
+            s.push('<rect class="ar-box" x="' + x + '" y="' + y + '" width="' + util.round(w, 1) + '" height="' + h + '" rx="10" fill="' + C.node +
+                '" stroke="' + st.hue + '" stroke-width="1.4" stroke-opacity=".85"/>');
+            s.push('<circle class="ar-halo" cx="' + (x + 18) + '" cy="' + (y + 18) + '" r="11" fill="' + st.hue + '" fill-opacity=".16" stroke="' + st.hue + '" stroke-opacity=".45"/>');
+            s.push('<text class="ar-no" x="' + (x + 18) + '" y="' + (y + 22) + '" text-anchor="middle" fill="' + st.hue + '">' + st.no + '</text>');
+            s.push('<text class="ar-name" x="' + (x + 34) + '" y="' + (y + 22) + '" font-size="12" fill="' + C.ink + '">' + esc(fit(st.name, w - 42, 12)) + '</text>');
+            s.push('<text class="ar-en" x="' + (x + 12) + '" y="' + (y + 44) + '" fill="' + C.faint + '">' + esc(fit(st.tool, w - 24, 8.5)) + '</text>');
+            s.push('<text class="ar-tag" x="' + (x + 12) + '" y="' + (y + 62) + '" fill="' + st.hue + '">' + esc(fit(st.dur, w - 24, 9.5)) + '</text>');
+            s.push('<text class="ar-metric" x="' + (x + 12) + '" y="' + (y + 80) + '" fill="' + C.dim + '">点看出口条件</text>');
+            s.push('<title>' + esc(st.no + ' ' + st.name + ' · ' + st.tool + ' — ' + st.action) + '</title>');
+            s.push('</g>');
+        });
+        s.push('</g>');
+        s.push('<text x="' + (W / 2) + '" y="208" text-anchor="middle" font-size="9.5" fill="' + C.dim + '">' +
+            '镜像 tag = git sha · 覆盖率门禁 ≥ 70% · 金丝雀 5% → 30% → 全量 · 发布窗口与月结互斥</text>');
+        s.push('</svg>');
+        return s.join('');
+    }
+
+    /* 负载均衡：五跳主链 + Nacos 在下方给 Feign 推名单、收实例心跳 */
+    function lbSvg(v) {
+        var C = palette(v.theme);
+        var lb = arch.lbPath(), hops = lb.hops;
+        var W = 1180, H = 300, x0 = 20, gap = 34;
+        var w = (W - 40 - 4 * gap) / 5, y = 44, h = 104;
+        var s = [];
+        var cls = 'ar-svg' + (v.anim ? '' : ' no-anim');
+        s.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" class="' + cls +
+            '" style="--arch-speed:' + esc(v.speed) + '" role="img" aria-label="负载均衡三级接力">');
+        s.push('<style>' + SVG_STYLE + '</style>');
+        var hues = [], marker = {};
+        hops.concat([lb.registry]).forEach(function (hp) {
+            if (marker[hp.hue]) return;
+            marker[hp.hue] = 'ar-la-' + hues.length;
+            hues.push(hp.hue);
+        });
+        s.push('<defs>');
+        hues.forEach(function (h) {
+            s.push('<marker id="' + marker[h] + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">' +
+                '<path d="M0 0L10 5L0 10z" fill="' + h + '"/></marker>');
+        });
+        s.push('<filter id="arLGlowF" x="-70%" y="-70%" width="240%" height="240%">' +
+            '<feGaussianBlur stdDeviation="3.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>');
+        s.push('</defs>');
+        s.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" rx="14" fill="' + C.bg + '"/>');
+
+        var flows = [];
+        s.push('<g class="ar-edges">');
+        for (var i = 0; i < hops.length - 1; i++) {
+            var sx = util.round(x0 + i * (w + gap) + w + 2, 1), ex = util.round(x0 + (i + 1) * (w + gap) - 3, 1);
+            var cy = y + h / 2;
+            var p = 'M ' + sx + ' ' + cy + ' L ' + ex + ' ' + cy;
+            s.push('<path d="' + p + '" fill="none" stroke="' + hops[i].hue + '" stroke-width="1.8" stroke-opacity=".65" marker-end="url(#' + marker[hops[i].hue] + ')"/>');
+            flows.push('<path class="ar-flow" d="' + p + '" fill="none" stroke="' + hops[i].hue +
+                '" stroke-width="2.8" stroke-linecap="round" stroke-dasharray="7 150" style="animation-delay:-' + util.round(i * 0.4, 2) + 's"/>');
+        }
+        var feignCx = util.round(x0 + 3 * (w + gap) + w / 2, 1), instCx = util.round(x0 + 4 * (w + gap) + w / 2, 1);
+        var ry = 216, rh = 60, rw = 440, rx = util.round((feignCx + instCx) / 2 - rw / 2, 1);
+        var up = 'M ' + feignCx + ' ' + ry + ' L ' + feignCx + ' ' + (y + h + 4);
+        var down = 'M ' + instCx + ' ' + (y + h + 4) + ' L ' + instCx + ' ' + (ry - 4);
+        s.push('<path d="' + up + '" fill="none" stroke="' + lb.registry.hue + '" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#' + marker[lb.registry.hue] + ')">' +
+            '<title>Nacos → OpenFeign：实例名单变更推送</title></path>');
+        s.push('<path d="' + down + '" fill="none" stroke="' + lb.registry.hue + '" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#' + marker[lb.registry.hue] + ')">' +
+            '<title>服务实例 → Nacos：注册与心跳 5s</title></path>');
+        flows.push('<path class="ar-flow" d="' + up + '" fill="none" stroke="' + lb.registry.hue + '" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="6 150"/>');
+        flows.push('<path class="ar-flow" d="' + down + '" fill="none" stroke="' + lb.registry.hue + '" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="6 150" style="animation-delay:-.5s"/>');
+        s.push('<text x="' + (feignCx + 8) + '" y="186" font-size="8.5" fill="' + lb.registry.hue + '">名单推送</text>');
+        s.push('<text x="' + (instCx + 8) + '" y="186" font-size="8.5" fill="' + lb.registry.hue + '">注册 · 心跳 5s</text>');
+        s.push('</g>');
+        s.push('<g class="ar-flows"' + (v.glow ? ' filter="url(#arLGlowF)"' : '') + '>' + flows.join('') + '</g>');
+
+        s.push('<g class="ar-nodes">');
+        hops.forEach(function (hp, i) {
+            var x = util.round(x0 + i * (w + gap), 1);
+            var policy = hp.policy || '统一入口 · HTTPS', detail = hp.detail || 'DNS → keepalived VIP';
+            s.push('<g class="ar-node" data-act="arch:dist-tech" data-arg="lb" opacity="1">');
+            s.push('<rect class="ar-box" x="' + x + '" y="' + y + '" width="' + util.round(w, 1) + '" height="' + h + '" rx="10" fill="' + C.node +
+                '" stroke="' + hp.hue + '" stroke-width="1.4" stroke-opacity=".85"/>');
+            s.push('<circle class="ar-halo" cx="' + (x + 20) + '" cy="' + (y + 20) + '" r="12" fill="' + hp.hue + '" fill-opacity=".16" stroke="' + hp.hue + '" stroke-opacity=".45"/>');
+            s.push('<text x="' + (x + 20) + '" y="' + (y + 25) + '" text-anchor="middle" font-size="12" fill="' + hp.hue + '">' + esc(hp.icon) + '</text>');
+            s.push('<text class="ar-name" x="' + (x + 38) + '" y="' + (y + 24) + '" fill="' + C.ink + '">' + esc(fit(hp.name, w - 48, 13)) + '</text>');
+            s.push('<text class="ar-en" x="' + (x + 38) + '" y="' + (y + 38) + '" fill="' + C.faint + '">' + esc(fit(hp.sub, w - 48, 8.5)) + '</text>');
+            s.push('<text class="ar-tag" x="' + (x + 14) + '" y="' + (y + 62) + '" fill="' + hp.hue + '">' + esc(fit(policy, w - 28, 9.5)) + '</text>');
+            s.push('<text class="ar-metric" x="' + (x + 14) + '" y="' + (y + 80) + '" fill="' + C.dim + '">' + esc(fit(detail, w - 28, 8.5)) + '</text>');
+            s.push('<title>' + esc(hp.name + ' — ' + policy + ' · ' + detail) + '</title>');
+            s.push('</g>');
+        });
+        s.push('<g class="ar-node" data-act="arch:dist-tech" data-arg="nacos" opacity="1">');
+        s.push('<rect class="ar-box" x="' + rx + '" y="' + ry + '" width="' + rw + '" height="' + rh + '" rx="10" fill="' + C.node +
+            '" stroke="' + lb.registry.hue + '" stroke-width="1.6" stroke-opacity=".9"/>');
+        s.push('<text class="ar-name" x="' + util.round(rx + rw / 2, 1) + '" y="' + (ry + 25) + '" text-anchor="middle" fill="' + C.ink + '">' + esc(lb.registry.name) + '</text>');
+        s.push('<text class="ar-tag" x="' + util.round(rx + rw / 2, 1) + '" y="' + (ry + 43) + '" text-anchor="middle" fill="' + lb.registry.hue + '">' + esc(lb.registry.sub) + '</text>');
+        s.push('<title>Nacos 注册中心 — 点看组件契约</title>');
+        s.push('</g>');
+        s.push('</g>');
+        s.push('<text x="' + (W / 2) + '" y="293" text-anchor="middle" font-size="9" fill="' + C.dim + '">' +
+            '会话不粘滞 · 令牌与配额在 Redis · 只有幂等 GET 允许重试 · 新实例扩容秒级进名单</text>');
+        s.push('</svg>');
+        return s.join('');
+    }
+
+    function distMatrixHtml() {
+        var rows = arch.distMatrix(), svcs = arch.services();
+        var s = ['<div class="ar-mx-wrap"><div class="ar-mx">'];
+        s.push('<div class="ar-mx-row ar-mx-head"><span class="ar-mx-name">组件 × 服务</span>' + svcs.map(function (svc) {
+            return '<span class="ar-mx-cell"><i style="background:' + esc(svc.hue) + '"></i><span>' + esc(svc.name) + '</span></span>';
+        }).join('') + '<span class="ar-mx-count">覆盖</span></div>');
+        rows.forEach(function (r) {
+            s.push('<div class="ar-mx-row clickable" data-act="arch:dist-tech" data-arg="' + esc(r.id) + '" style="--h:' + esc(r.hue) + '">');
+            s.push('<span class="ar-mx-name"><i class="ar-dot" style="background:' + esc(r.hue) + '"></i><span><b>' + esc(r.no + ' ' + r.name) + '</b><small>' + esc(r.product) + '</small></span></span>');
+            r.cells.forEach(function (on, i) {
+                s.push('<span class="ar-mx-cell"><i class="' + (on ? 'on' : 'off') + '"' + (on ? ' title="' + esc(r.name + ' 覆盖 ' + svcs[i].name) + '"' : '') + '></i></span>');
+            });
+            s.push('<span class="ar-mx-count">' + r.count + '/10</span></div>');
+        });
+        s.push('</div></div>');
+        return s.join('');
+    }
+
+    function distCatalog() {
+        var st = ui.state(PAGE);
+        var cat = st.distCat || '';
+        var cats = arch.distCats();
+        var chips = [{ label: '全部', value: '', count: arch.distributed().length, on: !cat }].concat(cats.map(function (c) {
+            return { label: c.name, value: c.id, count: c.count, on: cat === c.id };
+        }));
+        var items = arch.distributed().filter(function (t) { return !cat || t.cat === cat; });
+        return '<div class="ar-chips ar-dist-chips">' + ui.chips(chips, { act: 'arch:dist-cat' }) + '</div>' +
+            '<div class="ar-dist-cards">' + items.map(function (t) {
+                return '<div class="ar-dist-card" style="--h:' + esc(t.hue) + '" data-act="arch:dist-tech" data-arg="' + esc(t.id) + '">' +
+                    '<div class="ar-dist-head"><i>' + esc(t.icon) + '</i><div><b>' + esc(t.no + '. ' + t.name) + '</b><span>' + esc(t.product) + '</span></div><em>' + esc(distCatName(t.cat)) + '</em></div>' +
+                    '<p class="ar-dist-role">' + esc(t.role) + '</p>' +
+                    '<div class="ar-dist-metrics">' + t.metrics.map(function (m) { return '<span><b>' + esc(m.v) + '</b>' + esc(m.k) + '</span>'; }).join('') + '</div>' +
+                    '<div class="ar-dist-foot"><span>服务 ' + t.services.length + ' · 表 ' + t.tables.length + ' · 链路 ' + t.flows.length + '</span>' +
+                    ui.link('契约', 'arch:dist-tech', t.id, { icon: '→' }) + '</div>' +
+                    '</div>';
+            }).join('') + '</div>';
+    }
+
+    function techDrawer(id) {
+        var t = arch.distTech(id);
+        if (!t) { ui.toast('技术目录里没有「' + id + '」', 'warn'); return; }
+        ui.drawer({
+            title: '<span class="ar-drawer-title" style="--h:' + esc(t.hue) + '"><i>' + esc(t.icon) + '</i>' + esc(t.no + ' · ' + t.name) + '</span>',
+            sub: esc(t.product) + ' · ' + esc(t.version) + ' · ' + esc(distCatName(t.cat)),
+            body: ui.stack([
+                ui.notice(esc(t.role), 'info', '在 TMS 里管什么'),
+                ui.card({ title: '为什么选它', flat: true, body: '<p class="ar-p">' + esc(t.why) + '</p>' }),
+                ui.card({ title: 'TMS 落地场景', flat: true, body: '<p class="ar-p">' + esc(t.scenario) + '</p>' }),
+                ui.card({ title: '设计要点', flat: true, sub: t.points.length + ' 条', body: bullets(t.points) }),
+                ui.card({ title: '故障兜底', flat: true, tone: 'warn', body: '<p class="ar-p">' + esc(t.fallback) + '</p>' }),
+                ui.card({
+                    title: '覆盖范围', flat: true, sub: t.services.length + ' 服务 · ' + t.tables.length + ' 表 · ' + t.flows.length + ' 链路',
+                    body: ui.stack([
+                        '<div class="ar-chips">' + t.services.map(function (sid) {
+                            var svc = arch.service(sid);
+                            return svc ? ui.chip(esc(svc.no + ' ' + svc.name), { act: 'arch:open', arg: sid }) : '';
+                        }).join('') + '</div>',
+                        t.tables.length ? '<div class="ar-chips">' + t.tables.map(function (n) {
+                            return ui.chip(esc(db.meta(n).label || n), { act: 'arch:table', arg: n });
+                        }).join('') + '</div>' : '',
+                        t.flows.length ? '<div class="ar-chips">' + t.flows.map(function (fid) {
+                            var f = arch.flow(fid);
+                            return f ? ui.chip(esc(f.no + ' ' + f.name), { act: 'arch:dist-flow', arg: fid }) : '';
+                        }).join('') + '</div>' : ''
+                    ], 'sm')
+                }),
+                ui.card({
+                    title: '关键口径', flat: true,
+                    body: '<div class="ar-dist-metrics">' + t.metrics.map(function (m) { return '<span><b>' + esc(m.v) + '</b>' + esc(m.k) + '</span>'; }).join('') + '</div>'
+                })
+            ]),
+            footer: ui.btn('关闭', { act: 'ui:close' }) +
+                ui.btn('在全景中聚焦', { act: 'arch:dist-focus', arg: t.id, tone: 'primary', icon: '⌖' }) +
+                (t.flows.length ? ui.btn('看相关链路', { act: 'arch:dist-flow', arg: t.flows[0], icon: '⇄' }) : '')
+        });
+    }
+
+    function stageModal(id) {
+        var stg = null;
+        arch.cicd().forEach(function (x) { if (x.id === id) stg = x; });
+        if (!stg) { ui.toast('流水线里没有「' + id + '」阶段', 'warn'); return; }
+        ui.modal({
+            title: esc(stg.no + '. ' + stg.name),
+            sub: esc(stg.tool) + ' · 耗时 ' + esc(stg.dur),
+            body: ui.stack([
+                ui.desc([
+                    { label: '做什么', value: esc(stg.action) },
+                    { label: '出口条件', value: esc(stg.exit) },
+                    { label: '失败处置', value: '<span class="ar-forbid">' + esc(stg.fail) + '</span>' }
+                ]),
+                ui.notice('流水线即代码：Jenkinsfile 进库评审，任一阶段失败即停并通知提交人；发布全程镜像 tag = git sha，回滚就是切上一 tag。', 'info', '发布纪律')
+            ]),
+            footer: ui.btn('关闭', { act: 'ui:close' }) + ui.btn('看 CI/CD 组件', { act: 'arch:dist-tech', arg: 'cicd', tone: 'primary', icon: '⎈' })
+        });
+    }
+
+    /* ---------- 雪花发号器 ----------
+       64 位超出 Number 安全整数：二进制串拼位，十进制用字符串乘 2 加位，绝不碰 BigInt/浮点 */
+    var SNOW_EPOCH = 1704067200000; /* 2024-01-01 UTC：自定义纪元，41 位时间戳可用 69 年 */
+    var SNOW_DEFAULT = { snowDc: 1, snowWorker: 1, snowCount: 8, snowClock: 'ok', ids: [], picked: '0', seq: 0, lastTs: 0, alert: null };
+
+    function snowState() {
+        var st = ui.state(PAGE);
+        if (!st.snow) st.snow = {};
+        Object.keys(SNOW_DEFAULT).forEach(function (k) {
+            if (st.snow[k] === undefined) st.snow[k] = util.clone(SNOW_DEFAULT[k]);
+        });
+        return st.snow;
+    }
+
+    function snowBits(num, width) {
+        var s = Number(num).toString(2);
+        while (s.length < width) s = '0' + s;
+        return s;
+    }
+
+    function snowDec(bin) {
+        var out = '0';
+        for (var i = 0; i < bin.length; i++) {
+            var carry = bin.charAt(i) === '1' ? 1 : 0, next = '';
+            for (var j = out.length - 1; j >= 0; j--) {
+                var d = (out.charCodeAt(j) - 48) * 2 + carry;
+                carry = d > 9 ? 1 : 0;
+                next = String(d % 10) + next;
+            }
+            if (carry) next = '1' + next;
+            out = next;
+        }
+        return out;
+    }
+
+    function snowHex(bin) {
+        var out = '';
+        for (var i = 0; i < 64; i += 4) out += '0123456789abcdef'.charAt(parseInt(bin.substr(i, 4), 2));
+        return out;
+    }
+
+    function snowClockText(ms) {
+        var d = new Date(ms);
+        return d.getFullYear() + '-' + util.pad(d.getMonth() + 1) + '-' + util.pad(d.getDate()) + ' ' +
+            util.pad(d.getHours()) + ':' + util.pad(d.getMinutes()) + ':' + util.pad(d.getSeconds()) + '.' + ('00' + d.getMilliseconds()).slice(-3);
+    }
+
+    function snowBatch() {
+        var s = snowState();
+        var real = util.now().getTime() - SNOW_EPOCH;
+        s.alert = null;
+        /* 时钟模式是演示注入：把 lastTs 人为推未来，模拟 NTP 回拨后的发号决策 */
+        if (s.snowClock === 'wait') s.lastTs = real + 3;
+        if (s.snowClock === 'reject') s.lastTs = real + 12;
+        var ts = real;
+        if (ts < s.lastTs) {
+            var back = s.lastTs - ts;
+            if (back > 5) {
+                s.alert = { tone: 'danger', text: '检测到时钟回拨 ' + back + 'ms（> 5ms 容忍）：本批 ' + s.snowCount + ' 个 ID 全部拒发并上报告警。宁可失败，不发重号。' };
+                return false;
+            }
+            s.alert = { tone: 'warn', text: '检测到时钟回拨 ' + back + 'ms（≤ 5ms）：等待追平后继续发号，序列不清零。' };
+            ts = s.lastTs;
+        }
+        var ids = [];
+        for (var i = 0; i < s.snowCount; i++) {
+            if (ts === s.lastTs) {
+                s.seq = (s.seq + 1) % 4096;
+                if (s.seq === 0) ts = s.lastTs + 1; /* 本毫秒序列耗尽：借下一毫秒 */
+            } else {
+                s.seq = 0;
+            }
+            s.lastTs = ts;
+            var bin = '0' + snowBits(ts, 41) + snowBits(s.snowDc, 5) + snowBits(s.snowWorker, 5) + snowBits(s.seq, 12);
+            ids.push({
+                key: String(i), bin: bin, dec: snowDec(bin), hex: snowHex(bin),
+                ts: ts, dc: s.snowDc, worker: s.snowWorker, seq: s.seq,
+                at: snowClockText(SNOW_EPOCH + ts)
+            });
+        }
+        s.ids = ids;
+        s.picked = '0';
+        return true;
+    }
+
+    function snowSlider(label, key, min, max) {
+        var s = snowState();
+        var act = key === 'snowDc' ? 'arch:snow-dc' : key === 'snowWorker' ? 'arch:snow-worker' : 'arch:snow-count';
+        return '<div class="ar-ctl slider">' +
+            '<div class="ar-ctl-line"><span class="ar-ctl-name">' + esc(label) + '</span>' +
+            '<b class="ar-ctl-val" data-arch-out="' + key + '">' + s[key] + '</b></div>' +
+            '<input type="range" class="ar-range" min="' + min + '" max="' + max + '" step="1" value="' + s[key] +
+            '" data-arch-live="' + key + '" data-change="' + act + '" aria-label="' + esc(label) + '">' +
+            '</div>';
+    }
+
+    function snowAnatomy(id) {
+        var d = {
+            ts: parseInt(id.bin.substr(1, 41), 2),
+            dc: parseInt(id.bin.substr(42, 5), 2),
+            worker: parseInt(id.bin.substr(47, 5), 2),
+            seq: parseInt(id.bin.substr(52, 12), 2)
+        };
+        var groups = [
+            { name: '符号', n: 1, hue: '#9aa7bd', val: '0', desc: '恒为 0' },
+            { name: '时间戳', n: 41, hue: '#3d8bff', val: fmt.number(d.ts) + ' ms', desc: snowClockText(SNOW_EPOCH + d.ts) },
+            { name: '数据中心', n: 5, hue: '#4ecdc4', val: String(d.dc), desc: '机房 ' + d.dc },
+            { name: '工作节点', n: 5, hue: '#f0a92e', val: String(d.worker), desc: '节点 ' + d.worker },
+            { name: '序列号', n: 12, hue: '#8b7cf6', val: String(d.seq), desc: '本毫秒第 ' + (d.seq + 1) + ' 个' }
+        ];
+        var off = 0;
+        var cells = groups.map(function (g) {
+            var seg = id.bin.substr(off, g.n);
+            off += g.n;
+            var bitsHtml = '';
+            for (var i = 0; i < seg.length; i++) bitsHtml += '<i class="' + (seg.charAt(i) === '1' ? 'on' : '') + '">' + seg.charAt(i) + '</i>';
+            return '<div class="ar-snow-group" style="--h:' + g.hue + ';flex-grow:' + g.n + '">' +
+                '<div class="ar-snow-group-head"><b>' + g.name + '</b><span>' + g.n + ' bit</span></div>' +
+                '<div class="ar-snow-cells">' + bitsHtml + '</div>' +
+                '<div class="ar-snow-group-val"><b>' + esc(g.val) + '</b><span>' + esc(g.desc) + '</span></div></div>';
+        }).join('');
+        return '<div class="ar-snow-id"><span>十进制</span><b>' + esc(id.dec) + '</b><span class="ar-snow-hex">hex ' + esc(id.hex) + '</span></div>' +
+            '<div class="ar-snow-bits-wrap"><div class="ar-snow-bits">' + cells + '</div></div>';
+    }
+
+    function snowIds(s) {
+        if (!s.ids.length) return '';
+        return '<div class="ar-snow-ids"><div class="ar-snow-ids-wrap"><div class="ar-snow-ids-inner">' +
+            '<div class="ar-snow-idrow head"><span>#</span><span>十进制 ID</span><span>时间（纪元偏移还原）</span><span>机房</span><span>节点</span><span>序列</span></div>' +
+            s.ids.map(function (x) {
+                return '<div class="ar-snow-idrow' + (x.key === s.picked ? ' on' : '') + '" data-act="arch:snow-pick" data-arg="' + x.key + '">' +
+                    '<span>' + (Number(x.key) + 1) + '</span><span class="dec">' + esc(x.dec) + '</span><span>' + esc(x.at) + '</span>' +
+                    '<span>' + x.dc + '</span><span>' + x.worker + '</span><span>' + x.seq + '</span></div>';
+            }).join('') + '</div></div></div>';
+    }
+
+    function snowLab() {
+        var s = snowState();
+        var picked = null;
+        s.ids.forEach(function (x) { if (x.key === s.picked) picked = x; });
+        if (!picked && s.ids.length) picked = s.ids[0];
+        var controls = '<aside class="ar-controls ar-snow-controls" aria-label="雪花发号控制台">' +
+            '<header class="ar-controls-head"><b>发号控制台</b><span>八个旋钮，即时生效</span></header>' +
+            '<div class="ar-controls-body">' +
+            snowSlider('数据中心位', 'snowDc', 0, 31) +
+            snowSlider('工作节点位', 'snowWorker', 0, 31) +
+            snowSlider('每批数量', 'snowCount', 1, 24) +
+            selectCtl('时钟模式', 'arch:snow-clock', s.snowClock, [
+                { value: 'ok', label: '正常发号' },
+                { value: 'wait', label: '回拨 3ms · 等待追平' },
+                { value: 'reject', label: '回拨 12ms · 拒发告警' }
+            ]) +
+            '<div class="ar-ctl-sep">发号与输出</div>' +
+            '<div class="ar-ctl-btns">' +
+            ui.btn('生成一批', { size: 'sm', tone: 'primary', act: 'arch:snow-gen', icon: '❄', block: true }) +
+            ui.btn('复制选中 ID', { size: 'sm', act: 'arch:snow-copy', icon: '⧉', block: true }) +
+            ui.btn('导出本批 CSV', { size: 'sm', act: 'arch:snow-csv', icon: '⤓', block: true }) +
+            ui.btn('复位', { size: 'sm', act: 'arch:snow-reset', icon: '⟲', block: true }) +
+            '</div>' +
+            '<p class="ar-ctl-note">纪元 2024-01-01 · 单节点每毫秒 4096 个 · workerId 由 K8s StatefulSet 序号注入 · 点列表行选中解剖</p>' +
+            '</div></aside>';
+        var main = '<div class="ar-snow-main">' +
+            (s.alert ? ui.notice(esc(s.alert.text), s.alert.tone, s.alert.tone === 'danger' ? '拒绝发号' : '时钟回拨容忍') : '') +
+            (picked ? snowAnatomy(picked) : '<div class="ar-snow-empty"><i>❄</i><b>还没有发号</b><span>调好机房与节点位，点「生成一批」——64 位解剖图与批次清单就在这里</span></div>') +
+            snowIds(s) +
+            '</div>';
+        return '<div class="ar-snow">' + controls + main + '</div>';
+    }
+
+    function copyText(text) {
+        var nav = global.navigator;
+        if (nav && nav.clipboard && nav.clipboard.writeText) {
+            nav.clipboard.writeText(text).then(function () { ui.toast('已复制 ' + text, 'success'); }, function () { copyFallback(text); });
+        } else copyFallback(text);
+    }
+
+    function copyFallback(text) {
+        if (!global.document || !document.execCommand) { ui.toast('当前环境不支持一键复制，请手动记录', 'warn'); return; }
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); ui.toast('已复制 ' + text, 'success'); }
+        catch (e) { ui.toast('复制失败，请手动记录', 'warn'); }
+        document.body.removeChild(ta);
+    }
+
+    function tabDist(ctx) {
+        var v = view(), ds = arch.distStats();
+        var kpi = ui.kpis([
+            { label: '技术组件', value: ds.techs, unit: '件', tone: 'brand', icon: '⬢', sub: ds.cats + ' 个分类 · 逐件有兜底' },
+            { label: '覆盖连接', value: ds.links, unit: '条', tone: 'info', icon: '⇄', sub: '组件 × 服务映射' },
+            { label: '全量覆盖', value: ds.full, unit: '件', tone: 'accent', icon: '◉', sub: '十个服务全接入' },
+            { label: '流水线阶段', value: ds.stages, unit: '段', tone: 'warn', icon: '⎈', sub: '金丝雀 5% → 30% → 全量' },
+            { label: '设计要点', value: ds.points, unit: '条', tone: 'success', icon: '⚖', sub: '逐件可校验的约束' }
+        ]);
+        var legend = '<div class="ar-legend">' + arch.distCats().map(function (c) {
+            return '<span class="ar-legend-item"><i style="background:' + esc(c.hue) + '"></i>' + esc(c.name) + ' <b>' + c.count + '</b></span>';
+        }).join('') + '<span class="ar-legend-item ar-legend-hint">点组件看契约 · 聚焦画覆盖连线</span></div>';
+        return ui.stack([
+            kpi,
+            ui.card({
+                title: '分布式技术全景', sub: '五类十件 · 上承组件、下接服务', flat: true, tools: legend,
+                body: distFocusBar(v) + distControls() +
+                    '<div class="ar-canvas-wrap" style="--arch-zoom:' + esc(v.zoom) + '"><div class="ar-canvas" data-arch-canvas>' + distSvg(v) + '</div></div>'
+            }),
+            ui.card({ title: '覆盖矩阵', sub: '组件 × 服务：哪件技术落在哪些服务上，点行看契约', flat: true, body: distMatrixHtml() }),
+            ui.card({
+                title: '技术目录', sub: '每件回答：管什么、为什么、怎么兜底', flat: true,
+                tools: ui.btn('导出目录 CSV', { size: 'sm', act: 'arch:dist-csv', icon: '⤓' }),
+                body: distCatalog()
+            }),
+            ui.card({
+                title: 'CI/CD 流水线', sub: 'Jenkins + Docker + Kubernetes · 八阶段 · 点阶段看出口条件与失败处置', flat: true,
+                body: '<div class="ar-canvas-wrap seq pipe"><div class="ar-canvas" data-arch-canvas>' + cicdSvg(v) + '</div></div>'
+            }),
+            ui.card({
+                title: '负载均衡三级接力', sub: 'Nginx → 网关 → OpenFeign · Nacos 供名单', flat: true,
+                body: '<div class="ar-canvas-wrap seq lb"><div class="ar-canvas" data-arch-canvas>' + lbSvg(v) + '</div></div>'
+            }),
+            ui.card({
+                title: '雪花发号器', sub: '64 位 ID 现场生成与解剖：调位、发号、时钟回拨演练', flat: true,
+                body: snowLab()
+            })
+        ]);
+    }
+
     function tabDeploy(ctx) {
         var jobs = arch.jobPlan();
         var unplanned = jobs.filter(function (j) { return !j.planned; }).length;
@@ -1026,18 +1682,20 @@
             var body = tab === 'services' ? tabServices(ctx)
                 : tab === 'flows' ? tabFlows(ctx)
                     : tab === 'data' ? tabData(ctx)
-                        : tab === 'deploy' ? tabDeploy(ctx)
-                            : tabTopo(ctx, d);
+                        : tab === 'dist' ? tabDist(ctx)
+                            : tab === 'deploy' ? tabDeploy(ctx)
+                                : tabTopo(ctx, d);
             var tabs = TABS.map(function (t) {
                 var n = t.value === 'services' ? d.stats.services : t.value === 'flows' ? d.stats.flows
-                    : t.value === 'data' ? d.stats.collections : t.value === 'deploy' ? arch.jobPlan().length : 0;
+                    : t.value === 'data' ? d.stats.collections : t.value === 'dist' ? arch.distStats().techs
+                        : t.value === 'deploy' ? arch.jobPlan().length : 0;
                 return n ? { value: t.value, label: t.label, count: n } : { value: t.value, label: t.label };
             });
             var page = ui.page({
                 title: '架构设计',
                 badge: ui.badge('目标态 · 10 服务', 'brand'),
                 sub: '网关 / BFF / 订单 / 网点 / 调度跟踪 / 结算计费 / TMS 核心 / 运营考核 / 定时任务 / 检索 —— ' +
-                    esc(d.stats.layers + ' 层拆分 · ' + d.stats.collections + ' 张表单一写入者 · ' + d.stats.steps + ' 步端到端链路'),
+                    esc(d.stats.layers + ' 层拆分 · ' + d.stats.collections + ' 张表单一写入者 · ' + d.stats.steps + ' 步端到端链路 · 十件分布式与运维组件'),
                 actions: ui.btn('导出服务目录', { size: 'sm', act: 'arch:csv', icon: '⤓' }) +
                     ui.btn('导出拓扑 SVG', { size: 'sm', tone: 'primary', act: 'arch:svg', icon: '⌬' }),
                 body: ui.stack([ui.tabs(tabs, tab), body])
@@ -1119,6 +1777,84 @@
                     { label: '拥有表', key: 'tables' }, { label: '数据行', key: 'rows' }, { label: '落地页面', key: 'pages' },
                     { label: '落地模块', key: 'modules' }, { label: '同步依赖', key: 'deps' }, { label: '漂移项', key: 'missing' }
                 ], rows), 'text/csv;charset=utf-8');
+            },
+            'arch:dist-focus': function (id) {
+                ui.closeTop();
+                var st = ui.state(PAGE);
+                st.tab = 'dist';
+                setView({ distFocus: arch.distTech(id) ? id : '' });
+            },
+            'arch:dist-tech': function (id) { techDrawer(id); },
+            'arch:dist-cat': function (val) {
+                var st = ui.state(PAGE);
+                st.distCat = val || '';
+                TMS.shell.refresh();
+            },
+            'arch:dist-stage': function (id) { stageModal(id); },
+            'arch:dist-flow': function (id) {
+                var f = arch.flow(id);
+                if (!f) { ui.toast('链路目录里没有「' + id + '」', 'warn'); return; }
+                ui.closeTop();
+                var st = ui.state(PAGE);
+                st.tab = 'flows';
+                st.seg = f.id;
+                view().step = 1;
+                TMS.shell.refresh();
+            },
+            'arch:dist-svg': function () {
+                save('TMS分布式全景-' + util.dateKey(util.now()) + '.svg', distSvg(view()), 'image/svg+xml;charset=utf-8');
+            },
+            'arch:dist-csv': function () {
+                save('TMS分布式技术目录-' + util.dateKey(util.now()) + '.csv', '\ufeff' + toCsv([
+                    { label: '编号', key: 'no' }, { label: '技术', key: 'name' }, { label: '组件', key: 'product' },
+                    { label: '版本', key: 'version' }, { label: '分类', value: function (r) { return distCatName(r.cat); } },
+                    { label: '职责', key: 'role' }, { label: '选型理由', key: 'why' }, { label: '落地场景', key: 'scenario' },
+                    { label: '故障兜底', key: 'fallback' },
+                    { label: '覆盖服务', value: function (r) { return r.services.map(function (sid) { var s = arch.service(sid); return s ? s.name : sid; }).join('/'); } },
+                    { label: '涉及表', value: function (r) { return r.tables.map(function (n) { return db.meta(n).label || n; }).join('/'); } },
+                    { label: '相关链路', value: function (r) { return r.flows.map(function (fid) { var f = arch.flow(fid); return f ? f.name : fid; }).join('/'); } }
+                ], arch.distributed()), 'text/csv;charset=utf-8');
+            },
+            'arch:snow-dc': function (val) { snowState().snowDc = clamp(Math.round(Number(val) || 0), 0, 31); },
+            'arch:snow-worker': function (val) { snowState().snowWorker = clamp(Math.round(Number(val) || 0), 0, 31); },
+            'arch:snow-count': function (val) { snowState().snowCount = clamp(Math.round(Number(val) || 1), 1, 24); },
+            'arch:snow-clock': function (val) {
+                snowState().snowClock = val === 'wait' || val === 'reject' ? val : 'ok';
+                TMS.shell.refresh();
+            },
+            'arch:snow-gen': function () {
+                var ok = snowBatch();
+                TMS.shell.refresh();
+                if (ok) ui.toast('已发号 ' + snowState().ids.length + ' 个：机房 ' + snowState().snowDc + ' · 节点 ' + snowState().snowWorker, 'success');
+            },
+            'arch:snow-pick': function (key) {
+                var s = snowState();
+                s.picked = String(key == null || key === '' ? '0' : key);
+                TMS.shell.refresh();
+            },
+            'arch:snow-copy': function () {
+                var s = snowState(), hit = null;
+                s.ids.forEach(function (x) { if (x.key === s.picked) hit = x; });
+                if (!hit) hit = s.ids[0];
+                if (!hit) { ui.toast('还没有可复制的 ID，先生成一批', 'warn'); return; }
+                copyText(hit.dec);
+            },
+            'arch:snow-csv': function () {
+                var s = snowState();
+                if (!s.ids.length) { ui.toast('本批为空，先生成一批再导出', 'warn'); return; }
+                /* 19 位十进制超 Excel 15 位精度：="..." 公式写法保住尾数 */
+                save('TMS雪花ID批次-' + util.dateKey(util.now()) + '.csv', '\ufeff' + toCsv([
+                    { label: '序号', value: function (r) { return Number(r.key) + 1; } },
+                    { label: '十进制ID', value: function (r) { return '="' + r.dec + '"'; } },
+                    { label: '十六进制', key: 'hex' }, { label: '时间', key: 'at' },
+                    { label: '机房', key: 'dc' }, { label: '节点', key: 'worker' }, { label: '序列', key: 'seq' }
+                ], s.ids), 'text/csv;charset=utf-8');
+            },
+            'arch:snow-reset': function () {
+                ui.state(PAGE).snow = {};
+                snowState();
+                TMS.shell.refresh();
+                ui.toast('发号器已复位：机房 1 · 节点 1 · 每批 8 · 时钟正常', 'success');
             }
         }
     });
@@ -1142,11 +1878,19 @@
             var el = e.target;
             if (!el || !el.getAttribute) return;
             var key = el.getAttribute('data-arch-live');
-            if (key !== 'speed' && key !== 'zoom') return;
             var val = Number(el.value);
             if (!isFinite(val)) return;
-            view()[key] = val;
-            applyLive(root, key, val);
+            if (key === 'speed' || key === 'zoom') {
+                view()[key] = val;
+                applyLive(root, key, val);
+                return;
+            }
+            /* 雪花旋钮只改状态与读数：已发 ID 是历史事实，下一批才用新节点位 */
+            if (key === 'snowDc' || key === 'snowWorker' || key === 'snowCount') {
+                val = key === 'snowCount' ? clamp(Math.round(val), 1, 24) : clamp(Math.round(val), 0, 31);
+                snowState()[key] = val;
+                applyLive(root, key, val);
+            }
         });
     }
 
@@ -1158,7 +1902,7 @@
                 var svg = hosts[i].querySelector ? hosts[i].querySelector('svg') : null;
                 if (svg && svg.style) svg.style.setProperty ? svg.style.setProperty('--arch-speed', String(val)) : (svg.style['--arch-speed'] = val);
             }
-        } else {
+        } else if (key === 'zoom') {
             var wraps = root.querySelectorAll('.ar-canvas-wrap');
             for (i = 0; i < wraps.length; i++) {
                 if (wraps[i].classList && wraps[i].classList.contains('seq')) continue;

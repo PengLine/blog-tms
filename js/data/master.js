@@ -1020,47 +1020,133 @@
         return out;
     }
 
-    function hubTripBetween(trips, fromHubId, toHubId, mode) {
-        var list = trips.filter(function (t) { return t.fromHub === fromHubId && t.toHub === toHubId && (!mode || t.mode === mode); });
-        if (list.length) return list[0];
-        list = trips.filter(function (t) { return t.fromHub === fromHubId && t.toHub === toHubId; });
-        return list[0] || null;
+    /* ---------- 多干线智能规划 ----------
+       直达未必最优：直达班次密度低时平均候车半天起步，经枢纽两条每天班衔接反而更快；
+       加急件还要允许「陆运喂给航空枢纽 + 空运干线」的空陆联运。
+       路径在班次图上全部枚举后按策略评分；中转枢纽的卸货/分拣/装货与候车时长
+       一并计入标准时长——不算装卸的中转承诺是假承诺 */
+
+    var TRANSFER_OPS = { unload: 1, sort: 2, load: 1 };   // 区域枢纽中转作业标准时长（小时）
+    var TRANSFER_SORT_FAST = 1;                           // 中心枢纽分拣线多，转运更快
+    var TRANSFER_COST = 260;                              // 每中转一次装卸人工+设备分摊（元/车次）
+    var RAIL_COST_PER_KM = 3.4, AIR_COST_PER_KM = 16;     // 铁路/航空干线车次成本口径
+
+    var STRATEGIES = {
+        '时效': { name: '时效优先', h: 0.70, c: 0.10, r: 0.20 },
+        '成本': { name: '成本优先', h: 0.20, c: 0.60, r: 0.20 },
+        '均衡': { name: '均衡推荐', h: 0.45, c: 0.30, r: 0.25 },
+        '稳妥': { name: '稳妥优先', h: 0.25, c: 0.15, r: 0.60 }
+    };
+
+    function freqPerWeek(days) {
+        var s = String(days || '');
+        if (s.indexOf('每天') > -1) return 7;
+        return Math.max(1, Math.min(7, s ? s.split('/').length : 1));
     }
 
-    /* 找一段（最多一次中转）干线，返回 [{from,to,mode,stdHours}] */
-    function trunkLegs(trips, fromHub, toHub, mode) {
-        var direct = hubTripBetween(trips, fromHub.id, toHub.id, mode);
-        if (direct) {
-            return [{ trip: direct, from: fromHub, to: toHub, mode: direct.mode, stdHours: direct.transitHours }];
+    /* 平均候车 = 半个发班周期：每天班 12h，周三班 28h；空运一天多班按 6h */
+    function waitHoursOf(trip) {
+        if (trip.mode === '空运') return 6;
+        return Math.round(84 / freqPerWeek(trip.days));
+    }
+
+    function transferHoursOf(hub) {
+        return TRANSFER_OPS.unload + (hub && hub.role === '中心枢纽' ? TRANSFER_SORT_FAST : TRANSFER_OPS.sort) + TRANSFER_OPS.load;
+    }
+
+    /* 班次可能挂在后建的分拨上，主数据里查不到就用班次自带的名称兜底 */
+    function hubOfTrip(t, end) {
+        var id = end === 'from' ? t.fromHub : t.toHub;
+        return hubByNameOrId(id) || {
+            id: id, name: t[end + 'HubName'] || id,
+            city: t[end === 'from' ? 'fromCity' : 'toCity'] || '', role: ''
+        };
+    }
+
+    function legCostOf(trip) {
+        var km = trip.distanceKm || 0;
+        if (trip.mode === '空运') return km * AIR_COST_PER_KM;
+        if (trip.mode === '铁路') return km * RAIL_COST_PER_KM;
+        return km * vehicleType(trip.vehicleType).costPerKm;
+    }
+
+    /* 枚举全部简单路径（不重复经过枢纽），最多 maxTransfers 次中转。
+       mode='空运' 要求路径至少含一段空运（允许陆运喂给航空枢纽的联运）；
+       '陆运' 排除空运段；其余不限。停用班次不参与规划——规划进一条停开班线，
+       承诺时效就成了永远等不到的车 */
+    function trunkPaths(trips, fromHub, toHub, mode, maxTransfers) {
+        var out = [];
+        var maxLegs = Math.max(1, (maxTransfers == null ? 2 : Number(maxTransfers)) + 1);
+        var usable = trips.filter(function (t) { return t.status !== 'inactive'; });
+        function dfs(hubId, legs, visited, hasAir) {
+            if (hubId === toHub.id) {
+                if (legs.length && (mode !== '空运' || hasAir)) out.push(legs.slice());
+                return;
+            }
+            if (legs.length >= maxLegs) return;
+            usable.forEach(function (t) {
+                if (t.fromHub !== hubId || visited[t.toHub]) return;
+                if (mode === '陆运' && t.mode === '空运') return;
+                visited[t.toHub] = 1;
+                legs.push(t);
+                dfs(t.toHub, legs, visited, hasAir || t.mode === '空运');
+                legs.pop();
+                delete visited[t.toHub];
+            });
         }
-        var best = null;
-        trips.filter(function (t) { return t.fromHub === fromHub.id && (!mode || t.mode === mode); }).forEach(function (t) {
-            var mid = HUB_SEEDS.filter(function (h) { return h.id === t.toHub; })[0];
-            var next = hubTripBetween(trips, mid.id, toHub.id, mode);
-            if (!next) return;
-            var legs = [
-                { trip: t, from: fromHub, to: mid, mode: t.mode, stdHours: t.transitHours },
-                { trip: next, from: mid, to: toHub, mode: next.mode, stdHours: next.transitHours }
-            ];
-            var total = t.transitHours + next.transitHours;
-            if (!best || total < best.total) best = { legs: legs, total: total };
+        var v = {};
+        v[fromHub.id] = 1;
+        dfs(fromHub.id, [], v, false);
+        return out;
+    }
+
+    /* 一条路径的干线事实：在途/候车/装卸分开计，成本按车次、准点率按连乘。
+       每多一次中转多一次装卸差错暴露，准点率再乘 0.97——这是「稳妥」策略能看见的中转代价 */
+    function pathMetrics(legs) {
+        var transit = 0, km = 0, wait = 0, xferH = 0, cost = 0, rel = 1;
+        legs.forEach(function (t, i) {
+            transit += t.transitHours;
+            km += t.distanceKm || 0;
+            wait += waitHoursOf(t);
+            cost += legCostOf(t);
+            rel *= (t.onTimeRate || 0.95);
+            if (i > 0) {
+                xferH += transferHoursOf(hubOfTrip(t, 'from'));
+                cost += TRANSFER_COST;
+                rel *= 0.97;
+            }
         });
-        return best ? best.legs : null;
+        return {
+            transitHours: transit, km: Math.round(km), waitHours: wait, transferHours: xferH,
+            transfers: Math.max(0, legs.length - 1), trunkCost: Math.round(cost),
+            reliability: util.round(rel * 100, 1), stdHours: transit + wait + xferH
+        };
     }
 
-    function planSegments(originBranch, destBranch, trips, mode) {
-        var oc = cityByName(originBranch.city), dc = cityByName(destBranch.city);
-        if (!oc || !dc) return null;
-        var fromHub = nearestHub(oc), toHub = nearestHub(dc);
-        /* 同区件没有干线段：干支分离下始发分拨直接发车到目的网点。
-           省掉这段还去班线表找「A→A」——班线表按设计不存在同城直发，
-           中转搜索会绕出一条 A→B→A 的环形假干线（0 公里却背上一整天的标准时长） */
-        var legs = fromHub.id === toHub.id ? [] : trunkLegs(trips, fromHub, toHub, mode);
-        if (!legs) {
-            // 兜底：按直线距离估算时长
-            var km = util.distanceKm(oc, dc);
-            legs = [{ from: fromHub, to: toHub, mode: '陆运', stdHours: transitHours(km, '陆运') }];
-        }
+    /* 评分先归一再加权：时长/成本量纲不同，直接相加会让公里数吃掉准点率。
+       同分先选中转少的，再选时长短的——少一次装卸就少一次货损暴露 */
+    function scoreCandidates(list, strategy) {
+        var w = STRATEGIES[strategy] || STRATEGIES['均衡'];
+        var minH = Infinity, minC = Infinity, maxR = 0;
+        list.forEach(function (p) {
+            minH = Math.min(minH, p.totalStdHours);
+            minC = Math.min(minC, p.trunkCost);
+            maxR = Math.max(maxR, p.reliability);
+        });
+        list.forEach(function (p) {
+            var h = minH / Math.max(1, p.totalStdHours);
+            var c = minC > 0 ? minC / Math.max(1, p.trunkCost) : 1;
+            var r = p.reliability / Math.max(1, maxR);
+            p.score = util.round((w.h * h + w.c * c + w.r * r) * 100, 1);
+        });
+        list.sort(function (a, b) {
+            return b.score - a.score || a.transfers - b.transfers || a.totalStdHours - b.totalStdHours;
+        });
+    }
+
+    /* 由一条路径装配完整段次：揽收支线 + 干线（含中转装卸/候车）+ 派送支线。
+       legs 为 null 是班次图够不到时的直线估算兜底，[] 是同城无干线 */
+    function buildPlan(oc, dc, fromHub, toHub, legs, strategy, originBranch, destBranch) {
         var segments = [];
         var seq = 1;
         var collectKm = util.distanceKm(oc, cityByName(fromHub.city)) || 20;
@@ -1068,13 +1154,38 @@
             seq: seq++, from: originBranch.name || (oc.name + '揽收'), to: fromHub.name,
             mode: '陆运', stdHours: Math.max(3, Math.round(collectKm / 45) + 2), legType: 'collect', km: Math.round(collectKm)
         });
-        legs.forEach(function (leg) {
-            segments.push({
-                seq: seq++, from: leg.from.name, to: leg.to.name, mode: leg.mode,
-                stdHours: leg.stdHours, legType: 'trunk',
-                km: Math.round(util.distanceKm(cityByName(leg.from.city), cityByName(leg.to.city)))
+        var m;
+        if (legs === null) {
+            var km0 = Math.round(util.distanceKm(oc, dc));
+            var h0 = transitHours(km0, '陆运');
+            m = { transitHours: h0, km: km0, waitHours: 0, transferHours: 0, transfers: 0, trunkCost: Math.round(km0 * vehicleType('MAX').costPerKm), reliability: 90, stdHours: h0 };
+            segments.push({ seq: seq++, from: fromHub.name, to: toHub.name, mode: '陆运', stdHours: h0, legType: 'trunk', km: km0, estimated: true });
+        } else {
+            m = pathMetrics(legs);
+            legs.forEach(function (t, i) {
+                var from = hubOfTrip(t, 'from'), to = hubOfTrip(t, 'to');
+                var wait = waitHoursOf(t);
+                var xfer = i > 0 ? transferHoursOf(from) : 0;
+                var seg = {
+                    seq: seq++, from: from.name, to: to.name, mode: t.mode, legType: 'trunk',
+                    km: Math.round(t.distanceKm || 0),
+                    stdHours: t.transitHours + wait + xfer,
+                    transitHours: t.transitHours, waitHours: wait, transferHours: xfer,
+                    tripId: t.id, tripCode: t.code, departAt: t.departAt, arriveAt: t.arriveAt, days: t.days,
+                    vehicleType: t.vehicleType, capacityKg: t.capacityKg, onTimeRate: t.onTimeRate
+                };
+                if (i > 0) {
+                    seg.transferIn = {
+                        hubId: from.id, hubName: from.name, city: from.city,
+                        unloadHours: TRANSFER_OPS.unload,
+                        sortHours: from.role === '中心枢纽' ? TRANSFER_SORT_FAST : TRANSFER_OPS.sort,
+                        loadHours: TRANSFER_OPS.load, waitHours: wait,
+                        prevTripId: legs[i - 1].id, prevTripCode: legs[i - 1].code, prevArriveAt: legs[i - 1].arriveAt
+                    };
+                }
+                segments.push(seg);
             });
-        });
+        }
         var lastKm = util.distanceKm(cityByName(toHub.city), dc) || 25;
         segments.push({
             seq: seq++, from: toHub.name, to: destBranch.name || (dc.name + '派送'),
@@ -1082,12 +1193,48 @@
         });
         var totalKm = util.sum(segments, 'km');
         var total = util.sum(segments, 'stdHours');
+        var modes = {};
+        (legs || []).forEach(function (t) { modes[t.mode] = 1; });
+        var modeKeys = Object.keys(modes);
         return {
             segments: segments, totalStdHours: total, distanceKm: totalKm,
-            // 同区件没有干线班次，运输方式按分拨发车的陆运支线计
-            mode: legs.length ? legs[0].mode : '陆运',
-            priority: total <= 36 ? '高' : (total <= 60 ? '中' : '低')
+            // 同区件没有干线班次，运输方式按分拨发车的陆运支线计；空陆混跑记联运
+            mode: modeKeys.length > 1 ? '联运' : (modeKeys[0] || '陆运'),
+            priority: total <= 36 ? '高' : (total <= 60 ? '中' : '低'),
+            strategy: strategy, planner: legs === null ? 'estimate' : 'smart2',
+            transitHours: m.transitHours, waitHours: m.waitHours, transferHours: m.transferHours,
+            transfers: m.transfers, trunkLegs: legs === null ? 1 : legs.length,
+            trunkCost: m.trunkCost, reliability: m.reliability,
+            label: m.transfers === 0 ? '直达' : (m.transfers === 1 ? '一经中转' : '两经中转')
         };
+    }
+
+    function planSegments(originBranch, destBranch, trips, mode, opts) {
+        var o = opts || {};
+        var oc = cityByName(originBranch.city), dc = cityByName(destBranch.city);
+        if (!oc || !dc) return null;
+        var fromHub = nearestHub(oc), toHub = nearestHub(dc);
+        var strategy = STRATEGIES[o.strategy] ? o.strategy : '均衡';
+        var candidates = [];
+        /* 同区件没有干线段：干支分离下始发分拨直接发车到目的网点。
+           省掉这段还去班线表找「A→A」——班线表按设计不存在同城直发，
+           中转搜索会绕出一条 A→B→A 的环形假干线（0 公里却背上一整天的标准时长） */
+        if (fromHub.id === toHub.id) {
+            candidates.push(buildPlan(oc, dc, fromHub, toHub, [], strategy, originBranch, destBranch));
+        } else {
+            trunkPaths(trips, fromHub, toHub, mode, o.maxTransfers).forEach(function (legs) {
+                candidates.push(buildPlan(oc, dc, fromHub, toHub, legs, strategy, originBranch, destBranch));
+            });
+            if (!candidates.length) {
+                // 空运通道够不到就交给调用方回退陆运，不在这里拿陆运冒充空运
+                if (mode === '空运') return null;
+                candidates.push(buildPlan(oc, dc, fromHub, toHub, null, strategy, originBranch, destBranch));
+            }
+        }
+        scoreCandidates(candidates, strategy);
+        var best = candidates[0];
+        if (o.withCandidates) best.candidates = candidates;
+        return best;
     }
 
     TMS.master = {
@@ -1105,7 +1252,9 @@
         phone: phone, personName: personName,
         branches: function () { return BRANCH_CACHE; },
         customers: function () { return CUSTOMER_CACHE; },
-        planSegments: function (o, d, mode) { return planSegments(o, d, dbTrips(), mode); },
+        planSegments: function (o, d, mode, opts) { return planSegments(o, d, dbTrips(), mode, opts); },
+        STRATEGIES: STRATEGIES, waitHoursOf: waitHoursOf, transferHoursOf: transferHoursOf,
+        trunkPaths: function (fromHub, toHub, mode, maxTransfers) { return trunkPaths(dbTrips(), fromHub, toHub, mode, maxTransfers); },
         install: install,
         buildRoutesFromTrips: buildRoutesFromTrips
     };

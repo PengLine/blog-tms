@@ -456,14 +456,14 @@
     /* ---------- 基础设施与终端 ---------- */
 
     var INFRA = [
-        { id: 'mysql', name: 'MySQL 8', sub: '按服务分库 · 订单/扫描分片' },
-        { id: 'redis', name: 'Redis 7', sub: '令牌 · 配额 · 抢单锁 · 运价卡' },
+        { id: 'mysql', name: 'MySQL 8', sub: '按服务分库 · ShardingSphere 分片' },
+        { id: 'redis', name: 'Redis 7', sub: '令牌 · 配额 · Redisson 抢单锁' },
         { id: 'mq', name: 'RocketMQ', sub: '领域事件 · 按单号分区保顺序' },
         { id: 'es', name: 'Elasticsearch', sub: '订单 / 物资 / 网点检索' },
         { id: 'gis', name: 'PostGIS', sub: '围栏精判与坐标反查' },
         { id: 'xxl', name: 'XXL-Job', sub: '13 个 handler 统一调度' },
         { id: 'oss', name: 'OSS / MinIO', sub: 'POD 图片 · 账单附件' },
-        { id: 'nacos', name: 'Nacos', sub: '注册发现 · 配置中心' },
+        { id: 'nacos', name: 'Nacos', sub: '注册发现 · 配置中心 · 灰度' },
         { id: 'obs', name: '观测三件套', sub: 'Prometheus · SkyWalking · Loki' }
     ];
 
@@ -601,18 +601,22 @@
 
     var STACK = [
         { layer: '接入', component: 'Nginx + Spring Cloud Gateway', why: '统一入口、令牌桶限流、按 header 灰度；WSS 终结给轨迹实时推送' },
+        { layer: '负载', component: 'Nacos + OpenFeign + Nginx', why: '三级接力：入口分流、进程内选实例、注册中心供名单；权重轮询 + 故障双摘除' },
         { layer: '聚合', component: 'NestJS BFF × 3（APP / PC / 小程序）', why: '端差异大，聚合层按端独立部署；只编排不算钱，接口形状与领域服务解耦' },
-        { layer: '领域', component: 'Spring Boot 3 + Spring Cloud Alibaba', why: '六个领域服务同构，团队换手成本低；事务消息与本地事务表保一致性' },
+        { layer: '领域', component: 'Spring Boot 3 + Spring Cloud Alibaba', why: '六个领域服务同构，团队换手成本低；OpenFeign 同步调用，事务消息与本地事务表保一致性' },
         { layer: '注册配置', component: 'Nacos 2', why: '注册发现 + 配置中心 + 灰度元数据；超时阈值与费率开关改配置不发版' },
+        { layer: '治理', component: 'Sentinel 1.8', why: '限流 / 熔断 / 降级；规则持久化 Nacos 动态生效，降级兜底讲业务不猜价' },
         { layer: '消息', component: 'RocketMQ 5', why: '按单号分区保顺序，事务消息保「建单成功」与「事件发出」一致' },
         { layer: '存储', component: 'MySQL 8 + ShardingSphere', why: '按服务分库；订单与扫描按时间 + 单号分片，流水表按窗口归档' },
-        { layer: '缓存', component: 'Redis 7 Cluster', why: '令牌与配额、抢单原子锁、运价卡全量缓存、GeoHash 预筛' },
+        { layer: '事务', component: 'Seata 2（AT 模式）', why: '跨服务写原子性：落单扣积分、改单差价、代收上划；长事务走本地消息表' },
+        { layer: '缓存', component: 'Redis 7 Cluster + Redisson', why: '令牌与配额、抢单分布式锁（看门狗续期）、运价卡全量缓存、GeoHash 预筛' },
+        { layer: '标识', component: '雪花算法 Snowflake', why: '64bit 全局唯一趋势递增；分片主键与单据号底座，时钟回拨拒发兜底' },
         { layer: '检索', component: 'Elasticsearch 8', why: '订单 / 物资 / 网点全文与聚合；索引是投影，可随时重建' },
         { layer: '空间', component: 'PostGIS 3', why: '围栏精判与坐标反查；检索只给候选，结论由网点服务下' },
         { layer: '调度', component: 'XXL-Job 2.4', why: '13 个 handler 统一调度、分片广播、失败重试与执行日志，杜绝服务内私挂 crontab' },
         { layer: '对象', component: 'MinIO / 阿里云 OSS', why: 'POD 图片与账单附件直传，库里只存对象键与哈希' },
         { layer: '观测', component: 'Prometheus + Grafana + SkyWalking + Loki', why: '指标 / 链路 / 日志三件套；跨服务调用带 traceId，告警可追到那一跳' },
-        { layer: '交付', component: 'GitLab CI + ArgoCD + Kubernetes', why: '镜像化部署，按服务独立扩缩；扫描与定位上报高峰单独扩容' }
+        { layer: '交付', component: 'Jenkins + Docker + Kubernetes', why: 'Jenkinsfile 流水线即代码；镜像不可变，金丝雀 + 滚动发布，按服务独立扩缩' }
     ];
 
     var PHASES = [
@@ -656,6 +660,242 @@
         { no: 7, name: '事实只追加', text: '扫描、审计、财务流水不改不删，冲销用反向行。历史可重放，事后改库必定露馅。', tone: 'muted' },
         { no: 8, name: '判定与检索分离', text: '检索找候选，判定给结论。索引有秒级延迟，围栏精判与可派送结论不能依赖索引。', tone: 'brand' }
     ];
+
+    /* ---------- 分布式与运维技术体系 ----------
+       目标态的十件组件：每件都回答「在 TMS 里管什么、落在哪些服务、坏了怎么兜底」。
+       services / tables / flows 全部引用真实目录 id，冒烟逐条核对，写错即漂移 */
+
+    var DIST_CATS = [
+        { id: 'traffic', name: '接入与负载', hue: '#3d8bff', icon: '⛩', sub: '流量从域名到实例的三级接力' },
+        { id: 'govern', name: '服务治理', hue: '#4ecdc4', icon: '⚙', sub: '实例名单、配置开关、流量保险丝' },
+        { id: 'data', name: '数据与一致性', hue: '#f0a92e', icon: '⛁', sub: '拆分、事务、锁与全局标识' },
+        { id: 'observe', name: '可观测性', hue: '#2fa8e0', icon: '◉', sub: '链路与指标：慢在哪、错在哪' },
+        { id: 'delivery', name: '交付与运维', hue: '#8b7cf6', icon: '⎈', sub: '从提交到发布的全自动流水线' }
+    ];
+
+    var ALL_SVC = ['gateway', 'bff', 'order', 'branch', 'dispatch', 'billing', 'tms', 'kpi', 'job', 'search'];
+
+    var DISTRIBUTED = [
+        {
+            id: 'lb', no: 1, name: '负载均衡', product: 'Nginx + OpenFeign + Nacos', version: '三级接力',
+            cat: 'traffic', hue: '#7ed957', icon: '⚖',
+            role: '入口分流、客户端选实例、注册中心供名单，三级各管一段',
+            why: 'Nginx 管入口七层分流与健康检查；Feign 进程内负载省去一跳代理；Nacos 实时上下线让实例名单永远新鲜',
+            scenario: '客户请求 → Nginx（轮询 + 被动健康检查）→ 网关集群 → Feign 从 Nacos 拉 order-service 实例列表按权重轮询 → 具体实例；扫描高峰 tms-core 扩容后新实例秒级进入名单',
+            points: [
+                'Nginx：upstream 轮询 + max_fails 摘除 + keepalive 长连接 + keepalived VIP 防单点',
+                'Feign：负载均衡器订阅 Nacos，本地缓存名单 + 变更推送，权重 = 实例规格',
+                '灰度实例权重 5%，配合 Nacos 元数据 version 分组逐步放量',
+                '超时：连接 1s / 读 3s；只有幂等 GET 允许重试，写操作重试靠幂等键',
+                '会话不粘滞：服务无状态，令牌与配额都在 Redis'
+            ],
+            fallback: '实例连续失败被 Feign 临时摘除，Nacos 心跳 15s 剔除双保险；Nginx 单点由 keepalived VIP 漂移接管',
+            services: ['gateway', 'bff', 'order', 'branch', 'dispatch', 'billing', 'tms', 'kpi', 'search'],
+            tables: [], flows: ['quote', 'trunk', 'lastmile', 'change'],
+            metrics: [{ k: '接力层级', v: '3 级' }, { k: '实例策略', v: '权重轮询' }, { k: '故障摘除', v: '< 15s' }]
+        },
+        {
+            id: 'nacos', no: 2, name: '注册中心', product: 'Nacos', version: '2.4 · 注册发现 + 配置中心',
+            cat: 'govern', hue: '#4ecdc4', icon: '⌂',
+            role: '服务实例的户口本，也是不发版改配置的开关台',
+            why: '注册发现与配置中心二合一，Spring Cloud Alibaba 原生集成；临时实例 AP 保可用，持久配置 CP 保一致',
+            scenario: '十个服务与 XXL-Job 执行器全部注册；超时阈值、巡检 cron、费率开关、灰度分组放配置中心，改配置秒级推送不发版',
+            points: [
+                '命名空间按环境隔离：dev / staging / prod 互不串线',
+                '灰度分批：实例元数据 version = 灰度批次，网关按 header 路由',
+                '临时实例心跳 5s，15s 未心跳标记不健康，30s 剔除',
+                '配置监听 @RefreshScope 热生效；费率开关改动留审计',
+                '注册中心 3 节点集群，Raft 选主，机房级容灾'
+            ],
+            fallback: '客户端本地缓存实例名单：Nacos 全挂时存量调用不中断，只暂停新实例上下线；配置读本地快照兜底',
+            services: ALL_SVC, tables: [], flows: ['quote', 'trunk', 'lastmile', 'change', 'sweep', 'settle'],
+            metrics: [{ k: '集群', v: '3 节点' }, { k: '心跳', v: '5s' }, { k: '配置推送', v: '< 1s' }]
+        },
+        {
+            id: 'sentinel', no: 3, name: '服务熔断', product: 'Sentinel', version: '1.8 · 限流 / 熔断 / 降级',
+            cat: 'govern', hue: '#ff6b6b', icon: '⚡',
+            role: '流量洪峰与下游故障的保险丝：限流、熔断、降级三件套',
+            why: '规则可推送 Nacos 动态生效，带控制台与实时监控；比 Hystrix 活跃，与 Feign / Gateway 原生集成',
+            scenario: '网关按客户配额令牌桶；下单链路对计费 / 网点调用按异常比例熔断；扫描高峰对检索降级为只写不查，列表走缓存投影',
+            points: [
+                '网关层：按客户 + 接口双维度 QPS 令牌桶，单客户爆量不影响他人',
+                'Feign 熔断：异常比例 > 50% 或慢调用比例 > 60% 打开，30s 后半开试探',
+                '规则持久化到 Nacos dataId，控制台改规则全集群秒级生效',
+                '降级兜底讲业务：可派送判定失败转人工、计价失败拒单——绝不猜价放行',
+                '热点参数限流：大促客户单独配额，防止击穿共享池'
+            ],
+            fallback: '熔断打开走兜底逻辑（拒单 / 转人工 / 缓存旧值）；控制台不可用时客户端本地默认规则兜底，治理不中断',
+            services: ['gateway', 'bff', 'order', 'dispatch', 'billing', 'tms'],
+            tables: [], flows: ['quote', 'trunk', 'change'],
+            metrics: [{ k: '熔断阈值', v: '异常 50%' }, { k: '半开试探', v: '30s' }, { k: '限流维度', v: '客户 × 接口' }]
+        },
+        {
+            id: 'sharding', no: 4, name: '分库分表', product: 'Apache ShardingSphere', version: '5.5 · JDBC 无代理',
+            cat: 'data', hue: '#3d8bff', icon: '⛁',
+            role: '订单与扫描流水的水平拆分：容量与写入热点一起解决',
+            why: '订单 / 扫描是只追加大流水，单表过亿后索引维护比拆分更贵；JDBC 形态与业务同进程，没有代理层的网络损耗',
+            scenario: 'orders 按 customer_id 分 8 库；scans / sortingTasks / loadingTasks 按运单号哈希分 16 表；运价卡与字典作广播表，orders ↔ points 绑定表同键同片避免跨片 JOIN',
+            points: [
+                '分片键：订单 customer_id，作业流水 waybill_no——查询主路径都带键',
+                '广播表：rateCards 与字典全片同步，本地 JOIN 不跨网络',
+                '绑定表：orders ↔ points 同分片键，积分扣减与订单同片事务',
+                '主键接雪花算法，禁用各片自增；单据号 = 前缀 + 日期 + 雪花尾段',
+                '流水按窗口归档：scans 90 天 / finances 120 天，与容量治理同一口径'
+            ],
+            fallback: '不带分片键的查询强制走检索服务投影，禁止全片广播扫描；分片键选定后不可在线改，改键等于重建',
+            services: ['order', 'tms', 'billing', 'search'],
+            tables: ['orders', 'scans', 'sortingTasks', 'loadingTasks', 'finances', 'points'],
+            flows: ['quote', 'trunk', 'settle'],
+            metrics: [{ k: '订单', v: '8 库' }, { k: '流水', v: '16 表' }, { k: '单片水位', v: '< 5000 万行' }]
+        },
+        {
+            id: 'seata', no: 5, name: '分布式事务', product: 'Seata', version: '2.x · AT 模式',
+            cat: 'data', hue: '#f0a92e', icon: '⛓',
+            role: '跨服务写操作的原子性：要么全成，要么全回滚',
+            why: 'AT 模式自动代理数据源、生成反向 SQL，业务零侵入；与 ShardingSphere 可组合；长事务留给本地消息表',
+            scenario: '下单「落单 + 扣积分」跨订单库与积分片；改单「差价重算 + 路由重排」跨订单 / 计费 / 调度；代收上划「COD 核销 + 财务流水」跨计费两片',
+            points: [
+                'AT：一阶段本地提交 + undo_log，二阶段异步清理或反向补偿',
+                '全局锁防脏写：改单乐观锁 + Seata 全局锁双保险',
+                'TC 集群 3 节点注册到 Nacos，事务分组映射 TC 集群',
+                '悬挂 / 空回滚 / 幂等三大防护开启，undo_log 保留 7 天',
+                '月结这类长事务不用 AT：本地消息表 + 对账补偿，锁不住几十分钟'
+            ],
+            fallback: 'TC 不可用时新全局事务直接拒绝——宁可拒单不脏账；已提交的一阶段由恢复重试完成二阶段',
+            services: ['order', 'billing', 'dispatch', 'tms'],
+            tables: ['orders', 'points', 'finances', 'codRecords'],
+            flows: ['quote', 'change', 'lastmile'],
+            metrics: [{ k: 'TC 集群', v: '3 节点' }, { k: '全局超时', v: '60s' }, { k: 'undo_log', v: '7 天' }]
+        },
+        {
+            id: 'redis', no: 6, name: '分布式锁', product: 'Redis + Redisson', version: '7 Cluster · 看门狗续期',
+            cat: 'data', hue: '#d96bb0', icon: '⚿',
+            role: '抢单、幂等、配额的原子裁判：同一时刻只有一个赢家',
+            why: '抢单高并发下数据库行锁会打满连接池；Redis 原子命令 + Redisson 看门狗续期，锁粒度到单号，抢不到立即失败',
+            scenario: '派送抢单 lock:assign:{waybill} 同一单不会被两人抢走；支付回调 lock:pay:{tradeNo} 重复通知不重复扣积分；巡检 lock:job:{key} 防多执行器重跑',
+            points: [
+                'tryLock(waitTime = 0)：抢不到立即失败转下家，不排队空耗',
+                '看门狗自动续期 30s；持锁进程宕机，锁到期自动释放',
+                '锁 value = 请求标识，Lua 脚本校验持有者再解锁，防误删',
+                '不上红锁：主从异步复制的极端丢锁由业务幂等键兜底',
+                '配额计数 INCR + 过期窗口；令牌桶在网关，锁只管互斥'
+            ],
+            fallback: 'Redis 不可用：抢单降级为调度台指派模式，幂等退到数据库唯一索引；恢复后自动切回',
+            services: ['gateway', 'order', 'dispatch', 'tms', 'job'],
+            tables: ['orders', 'points'], flows: ['quote', 'lastmile', 'sweep'],
+            metrics: [{ k: '锁粒度', v: '单号 / 交易号' }, { k: '续期', v: '30s' }, { k: '抢锁', v: '失败即转' }]
+        },
+        {
+            id: 'snowflake', no: 7, name: '分布式 ID', product: '雪花算法 Snowflake', version: '64bit · 本地生成',
+            cat: 'data', hue: '#8fa8c8', icon: '❄',
+            role: '全局唯一、趋势递增的 64 位 ID：分片主键与单据号的共同底座',
+            why: '分库分表后自增主键失效，UUID 无序撑爆 B+ 树；雪花本地生成零网络开销，时间有序对索引友好',
+            scenario: 'orders / scans / finances 分片主键；运单号 = 前缀 + 日期 + 雪花尾段；workerId 按 K8s StatefulSet 序号注入，数据中心位按机房划分',
+            points: [
+                '64bit = 1 符号 + 41 时间戳 + 5 数据中心 + 5 工作节点 + 12 序列号',
+                '自定义纪元 2024-01-01 起可用 69 年；单节点每毫秒 4096 个',
+                '理论峰值单节点 409.6 万 ID / 秒，生成不出进程',
+                '时钟回拨 ≤ 5ms 等待追平，> 5ms 拒绝发号并上报告警',
+                'workerId 启动自检：与 Nacos 登记的实例身份冲突则拒绝上线'
+            ],
+            fallback: '回拨超容忍宁可失败不发重号；号段模式（Leaf-segment）作应急兜底，恢复后切回雪花',
+            services: ['order', 'branch', 'dispatch', 'billing', 'tms', 'kpi'],
+            tables: ['orders', 'scans', 'finances', 'receivables', 'payables'],
+            flows: ['quote', 'trunk', 'settle'],
+            metrics: [{ k: '位宽', v: '64 bit' }, { k: '每毫秒', v: '4096 个' }, { k: '纪元寿命', v: '69 年' }]
+        },
+        {
+            id: 'skywalking', no: 8, name: '应用监控', product: 'SkyWalking', version: '10 · 全链路追踪',
+            cat: 'observe', hue: '#2fa8e0', icon: '◉',
+            role: '跨服务一跳一跳的 traceId 追踪：慢在哪一跳、错在哪一跳一眼可见',
+            why: 'Java Agent 无侵入探针，自动埋点 Spring / Feign / MySQL / Redis / RocketMQ；OAP 集群水平扩展',
+            scenario: '下单 8 步链路全程一个 traceId；改单差价重算的慢调用定位到 billing reprice；巡检跨 6 服务读事实的耗时逐跳拆解',
+            points: [
+                'Agent 挂载零代码改动；traceId 透传 HTTP header / MQ 属性 / 调度上下文',
+                '采样：正常 10%，错误与慢调用全量保留',
+                '服务拓扑自动发现，依赖图与架构目录互验',
+                'P99 超阈值 webhook 到告警台账，与业务告警同一入口',
+                '日志打 traceId（Loki），指标 / 链路 / 日志三向互查'
+            ],
+            fallback: 'OAP 不可用时探针本地缓冲后丢弃，业务零影响；链路缺失以 Prometheus 指标 + 日志 traceId 互查',
+            services: ALL_SVC, tables: [], flows: ['quote', 'change', 'sweep', 'settle'],
+            metrics: [{ k: '采样', v: '10% + 错误全量' }, { k: '埋点', v: '零侵入' }, { k: '告警', v: 'P99 阈值' }]
+        },
+        {
+            id: 'prometheus', no: 9, name: '指标监控', product: 'Prometheus + Grafana', version: 'Alertmanager 告警分级',
+            cat: 'observe', hue: '#e8632c', icon: '∿',
+            role: '数值形态的观测：QPS、延迟、错误率、资源水位与分级告警',
+            why: '拉模式契合 K8s 服务发现，PromQL 表达力强；与 SkyWalking 互补——指标看趋势，链路看个案',
+            scenario: '十服务 RED 指标 + MySQL 分片水位 + Redis 命中率 + 巡检耗时；告警 P1 电话 / P2 企微，落 alerts 台账双向收口',
+            points: [
+                'ServiceMonitor 自动发现抓取目标，新实例上线即被监控',
+                '黄金指标 + USE：错误率 > 1% 持续 5min / P99 > 2s / 分片水位 > 80% 触发',
+                'Alertmanager 分组 / 抑制 / 静默，发布窗口自动静默',
+                'Grafana 三视角看板：服务健康 / 链路耗时 / 容量水位',
+                '本地保留 15 天，Thanos 侧车长期存储 1 年'
+            ],
+            fallback: 'exporter 失联标记 down 并告警；Prometheus 双副本互备；告警通道故障时本地台账兜底可查',
+            services: ALL_SVC, tables: ['alerts'], flows: ['sweep'],
+            metrics: [{ k: '抓取间隔', v: '15s' }, { k: '本地保留', v: '15 天' }, { k: '长期存储', v: '1 年' }]
+        },
+        {
+            id: 'cicd', no: 10, name: 'CI/CD 运维', product: 'Jenkins + Docker + Kubernetes', version: 'Harbor 仓库 · 金丝雀发布',
+            cat: 'delivery', hue: '#8b7cf6', icon: '⎈',
+            role: '从 git push 到生产发布的全自动流水线，按服务独立交付',
+            why: 'Jenkinsfile 流水线即代码进库评审；Docker 镜像不可变；K8s 滚动 + 金丝雀把发布风险关进笼子',
+            scenario: '十服务各自 Jenkinsfile；扫描上报高峰单独扩容 tms-core；发布带 Nacos 灰度元数据按 5% → 30% → 全量；回滚 = 切上一镜像 tag',
+            points: [
+                '八阶段：提交 → 触发 → 检查 → 构建 → 仓库 → 金丝雀 → 全量 → 验证',
+                '镜像 tag = git sha 禁止 latest；Harbor 签名 + 漏洞扫描',
+                'K8s HPA：CPU 70% 或 QPS 阈值自动扩缩，扫描高峰单独扩 tms-core',
+                '就绪探针接 Nacos 注册：未就绪不接流量，发布不掉单',
+                '发布窗口与账期任务互斥：月结凌晨不发布'
+            ],
+            fallback: '金丝雀指标异常自动回滚上一 tag（< 2min）；节点故障 Pod 自动漂移；Jenkins 故障只影响新发布排队',
+            services: ALL_SVC, tables: [], flows: [],
+            metrics: [{ k: '流水线', v: '8 阶段' }, { k: '金丝雀', v: '5% → 30% → 全量' }, { k: '回滚', v: '< 2min' }]
+        }
+    ];
+
+    /* CI/CD 八阶段：与 cicd 组件的 points 同一口径，阶段点击看出口条件与失败处置 */
+    var CICD = [
+        { id: 'git', no: 1, name: '提交代码', tool: 'GitLab', hue: '#7ed957', dur: '即时',
+            action: 'git push / MR 合并触发 webhook，分支保护 + 评审通过才进主干',
+            exit: '评审通过，流水线参数（服务 / 环境 / tag）校验合法', fail: '评审打回，webhook 不触发' },
+        { id: 'jenkins', no: 2, name: '触发流水线', tool: 'Jenkins', hue: '#8b7cf6', dur: '< 10s',
+            action: 'Jenkinsfile 声明式流水线，按服务独立 job，构建参数注入镜像 tag',
+            exit: 'job 排队成功，工作区清理完毕', fail: '参数非法直接拒绝，不占构建资源' },
+        { id: 'check', no: 3, name: '检查与单测', tool: 'SonarQube + JUnit', hue: '#4ecdc4', dur: '3–5min',
+            action: '静态扫描 + 架构守护测试（禁止跨包写表）+ 契约测试 + 覆盖率门禁',
+            exit: '覆盖率 ≥ 70%，无阻断级异味，契约测试全绿', fail: '任一门禁红即停，通知提交人' },
+        { id: 'docker', no: 4, name: '构建镜像', tool: 'Docker', hue: '#3d8bff', dur: '2–4min',
+            action: '多阶段构建瘦身，tag = git sha，层缓存复用依赖层',
+            exit: '镜像构建成功且扫描无高危漏洞', fail: '高危漏洞阻断推送，修复后重跑' },
+        { id: 'harbor', no: 5, name: '推送仓库', tool: 'Harbor', hue: '#2fa8e0', dur: '< 1min',
+            action: '推送私有仓库，镜像签名 + 漏洞扫描报告归档',
+            exit: '集群可拉取，签名验证通过', fail: '推送失败重试 3 次，仓库不可用暂停发布' },
+        { id: 'canary', no: 6, name: '金丝雀发布', tool: 'K8s + Nacos 灰度', hue: '#f0a92e', dur: '15min 观察',
+            action: '灰度实例权重 5%，Nacos 元数据 version 分组，对比基线错误率与 P99',
+            exit: '15min 指标无异常，放量 30% 再观察', fail: '指标异常自动回滚上一 tag，告警 P2' },
+        { id: 'full', no: 7, name: '全量滚动', tool: 'K8s RollingUpdate', hue: '#46c07a', dur: '3–8min',
+            action: 'maxSurge 1 / maxUnavailable 0 逐批替换，就绪探针接 Nacos 注册',
+            exit: '全部实例就绪且进入负载名单', fail: '就绪探针失败暂停滚动，保留旧实例继续服务' },
+        { id: 'verify', no: 8, name: '发布后验证', tool: 'Prometheus + SkyWalking', hue: '#e8632c', dur: '30min',
+            action: '错误率 / P99 对比发布基线，链路抽查，告警静默解除',
+            exit: '30min 无异常，发布单自动关闭归档', fail: '异常触发回滚预案，发布单转事故复盘' }
+    ];
+
+    /* 负载均衡三级接力：每一跳的策略与兜底都标在图上 */
+    var LB_PATH = {
+        hops: [
+            { id: 'client', name: '客户端', sub: 'APP / PC / 小程序 / PDA / 开放平台', hue: '#9aa7bd', icon: '▣' },
+            { id: 'nginx', name: 'Nginx', sub: '入口七层负载', policy: '轮询 + max_fails 健康检查', detail: 'keepalive 长连接 · keepalived VIP 防单点', hue: '#7ed957', icon: '⚖' },
+            { id: 'gateway', name: '网关集群', sub: 'Spring Cloud Gateway × 2', policy: '路由 + 鉴权 + 配额限流', detail: 'Sentinel 令牌桶按客户 × 接口', hue: '#3d8bff', icon: '⛩' },
+            { id: 'feign', name: 'OpenFeign', sub: '进程内客户端负载', policy: '权重轮询 · 本地缓存名单', detail: '连接 1s / 读 3s · 幂等 GET 才重试', hue: '#4ecdc4', icon: '⇄' },
+            { id: 'instance', name: '服务实例', sub: 'order-service × 3', policy: '无状态 · 灰度权重 5%', detail: '新实例扩容秒级进名单', hue: '#f0a92e', icon: '▦' }
+        ],
+        registry: { name: 'Nacos 注册中心', sub: '心跳 5s · 15s 摘除 · 变更推送', hue: '#4ecdc4' }
+    };
 
     /* ---------- 派生读模型 ---------- */
 
@@ -1043,11 +1283,59 @@
         };
     }
 
+    /* ---------- 分布式体系读模型 ---------- */
+
+    function distCats() {
+        return DIST_CATS.map(function (c) {
+            var items = DISTRIBUTED.filter(function (t) { return t.cat === c.id; });
+            return {
+                id: c.id, name: c.name, hue: c.hue, icon: c.icon, sub: c.sub,
+                count: items.length, techs: items.map(function (t) { return t.id; })
+            };
+        });
+    }
+
+    function distributed() { return DISTRIBUTED.slice(); }
+
+    function distTech(id) {
+        for (var i = 0; i < DISTRIBUTED.length; i++) if (DISTRIBUTED[i].id === id) return DISTRIBUTED[i];
+        return null;
+    }
+
+    /* 技术 × 服务覆盖矩阵：行是组件，列是服务，交叉点给出「管什么」一句话 */
+    function distMatrix() {
+        return DISTRIBUTED.map(function (t) {
+            return {
+                id: t.id, no: t.no, name: t.name, product: t.product, hue: t.hue, cat: t.cat,
+                cells: SERVICES.map(function (s) { return t.services.indexOf(s.id) > -1; }),
+                count: t.services.length
+            };
+        });
+    }
+
+    function distStats() {
+        var links = 0, full = 0;
+        DISTRIBUTED.forEach(function (t) {
+            links += t.services.length;
+            if (t.services.length === SERVICES.length) full++;
+        });
+        return {
+            techs: DISTRIBUTED.length, cats: DIST_CATS.length, links: links, full: full,
+            stages: CICD.length,
+            points: DISTRIBUTED.reduce(function (a, t) { return a + t.points.length; }, 0)
+        };
+    }
+
+    function cicd() { return CICD.slice(); }
+    function lbPath() { return LB_PATH; }
+
     TMS.architecture = {
         services: services, service: service, layers: layers, coverage: coverage,
         stats: stats, matrix: matrix, ownership: ownership, neighbors: neighbors,
         flows: flows, flow: flow, jobPlan: jobPlan,
         stack: stack, evolution: evolution, principles: principles,
-        infra: infra, clients: clients, topology: topology, syncCycle: syncCycle
+        infra: infra, clients: clients, topology: topology, syncCycle: syncCycle,
+        distCats: distCats, distributed: distributed, distTech: distTech,
+        distMatrix: distMatrix, distStats: distStats, cicd: cicd, lbPath: lbPath
     };
 })(window);
