@@ -58,8 +58,9 @@
     var REMOTE = ['乌鲁木齐', '兰州', '昆明', '贵阳', '海口', '呼和浩特', '哈尔滨', '拉萨'];
 
     /* 干线只跑一级中转站（跨省/区域分拣中心）：杭州/深圳/郑州这类二级城市在干支分离网络里
-       不承担跨区班线，其货量按 zone 归口到一级枢纽。兰州/杭州是省级分拣中心，
-       甘肃/浙江的省内跨市与跨省件都归口到它们， lanes 随 9 座一级枢纽两两直发 */
+       不承担跨区班线，其货量按 zone 归口到一级枢纽。兰州/杭州/南京是省级分拣中心，
+       甘肃/浙江/江苏的省内跨市与跨省件都归口到它们， lanes 随 10 座一级枢纽两两直发；
+       超长途跨省件允许多个一级枢纽串联（兰州→西安→武汉→南京→杭州），逐段装卸 */
     var HUB_SEEDS = [
         { id: 'HB0001', name: '上海分拨中心', city: '上海', zone: '华东', role: '区域枢纽', level: 1, area: 46000, capacity: 180000 },
         { id: 'HB0002', name: '广州分拨中心', city: '广州', zone: '华南', role: '区域枢纽', level: 1, area: 38000, capacity: 150000 },
@@ -69,7 +70,8 @@
         { id: 'HB0006', name: '西安分拨中心', city: '西安', zone: '西北', role: '区域枢纽', level: 1, area: 22000, capacity: 80000 },
         { id: 'HB0007', name: '沈阳分拨中心', city: '沈阳', zone: '东北', role: '区域枢纽', level: 1, area: 20000, capacity: 70000 },
         { id: 'HB0008', name: '兰州跨省分拣中心', city: '兰州', zone: '西北', role: '区域枢纽', level: 1, area: 26000, capacity: 90000 },
-        { id: 'HB0009', name: '杭州跨省分拣中心', city: '杭州', zone: '华东', role: '区域枢纽', level: 1, area: 34000, capacity: 130000 }
+        { id: 'HB0009', name: '杭州跨省分拣中心', city: '杭州', zone: '华东', role: '区域枢纽', level: 1, area: 34000, capacity: 130000 },
+        { id: 'HB0010', name: '南京跨省分拣中心', city: '南京', zone: '华东', role: '区域枢纽', level: 1, area: 30000, capacity: 110000 }
     ];
 
     /* ---------- 行政区划三级：省 → 市 → 区 ----------
@@ -553,8 +555,8 @@
                 else add(a, b, '铁路', '周一/三/五');
             }
         }
-        // 高价值件空运班次（兰州/杭州升为一级分拣中心后也开航空口岸）
-        ['上海', '广州', '北京', '成都', '武汉', '兰州', '杭州'].forEach(function (c) {
+        // 高价值件空运班次（兰州/杭州/南京升为一级分拣中心后也开航空口岸）
+        ['上海', '广州', '北京', '成都', '武汉', '兰州', '杭州', '南京'].forEach(function (c) {
             var from = hubByNameOrId(c);
             HUB_SEEDS.forEach(function (to) {
                 if (to.id === from.id) return;
@@ -1339,7 +1341,7 @@
             transfers: m.transfers, trunkLegs: legs === null ? 1 : legs.length,
             trunkCost: m.trunkCost, reliability: m.reliability,
             label: legs !== null && !legs.length ? (stationXfers ? '省域中转' : '支线直达')
-                : (m.transfers === 0 ? '直达' : (m.transfers === 1 ? '一经中转' : '两经中转'))
+                : (m.transfers === 0 ? '直达' : (m.transfers === 1 ? '一经中转' : (m.transfers === 2 ? '两经中转' : m.transfers + ' 经中转')))
         };
     }
 

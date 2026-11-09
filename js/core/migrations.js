@@ -171,18 +171,17 @@
         /* v13：中转站分级（一级跨省分拣中心/二级城市中转站/三级县域中转场）。
            兰州/杭州升为一级枢纽，定西/嘉峪关/嘉兴开城补网点；只增不改业务单——
            已有订单的 hubFrom/hubTo 是随单快照，已有路由段次照旧，重算才走新链路。
-           网点归口随最近一级枢纽刷新（乌鲁木齐/宁波/南京/合肥/福州/厦门改挂兰州/杭州），
-           这是「路由是班次派生物」的既定口径，不算动用户数据 */
+           网点归口随最近一级枢纽刷新，这是「路由是班次派生物」的既定口径，不算动用户数据 */
         13: function (db, TMS) {
             var util = TMS.util, master = TMS.master;
             var rand = util.rng(20261108);
             var data = db.data;
             data.cities = util.clone(master.CITIES);
 
-            /* 一级枢纽补齐：老 7 座补 level 字段，兰州/杭州建档 */
+            /* 一级枢纽补齐：老 7 座补 level 字段，兰州/杭州建档（冻结在 v13 的九座，南京归 v14） */
             var hubs = data.hubs || (data.hubs = []);
             hubs.forEach(function (h) { if (!h.level) { h.level = 1; h.levelName = '一级中转站'; } });
-            master.HUBS.forEach(function (seed) {
+            master.HUBS.filter(function (h) { return h.id !== 'HB0010'; }).forEach(function (seed) {
                 if (hubs.some(function (h) { return h.id === seed.id; })) return;
                 var c = master.cityByName(seed.city);
                 hubs.push({
@@ -225,7 +224,7 @@
                     });
                 });
             });
-            /* 归口刷新：一级枢纽变了的城市，网点跟着改挂（乌鲁木齐→兰州、宁波/南京/合肥/福州/厦门→杭州） */
+            /* 归口刷新：一级枢纽变了的城市，网点跟着改挂 */
             branches.forEach(function (b) {
                 var hub = master.hubOfCity(b.city);
                 if (hub && b.hubId !== hub.id) { b.hubId = hub.id; b.hubName = hub.name; }
@@ -295,6 +294,76 @@
                     deviationCount: 0, status: 'active', updatedAt: util.iso(util.now())
                 });
             });
+        },
+        /* v14：南京升为一级跨省分拣中心（华东），超长途跨省件支持多枢纽串联——
+           嘉峪关→嘉兴 可走 兰州→西安→武汉→南京→杭州 四段干线，中途枢纽逐段装卸。
+           只增不改业务单：南京建档、涉及南京的班线补齐、网点归口按最近一级枢纽刷新 */
+        14: function (db, TMS) {
+            var util = TMS.util, master = TMS.master;
+            var rand = util.rng(20261109);
+            var data = db.data;
+            var hubs = data.hubs || (data.hubs = []);
+            var seed = master.hubByNameOrId('HB0010');
+            if (seed && !hubs.some(function (h) { return h.id === seed.id; })) {
+                var c = master.cityByName(seed.city);
+                hubs.push({
+                    id: seed.id, name: seed.name, city: seed.city, zone: seed.zone, role: seed.role,
+                    level: 1, levelName: '一级中转站',
+                    address: seed.city + '市' + master.districtsOf(seed.city)[0].name + '物流大道 1 号',
+                    lat: c.lat, lng: c.lng, areaM2: seed.area, capacityPieces: seed.capacity,
+                    usedPieces: Math.floor(seed.capacity * (0.28 + rand() * 0.5)),
+                    manager: seed.city + '主管', phone: master.phone(rand),
+                    status: 'active', sortLines: 4 + Math.floor(rand() * 8),
+                    updatedAt: util.iso(util.now())
+                });
+            }
+            var branches = data.branches || (data.branches = []);
+            branches.forEach(function (b) {
+                var hub = master.hubOfCity(b.city);
+                if (hub && b.hubId !== hub.id) { b.hubId = hub.id; b.hubName = hub.name; }
+            });
+
+            var trips = data.trips || (data.trips = []);
+            var trSeq = trips.reduce(function (m, t) { return Math.max(m, parseInt(String(t.id).replace(/\D/g, ''), 10) || 0); }, 0);
+            function addTrip(a, b, mode, freq) {
+                var km = util.distanceKm(master.cityByName(a.city), master.cityByName(b.city));
+                if (!km) return;
+                if (trips.some(function (t) { return t.fromHub === a.id && t.toHub === b.id && t.mode === mode; })) return;
+                var depart = 18 + Math.floor(rand() * 5);
+                var hours = master.transitHours(km, mode);
+                trSeq++;
+                trips.push({
+                    id: 'TRP' + util.pad(trSeq, 4),
+                    code: a.city + '—' + b.city + ' ' + (mode === '陆运' ? '干线' : mode),
+                    fromHub: a.id, fromHubName: a.name, fromCity: a.city,
+                    toHub: b.id, toHubName: b.name, toCity: b.city,
+                    mode: mode, distanceKm: km, transitHours: hours,
+                    departAt: util.pad(depart % 24) + ':' + util.pick(['00', '30'], rand),
+                    arriveAt: util.pad(((depart % 24) + hours) % 24) + ':' + util.pick(['00', '30'], rand),
+                    days: freq, vehicleType: mode === '空运' ? '-' : (km > 900 ? 'TRL' : (km > 400 ? 'MAX' : 'MID')),
+                    capacityKg: mode === '空运' ? 4000 : (km > 900 ? 25000 : 12000),
+                    onTimeRate: util.round(0.9 + rand() * 0.08, 3), status: 'active'
+                });
+            }
+            if (seed) {
+                master.HUBS.forEach(function (other) {
+                    if (other.id === seed.id) return;
+                    var km = util.distanceKm(master.cityByName(seed.city), master.cityByName(other.city));
+                    if (km < 120) return;
+                    var freq = seed.zone === other.zone || km <= 1100 ? '每天' : (km <= 2000 ? '周二/四/六' : '周一/三/五');
+                    var mode = seed.zone !== other.zone && km > 2000 ? '铁路' : '陆运';
+                    addTrip(seed, other, mode, freq);
+                    addTrip(other, seed, mode, freq);
+                });
+                ['上海', '广州', '北京', '成都', '武汉', '兰州', '杭州', '南京'].forEach(function (fromCity) {
+                    var from = master.hubByNameOrId(fromCity);
+                    master.HUBS.forEach(function (to) {
+                        if (to.id === from.id) return;
+                        if (from.id !== 'HB0010' && to.id !== 'HB0010') return;
+                        if (util.distanceKm(master.cityByName(from.city), master.cityByName(to.city)) > 1200) addTrip(from, to, '空运', '每天');
+                    });
+                });
+            }
         }
     };
 })(window);

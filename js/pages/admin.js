@@ -1929,7 +1929,7 @@
 
     function plannerState(ctx) {
         var st = ctx.state;
-        if (!st.pl) st.pl = { origin: '上海', destination: '成都', originDistrict: '', destDistrict: '', service: '标准', strategy: '', maxTransfers: '2', mode: '', picked: 0 };
+        if (!st.pl) st.pl = { origin: '上海', destination: '成都', originDistrict: '', destDistrict: '', service: '标准', strategy: '', maxTransfers: '4', mode: '', picked: 0 };
         return st.pl;
     }
 
@@ -1978,7 +1978,7 @@
                 { key: 'strategy', label: '规划策略', type: 'select', placeholder: '跟随产品（' + (TMS.network.SERVICE_STRATEGY[pl.service] || '均衡') + '）',
                   options: Object.keys(TMS.network.STRATEGIES).map(function (k) { return { value: k, label: TMS.network.STRATEGIES[k].name }; }), change: 'rt:pl-set' },
                 { key: 'maxTransfers', label: '最多中转', type: 'select', placeholder: false,
-                  options: [{ value: '0', label: '0 次（仅直达）' }, { value: '1', label: '1 次中转' }, { value: '2', label: '2 次中转' }], change: 'rt:pl-set' },
+                  options: [{ value: '0', label: '0 次（仅直达）' }, { value: '1', label: '1 次中转' }, { value: '2', label: '2 次中转' }, { value: '3', label: '3 次中转' }, { value: '4', label: '4 次（多枢纽串联）' }], change: 'rt:pl-set' },
                 { key: 'mode', label: '干线方式', type: 'select', placeholder: '跟随产品（' + (pl.service === '加急' ? '空运优先' : '陆运') + '）',
                   options: [{ value: '陆运', label: '陆运（含铁路）' }, { value: '空运', label: '空运优先（可联运）' }, { value: '不限', label: '不限方式' }], change: 'rt:pl-set' }
             ],
@@ -1998,12 +1998,22 @@
                 '共 ' + res.candidates.length + ' 个可行方案 · 策略「' + esc((TMS.network.STRATEGIES[res.strategy] || {}).name || res.strategy) + '」· ' +
                 '推荐 ' + esc(best.label) + '（' + best.score + ' 分）' +
                 (res.airFallback ? ' · 本 OD 无空运通道，已按陆运时效优先规划' : ''), 'info'));
-            var rows = res.candidates.slice(0, 8).map(function (c, i) { c.cid = i; return c; });
+            /* 深链不会在评分上赢过直达，但跨省干线就是要逐枢纽凑货串联——
+               前 6 名之外按干线段数各留一个最优代表，兰州→西安→武汉→南京→杭州这类方案永远选得到 */
+            var top = res.candidates.slice(0, 6), extra = [];
+            [3, 4, 5].forEach(function (n) {
+                for (var i = 0; i < res.candidates.length; i++) {
+                    var x = res.candidates[i];
+                    if ((x.trunkLegs || 0) === n && top.indexOf(x) < 0 && extra.indexOf(x) < 0) { extra.push(x); break; }
+                }
+            });
+            var rows = top.concat(extra).map(function (c) { c.cid = res.candidates.indexOf(c); return c; });
             body.push(ui.table({
                 dense: true, keyName: 'cid', rows: rows, selected: Number(pl.picked) || 0, zebra: true,
                 columns: [
                     { key: 'label', label: '方案', sortable: false, render: function (c) {
                         return '<b>' + esc(c.label) + '</b>' + (c.cid === 0 ? ' ' + ui.badge('推荐', 'success') : '') +
+                            (c.trunkLegs >= 4 ? ' ' + ui.badge('多枢纽串联', 'info') : '') +
                             (c.mode === '联运' ? ' ' + ui.badge('空陆联运', 'brand') : '') +
                             '<div class="tms-dim" style="font-size:11px">' + esc(planChainText(c)) + '</div>';
                     } },
@@ -2023,7 +2033,7 @@
                     } }
                 ]
             }));
-            if (res.candidates.length > 8) body.push('<div class="tms-dim" style="font-size:12px">仅展示得分前 8 的方案，其余 ' + (res.candidates.length - 8) + ' 个已参与评分未列出</div>');
+            if (res.candidates.length > rows.length) body.push('<div class="tms-dim" style="font-size:12px">展示得分前 6 名与 3/4/5 段干线的串联代表方案，其余 ' + (res.candidates.length - rows.length) + ' 个已参与评分未列出</div>');
             var picked = plannerPicked(res, pl);
             if (picked) {
                 body.push(ui.card({
@@ -2041,7 +2051,7 @@
         }
         return ui.card({
             title: '智能路由规划台',
-            sub: '分级中转：网点 → 三级中转场（县） → 二级中转站（市） → 一级中转站（跨省枢纽），班次图全路径枚举同场评分，改动条件即时重算',
+            sub: '分级中转：网点 → 三级中转场（县） → 二级中转站（市） → 一级中转站（跨省枢纽，可多站串联），班次图全路径枚举同场评分，改动条件即时重算',
             flat: true, body: ui.stack(body)
         });
     }

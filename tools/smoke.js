@@ -634,12 +634,16 @@ section('分级中转路由体系');
     check('示例区县真实在册', M.districtsOf('定西').some((d) => d.name === '陇西县') &&
         M.districtsOf('嘉峪关').some((d) => d.name === '雄关区') && M.districtsOf('嘉兴').some((d) => d.name === '海宁市'));
     const hubs = db.col('hubs');
-    check('九座一级中转站全部建档且标级', hubs.length === 9 && hubs.every((h) => h.level === 1),
+    check('十座一级中转站全部建档且标级', hubs.length === 10 && hubs.every((h) => h.level === 1),
         hubs.length + ' 座');
-    check('兰州/杭州跨省分拣中心在册', hubs.some((h) => h.name === '兰州跨省分拣中心') && hubs.some((h) => h.name === '杭州跨省分拣中心'));
+    check('兰州/杭州/南京跨省分拣中心在册', hubs.some((h) => h.name === '兰州跨省分拣中心') && hubs.some((h) => h.name === '杭州跨省分拣中心') &&
+        hubs.some((h) => h.name === '南京跨省分拣中心'));
     check('定西/嘉峪关归口兰州、嘉兴归口杭州',
         M.hubOfCity('定西').id === 'HB0008' && M.hubOfCity('嘉峪关').id === 'HB0008' && M.hubOfCity('嘉兴').id === 'HB0009',
         M.hubOfCity('定西').name + ' / ' + M.hubOfCity('嘉兴').name);
+    check('南京/合肥归口南京跨省分拣中心',
+        M.hubOfCity('南京').id === 'HB0010' && M.hubOfCity('合肥').id === 'HB0010',
+        M.hubOfCity('南京').name + ' / ' + M.hubOfCity('合肥').name);
     check('县/县级市才设三级中转场', M.isCountyDistrict('陇西县') && M.isCountyDistrict('海宁市') &&
         !M.isCountyDistrict('南湖区') && !M.isCountyDistrict('新城镇'));
     check('二三级中转站是派生节点不落 hubs 表', !hubs.some((h) => /中转站$|中转场$/.test(h.name)) &&
@@ -668,11 +672,31 @@ section('分级中转路由体系');
     check('示例二装卸计划班次衔接不断链', ops2.length > 0 && ops2.every((o) => o.prevTripCode && o.nextTripCode),
         ops2.length ? ops2[0].prevTripCode + ' → ' + ops2[0].nextTripCode : '无');
 
-    /* 共享出省枢纽的两城：省域支线直连二级，不绕出省再绕回来（南京/合肥同归杭州） */
-    const p3 = N.planOptions('南京', '合肥', '标准', {});
+    /* 共享出省枢纽的两城：省域支线直连二级，不绕出省再绕回来（福州/厦门同归杭州） */
+    const p3 = N.planOptions('福州', '厦门', '标准', {});
     const c3 = p3 ? chainOf(p3.best) : [];
-    check('南京→合肥不绕杭州枢纽', !!p3 && c3.indexOf('南京中转站') > -1 && c3.indexOf('合肥中转站') > -1 &&
+    check('福州→厦门不绕杭州枢纽', !!p3 && c3.indexOf('福州中转站') > -1 && c3.indexOf('厦门中转站') > -1 &&
         !c3.some((n) => /分拣中心|分拨中心/.test(n)), c3.join(' → '));
+
+    /* 示例二·深链：嘉峪关→嘉兴 跨省跨度大，兰州→西安→武汉→南京→杭州 四段干线逐枢纽串联，
+       中途枢纽有发往杭州或路径下一站的班线就必须进候选，选用后装卸计划覆盖每个串联枢纽 */
+    const p4 = N.planOptions('嘉峪关', '嘉兴', '标准', { originDistrict: '雄关区', destDistrict: '海宁市', maxTransfers: 4 });
+    const deep = p4 ? p4.candidates.filter((p) => {
+        const trunk = (p.segments || []).filter((s) => s.legType === 'trunk').map((s) => s.from);
+        const to = (p.segments || []).filter((s) => s.legType === 'trunk').map((s) => s.to);
+        const hubs5 = trunk.concat(to.length ? to[to.length - 1] : []);
+        return hubs5.join('|') === '兰州跨省分拣中心|西安分拨中心|武汉分拨中心|南京跨省分拣中心|杭州跨省分拣中心';
+    })[0] : null;
+    check('深链候选：兰州→西安→武汉→南京→杭州 四段干线', !!deep && deep.trunkLegs === 4,
+        deep ? chainOf(deep).join(' → ') : '未枚举到');
+    check('深链全程网点起县域网点止', !!deep && /雄关区/.test(chainOf(deep)[0] || '') && /海宁市/.test(chainOf(deep).slice(-1)[0] || ''),
+        deep ? chainOf(deep)[0] + ' … ' + chainOf(deep).slice(-1)[0] : '无');
+    const ops4 = deep ? deep.transfers : [];
+    check('深链装卸计划覆盖西安/武汉/南京且标一级', ['西安', '武汉', '南京'].every((c) => ops4.some((o) => o.city === c && o.level === 1)),
+        ops4.map((o) => o.hub).join(' / '));
+    check('深链装卸班次衔接不断链', ops4.length > 0 && ops4.every((o) => o.prevTripCode && o.nextTripCode),
+        ops4.length ? ops4[0].prevTripCode + ' → ' + ops4[0].nextTripCode : '无');
+    check('深链方案标记多经中转', !!deep && /3 经中转/.test(deep.label || ''), deep ? deep.label : '无');
 
     /* 规划台选中区县后链路条/段次分级徽标要渲染出来 */
     const def = TMS.pages.get('route');
@@ -688,6 +712,17 @@ section('分级中转路由体系');
         check('段次表起讫带中转层级短标', html.indexOf('>一级<') > -1 && html.indexOf('>三级<') > -1 && html.indexOf('未定级') < 0);
         check('区县下拉带真实县名', html.indexOf('海宁市') > -1 && html.indexOf('雄关区') > -1);
         check('分级规划渲染无脏值', !/undefined|NaN|\[object Object\]/.test(html));
+    } finally {
+        rst.pl = keepPl;
+    }
+    /* 深链在规划台要可见可选：前 6 名之外留各深度串联代表，多枢纽串联徽标 + 南京枢纽出现在候选链路 */
+    rst.pl = { origin: '嘉峪关', destination: '嘉兴', originDistrict: '雄关区', destDistrict: '海宁市', service: '标准', strategy: '', maxTransfers: '4', mode: '', picked: 0 };
+    try {
+        const rctx = { shell: TMS.shell, session: { username: 'admin', name: '冒烟', role: 'admin', permissions: [] }, params: {}, days: 7, layout: 'full', pageId: 'route', role: 'admin', state: rst };
+        const html = String(def.render(rctx, def.load(rctx)) || '');
+        check('规划台列出多枢纽串联代表方案', html.indexOf('多枢纽串联') > -1 && html.indexOf('南京跨省分拣中心') > -1);
+        check('最多中转档位放宽到 4 次', html.indexOf('4 次（多枢纽串联）') > -1 && html.indexOf('3 次中转') > -1);
+        check('深链规划渲染无脏值', !/undefined|NaN|\[object Object\]/.test(html));
     } finally {
         rst.pl = keepPl;
     }
@@ -713,7 +748,6 @@ section('分级中转路由体系');
         raw.data.branches.some((b) => b.city === '定西' && /陇西县/.test(b.name)) &&
         raw.data.branches.some((b) => b.city === '嘉兴' && /海宁市/.test(b.name)) &&
         new Set(raw.data.branches.map((b) => b.id)).size === 6);
-    check('v13 网点归口随最近一级枢纽刷新', raw.data.branches[1].hubId === 'HB0009' && raw.data.branches[0].hubId === 'HB0001');
     check('v13 老订单/老路由/老班次原样保留', JSON.stringify(raw.data.orders[0]) === JSON.stringify(oldOrder) &&
         JSON.stringify(raw.data.routes[0]) === JSON.stringify(oldRoute) &&
         JSON.stringify(raw.data.trips[0]) === JSON.stringify(oldTrip));
@@ -725,6 +759,26 @@ section('分级中转路由体系');
     check('v13 新枢纽班线双向补齐', raw.data.trips.some((t) => t.fromHub === 'HB0008' && t.toHub === 'HB0009') &&
         raw.data.trips.some((t) => t.fromHub === 'HB0009' && t.toHub === 'HB0008'),
         raw.data.trips.length + ' 条班次');
+
+    /* v14 南京升一级：只增不改，南京建档 + 双向班线 + 网点归口刷新，业务单依旧一字不动 */
+    const tripsBeforeV14 = raw.data.trips.length;
+    TMS.migrations[14](raw, TMS);
+    check('v14 南京跨省分拣中心建档标一级', raw.data.hubs.length === 10 &&
+        raw.data.hubs.some((h) => h.id === 'HB0010' && h.name === '南京跨省分拣中心' && h.level === 1));
+    check('v14 网点归口刷新南京/合肥挂南京枢纽', raw.data.branches[1].hubId === 'HB0010' && raw.data.branches[0].hubId === 'HB0001');
+    check('v14 南京班线双向补齐含武汉/杭州干线', raw.data.trips.length > tripsBeforeV14 &&
+        raw.data.trips.some((t) => t.fromHub === 'HB0004' && t.toHub === 'HB0010' && t.mode === '陆运') &&
+        raw.data.trips.some((t) => t.fromHub === 'HB0010' && t.toHub === 'HB0009' && t.mode === '陆运') &&
+        raw.data.trips.some((t) => t.fromHub === 'HB0010' && t.toHub === 'HB0004'),
+        raw.data.trips.length + ' 条班次');
+    check('v14 老订单/老路由/首条班次仍原样', JSON.stringify(raw.data.orders[0]) === JSON.stringify(oldOrder) &&
+        JSON.stringify(raw.data.routes[0]) === JSON.stringify(oldRoute) &&
+        JSON.stringify(raw.data.trips[0]) === JSON.stringify(oldTrip));
+    check('v14 幂等：重放不再增行', (function () {
+        const n = { hubs: raw.data.hubs.length, branches: raw.data.branches.length, trips: raw.data.trips.length };
+        TMS.migrations[14](raw, TMS);
+        return raw.data.hubs.length === n.hubs && raw.data.branches.length === n.branches && raw.data.trips.length === n.trips;
+    })());
 })();
 
 section('派送地址审核闭环');
