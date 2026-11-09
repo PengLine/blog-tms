@@ -49,7 +49,7 @@
         intra: { code: 'intra', name: '区内直送', level: 4, tone: 'success', chain: '同一区/镇', hint: '揽收点与收件点落在同一行政区，直取直送不回分拨' },
         city: { code: 'city', name: '市内跨区', level: 3, tone: 'brand', chain: '同城跨区', hint: '同城不同区，取件后回本城分拨再发派送' },
         prov: { code: 'prov', name: '省内跨市', level: 2, tone: 'warn', chain: '同省跨市', hint: '同省不同城，走省域内的干线班次' },
-        cross: { code: 'cross', name: '跨省', level: 1, tone: 'danger', chain: '跨省干线', hint: '跨省的件必经干线班线，可能二次中转' },
+        cross: { code: 'cross', name: '跨省', level: 1, tone: 'danger', chain: '跨省干线', hint: '跨省的件必经干线班线，可能多次中转' },
         unknown: { code: 'unknown', name: '范围待定', level: 0, tone: 'muted', chain: '认不出起止', hint: '起止端有一头不在网络城市里，需人工核对' }
     };
     var SCOPE_ORDER = ['intra', 'city', 'prov', 'cross', 'unknown'];

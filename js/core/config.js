@@ -17,7 +17,7 @@
             key: 'tmsDB_v7',
             userKey: 'tmsSession',
             profileKey: 'tmsProfile',
-            schema: 13,
+            schema: 14,
             /* localStorage 配额按 UTF-16 计，浏览器约 5MB（≈250 万字符）：
                建库设计点控制在 ~1.8M 字符（3.6MB）以内，留出运行期写入余量；
                超软阈值先按天裁剪流水，仍超硬阈值才按集合优先级归档最旧记录，保证写入不会整库失败 */
